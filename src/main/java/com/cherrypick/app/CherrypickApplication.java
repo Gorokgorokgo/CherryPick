@@ -9,5 +9,4 @@ public class CherrypickApplication {
     public static void main(String[] args) {
         SpringApplication.run(CherrypickApplication.class, args);
     }
-
 }
