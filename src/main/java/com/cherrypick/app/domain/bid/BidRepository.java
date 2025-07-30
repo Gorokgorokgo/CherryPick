@@ -16,10 +16,10 @@ import java.util.Optional;
 public interface BidRepository extends JpaRepository<Bid, Long> {
     
     // 경매의 최고 입찰 조회
-    Optional<Bid> findTopByAuctionOrderByAmountDesc(Auction auction);
+    Optional<Bid> findTopByAuctionOrderByBidAmountDesc(Auction auction);
     
     // 경매의 모든 입찰 조회 (금액 순)
-    List<Bid> findByAuctionOrderByAmountDesc(Auction auction);
+    List<Bid> findByAuctionOrderByBidAmountDesc(Auction auction);
     
     // 사용자의 입찰 내역 조회
     Page<Bid> findByBidderOrderByCreatedAtDesc(User bidder, Pageable pageable);
@@ -32,6 +32,7 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
     Integer countByAuction(@Param("auction") Auction auction);
     
     // 사용자가 현재 최고가로 입찰 중인 경매들
-    @Query("SELECT b FROM Bid b WHERE b.bidder = :bidder AND b.isWinning = true")
+    @Query("SELECT b FROM Bid b WHERE b.bidder = :bidder AND b.bidAmount = " +
+           "(SELECT MAX(b2.bidAmount) FROM Bid b2 WHERE b2.auction = b.auction)")
     List<Bid> findWinningBidsByBidder(@Param("bidder") User bidder);
 }

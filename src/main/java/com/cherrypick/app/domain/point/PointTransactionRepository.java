@@ -17,6 +17,9 @@ public interface PointTransactionRepository extends JpaRepository<PointTransacti
     // 사용자의 포인트 거래 내역 조회
     Page<PointTransaction> findByUserOrderByCreatedAtDesc(User user, Pageable pageable);
     
+    // 사용자 ID로 거래 내역 조회 (PointService에서 사용)
+    Page<PointTransaction> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    
     // 사용자의 특정 타입 거래 내역 조회
     Page<PointTransaction> findByUserAndTypeOrderByCreatedAtDesc(User user, PointTransactionType type, Pageable pageable);
     
