@@ -5,6 +5,7 @@ import com.cherrypick.app.domain.user.User;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -20,47 +21,62 @@ public class Auction extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "seller_id", nullable = false)
+    private User seller;
+
     @Column(nullable = false)
     private String title;
 
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Long startPrice;
+    private Category category;
 
-    @Column(nullable = false)
-    private Long hopePrice;
+    @Column(name = "start_price", nullable = false, precision = 10, scale = 0)
+    private BigDecimal startPrice;
 
-    @Column(nullable = false)
-    private Long currentPrice;
+    @Column(name = "current_price", nullable = false, precision = 10, scale = 0)
+    private BigDecimal currentPrice;
+
+    @Column(name = "hope_price", nullable = false, precision = 10, scale = 0)
+    private BigDecimal hopePrice;
+
+    @Column(name = "deposit_amount", nullable = false, precision = 10, scale = 0)
+    private BigDecimal depositAmount;
+
+    @Column(name = "auction_time_hours", nullable = false)
+    private Integer auctionTimeHours;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "region_scope", nullable = false)
+    private RegionScope regionScope;
+
+    @Column(name = "region_code")
+    private String regionCode;
+
+    @Column(name = "region_name")
+    private String regionName;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AuctionStatus status;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Category category;
+    @Column(name = "view_count", nullable = false)
+    private Integer viewCount = 0;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private RegionScope regionScope;
+    @Column(name = "bid_count", nullable = false)
+    private Integer bidCount = 0;
 
-    @Column(nullable = false)
-    private LocalDateTime endTime;
+    @Column(name = "start_at", nullable = false)
+    private LocalDateTime startAt;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "seller_id", nullable = false)
-    private User seller;
+    @Column(name = "end_at", nullable = false)
+    private LocalDateTime endAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "winner_id")
     private User winner;
-
-    @Column(nullable = false)
-    private Integer bidCount = 0;
-
-    @Column
-    private String imageUrl;
 }

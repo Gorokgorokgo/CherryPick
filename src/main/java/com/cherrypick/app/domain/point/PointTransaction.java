@@ -5,8 +5,10 @@ import com.cherrypick.app.domain.user.User;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
-@Table(name = "point_transactions")
+@Table(name = "points")
 @Getter
 @Setter
 @Builder
@@ -18,23 +20,30 @@ public class PointTransaction extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private Long amount;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PointTransactionType type;
 
-    @Column
+    @Column(nullable = false, precision = 10, scale = 0)
+    private BigDecimal amount;
+
+    @Column(name = "balance_after", nullable = false, precision = 10, scale = 0)
+    private BigDecimal balanceAfter;
+
+    @Column(name = "related_type")
+    private String relatedType;
+
+    @Column(name = "related_id")
+    private Long relatedId;
+
+    @Column(columnDefinition = "TEXT")
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Long balanceAfter;
-
-    @Column
-    private String referenceId; // 관련 경매 ID, 거래 ID 등
+    private PointTransactionStatus status = PointTransactionStatus.COMPLETED;
 }
