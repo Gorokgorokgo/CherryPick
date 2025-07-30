@@ -55,6 +55,7 @@ public class AuthController {
             @ApiResponse(responseCode = "400", description = "인증 실패 또는 중복 사용자")
     })
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
+        System.out.println("AuthController.signup - Request received: " + request.getEmail()); // 디버깅용
         AuthResponse response = authService.signup(request);
         
         if (response.getToken() != null) {

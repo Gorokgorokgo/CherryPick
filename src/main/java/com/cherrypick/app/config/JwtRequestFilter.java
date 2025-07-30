@@ -28,13 +28,16 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         
         // 인증이 필요없는 경로는 필터를 건너뜀
         String requestPath = request.getRequestURI();
+        System.out.println("JwtRequestFilter - Path: " + requestPath); // 디버깅용
         if (requestPath.startsWith("/api/auth/") || 
             requestPath.startsWith("/swagger-ui/") || 
             requestPath.startsWith("/v3/api-docs/") ||
             requestPath.equals("/swagger-ui.html")) {
+            System.out.println("JwtRequestFilter - SKIPPING auth for: " + requestPath); // 디버깅용
             chain.doFilter(request, response);
             return;
         }
+        System.out.println("JwtRequestFilter - CHECKING auth for: " + requestPath); // 디버깅용
 
         final String requestTokenHeader = request.getHeader("Authorization");
 

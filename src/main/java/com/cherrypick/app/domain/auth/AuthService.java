@@ -95,7 +95,7 @@ public class AuthService {
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(savedUser.getEmail(), savedUser.getId());
 
-        return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname());
+        return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname(), "회원가입 성공");
     }
 
     public AuthResponse login(LoginRequest request) {
