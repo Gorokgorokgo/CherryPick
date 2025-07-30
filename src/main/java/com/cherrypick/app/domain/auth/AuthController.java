@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.auth;
+/* package com.cherrypick.app.domain.auth;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -63,4 +63,4 @@ public class AuthController {
             return ResponseEntity.badRequest().body(response);
         }
     }
-}
+} */

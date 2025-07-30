@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.auth;
+/* package com.cherrypick.app.domain.auth;
 
 import com.cherrypick.app.config.JwtConfig;
 import com.cherrypick.app.domain.user.User;
@@ -103,4 +103,4 @@ public class AuthService {
         String storedCode = redisTemplate.opsForValue().get(key);
         return storedCode != null && storedCode.equals(code);
     }
-}
+} */
