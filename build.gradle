@@ -22,15 +22,53 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
-    runtimeOnly 'com.h2database:h2'
+    // Web 애플리케이션 기본 기능
+    implementation 'org.springframework.boot:spring-boot-starter-web' // Spring MVC, 내장 Tomcat 등
+
+    // JPA 기반 ORM (Hibernate 포함)
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // JPA + Hibernate
+
+    // 요청 검증 (JSR-380 Bean Validation)
+    implementation 'org.springframework.boot:spring-boot-starter-validation' // @Valid, @NotNull 등
+
+    // 보안 (로그인 인증/인가 처리)
+    implementation 'org.springframework.boot:spring-boot-starter-security' // Spring Security
+
+    // 실시간 통신 (입찰 알림 등 WebSocket)
+    implementation 'org.springframework.boot:spring-boot-starter-websocket' // STOMP, SockJS 등
+
+    // Redis 연동 (세션, 캐시, Pub/Sub 등)
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis' // RedisTemplate 기반
+    implementation 'redis.clients:jedis' // Redis 클라이언트 (Jedis 사용 시 필요)
+
+    // JWT 기반 인증 토큰 처리
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5' // JWT API
+    implementation 'io.jsonwebtoken:jjwt-impl:0.11.5' // 내부 구현
+    implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5' // Jackson으로 JWT serialize/deserialize
+
+    // Swagger + OpenAPI 3 문서 자동 생성
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0' // Spring Boot 3.x 호환
+
+    // .env 환경변수 자동 로드
+    implementation 'me.paulschwarz:spring-dotenv:3.0.0' // .env 파일 → 환경변수로 주입
+
+    
+    runtimeOnly 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// IPv6 완전 활성화 설정 (Supabase 연결을 위해)
+tasks.named('bootRun') {
+    systemProperty 'java.net.preferIPv6Addresses', 'true'
+    systemProperty 'java.net.preferIPv4Stack', 'false'
+    systemProperty 'java.net.useSystemProxies', 'true'
+    // IPv6 DNS 설정
+    systemProperty 'sun.net.useExclusiveBind', 'false'
 }
