@@ -1,8 +1,8 @@
 package com.cherrypick.app.domain.point.dto;
 
-import com.cherrypick.app.domain.point.PointTransaction;
-import com.cherrypick.app.domain.point.PointTransactionStatus;
-import com.cherrypick.app.domain.point.PointTransactionType;
+import com.cherrypick.app.domain.point.entity.PointTransaction;
+import com.cherrypick.app.domain.point.enums.PointTransactionStatus;
+import com.cherrypick.app.domain.point.enums.PointTransactionType;
 import lombok.Getter;
 import lombok.Setter;
 

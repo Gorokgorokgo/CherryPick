@@ -1,6 +1,9 @@
 package com.cherrypick.app.domain.auction.dto;
 
-import com.cherrypick.app.domain.auction.*;
+import com.cherrypick.app.domain.auction.Auction;
+import com.cherrypick.app.domain.auction.enums.AuctionStatus;
+import com.cherrypick.app.domain.auction.enums.Category;
+import com.cherrypick.app.domain.auction.enums.RegionScope;
 import lombok.Getter;
 import lombok.Setter;
 

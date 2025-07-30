@@ -1,7 +1,7 @@
 package com.cherrypick.app.domain.auction.dto;
 
-import com.cherrypick.app.domain.auction.Category;
-import com.cherrypick.app.domain.auction.RegionScope;
+import com.cherrypick.app.domain.auction.enums.Category;
+import com.cherrypick.app.domain.auction.enums.RegionScope;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
