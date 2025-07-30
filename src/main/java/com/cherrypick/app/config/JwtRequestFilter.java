@@ -25,27 +25,37 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
                                   FilterChain chain) throws ServletException, IOException {
+        
+        // 인증이 필요없는 경로는 필터를 건너뜀
+        String requestPath = request.getRequestURI();
+        if (requestPath.startsWith("/api/auth/") || 
+            requestPath.startsWith("/swagger-ui/") || 
+            requestPath.startsWith("/v3/api-docs/") ||
+            requestPath.equals("/swagger-ui.html")) {
+            chain.doFilter(request, response);
+            return;
+        }
 
         final String requestTokenHeader = request.getHeader("Authorization");
 
-        String phoneNumber = null;
+        String email = null;
         String jwtToken = null;
 
         if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
             jwtToken = requestTokenHeader.substring(7);
             try {
-                phoneNumber = jwtConfig.extractPhoneNumber(jwtToken);
+                email = jwtConfig.extractEmail(jwtToken);
             } catch (Exception e) {
                 logger.warn("JWT Token 추출 실패: " + e.getMessage());
             }
         }
 
-        if (phoneNumber != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            if (jwtConfig.validateToken(jwtToken, phoneNumber)) {
+        if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (jwtConfig.validateToken(jwtToken, email)) {
                 Long userId = jwtConfig.extractUserId(jwtToken);
                 
                 UsernamePasswordAuthenticationToken authToken = 
-                    new UsernamePasswordAuthenticationToken(phoneNumber, null, new ArrayList<>());
+                    new UsernamePasswordAuthenticationToken(email, null, new ArrayList<>());
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 
                 // userId를 SecurityContext에 저장

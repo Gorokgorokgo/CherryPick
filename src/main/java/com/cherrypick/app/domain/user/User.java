@@ -28,6 +28,14 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String nickname;
 
+    @NotBlank
+    @Column(unique = true, nullable = false, length = 100)
+    private String email;
+
+    @NotBlank
+    @Column(nullable = false)
+    private String password;
+
     @Column(nullable = false)
     private Long pointBalance = 0L;
 

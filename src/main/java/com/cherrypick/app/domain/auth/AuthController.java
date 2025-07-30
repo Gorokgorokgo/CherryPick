@@ -1,4 +1,4 @@
-/* package com.cherrypick.app.domain.auth;
+package com.cherrypick.app.domain.auth;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,6 +32,22 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/verify-code")
+    @Operation(summary = "인증 코드 검증", description = "발송받은 인증 코드를 검증합니다")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "인증 성공"),
+            @ApiResponse(responseCode = "400", description = "인증 실패 또는 만료")
+    })
+    public ResponseEntity<AuthResponse> verifyCode(@Valid @RequestBody VerifyCodeRequest request) {
+        AuthResponse response = authService.verifyCode(request);
+        
+        if (response.getMessage().contains("완료")) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
     @PostMapping("/signup")
     @Operation(summary = "회원가입", description = "전화번호와 인증코드로 회원가입을 진행합니다")
     @ApiResponses(value = {
@@ -63,4 +79,4 @@ public class AuthController {
             return ResponseEntity.badRequest().body(response);
         }
     }
-} */
+}

@@ -1,8 +1,9 @@
-/* package com.cherrypick.app.domain.auth;
+package com.cherrypick.app.domain.auth;
 
 import com.cherrypick.app.config.JwtConfig;
 import com.cherrypick.app.domain.user.User;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,12 +18,14 @@ public class AuthService {
     private final AuthRepository authRepository;
     private final JwtConfig jwtConfig;
     private final RedisTemplate<String, String> redisTemplate;
+    private final PasswordEncoder passwordEncoder;
 
     public AuthService(AuthRepository authRepository, JwtConfig jwtConfig, 
-                      RedisTemplate<String, String> redisTemplate) {
+                      RedisTemplate<String, String> redisTemplate, PasswordEncoder passwordEncoder) {
         this.authRepository = authRepository;
         this.jwtConfig = jwtConfig;
         this.redisTemplate = redisTemplate;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public AuthResponse sendVerificationCode(String phoneNumber) {
@@ -39,26 +42,46 @@ public class AuthService {
         return new AuthResponse("인증 코드가 발송되었습니다. (개발용: " + verificationCode + ")");
     }
 
+    public AuthResponse verifyCode(VerifyCodeRequest request) {
+        if (verifyCode(request.getPhoneNumber(), request.getVerificationCode())) {
+            // 인증 성공 시 인증 완료 플래그 저장 (10분 유효)
+            String verifiedKey = "verified:" + request.getPhoneNumber();
+            redisTemplate.opsForValue().set(verifiedKey, "true", 10, TimeUnit.MINUTES);
+            
+            // 인증 코드는 삭제
+            redisTemplate.delete("verification:" + request.getPhoneNumber());
+            
+            return new AuthResponse("인증이 완료되었습니다.");
+        } else {
+            return new AuthResponse("인증 코드가 올바르지 않거나 만료되었습니다.");
+        }
+    }
+
     public AuthResponse signup(SignupRequest request) {
-        // 인증 코드 검증
-        if (!verifyCode(request.getPhoneNumber(), request.getVerificationCode())) {
-            return new AuthResponse("인증 코드가 올바르지 않습니다.");
+        // 인증 완료 여부 확인
+        String verifiedKey = "verified:" + request.getPhoneNumber();
+        String verified = redisTemplate.opsForValue().get(verifiedKey);
+        if (verified == null || !verified.equals("true")) {
+            return new AuthResponse("전화번호 인증이 필요합니다.");
         }
 
-        // 이미 가입된 사용자 확인
+        // 중복 확인
         if (authRepository.findByPhoneNumber(request.getPhoneNumber()).isPresent()) {
             return new AuthResponse("이미 가입된 전화번호입니다.");
         }
-
-        // 닉네임 중복 확인
+        if (authRepository.findByEmail(request.getEmail()).isPresent()) {
+            return new AuthResponse("이미 가입된 이메일입니다.");
+        }
         if (authRepository.findByNickname(request.getNickname()).isPresent()) {
             return new AuthResponse("이미 사용 중인 닉네임입니다.");
         }
 
-        // 사용자 생성
+        // 사용자 생성 (비밀번호 암호화)
         User user = User.builder()
                 .phoneNumber(request.getPhoneNumber())
                 .nickname(request.getNickname())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
                 .pointBalance(0L)
                 .level(1)
                 .experience(0L)
@@ -66,36 +89,33 @@ public class AuthService {
 
         User savedUser = authRepository.save(user);
 
-        // 인증 코드 삭제
-        redisTemplate.delete("verification:" + request.getPhoneNumber());
+        // 인증 완료 플래그 삭제
+        redisTemplate.delete("verified:" + request.getPhoneNumber());
 
         // JWT 토큰 생성
-        String token = jwtConfig.generateToken(savedUser.getPhoneNumber(), savedUser.getId());
+        String token = jwtConfig.generateToken(savedUser.getEmail(), savedUser.getId());
 
-        return new AuthResponse(token, savedUser.getId(), savedUser.getPhoneNumber(), savedUser.getNickname());
+        return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname());
     }
 
     public AuthResponse login(LoginRequest request) {
-        // 인증 코드 검증
-        if (!verifyCode(request.getPhoneNumber(), request.getVerificationCode())) {
-            return new AuthResponse("인증 코드가 올바르지 않습니다.");
-        }
-
         // 사용자 조회
-        Optional<User> userOpt = authRepository.findByPhoneNumber(request.getPhoneNumber());
+        Optional<User> userOpt = authRepository.findByEmail(request.getEmail());
         if (userOpt.isEmpty()) {
-            return new AuthResponse("가입되지 않은 전화번호입니다.");
+            return new AuthResponse("가입되지 않은 이메일입니다.");
         }
 
         User user = userOpt.get();
 
-        // 인증 코드 삭제
-        redisTemplate.delete("verification:" + request.getPhoneNumber());
+        // 비밀번호 확인
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            return new AuthResponse("비밀번호가 올바르지 않습니다.");
+        }
 
         // JWT 토큰 생성
-        String token = jwtConfig.generateToken(user.getPhoneNumber(), user.getId());
+        String token = jwtConfig.generateToken(user.getEmail(), user.getId());
 
-        return new AuthResponse(token, user.getId(), user.getPhoneNumber(), user.getNickname());
+        return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
     }
 
     private boolean verifyCode(String phoneNumber, String code) {
@@ -103,4 +123,4 @@ public class AuthService {
         String storedCode = redisTemplate.opsForValue().get(key);
         return storedCode != null && storedCode.equals(code);
     }
-} */
+}

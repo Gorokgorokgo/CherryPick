@@ -23,6 +23,10 @@ public class AuthRepository {
         return userRepository.findByNickname(nickname);
     }
 
+    public Optional<User> findByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+
     public User save(User user) {
         return userRepository.save(user);
     }
@@ -33,5 +37,9 @@ public class AuthRepository {
 
     public boolean existsByNickname(String nickname) {
         return userRepository.existsByNickname(nickname);
+    }
+
+    public boolean existsByEmail(String email) {
+        return userRepository.existsByEmail(email);
     }
 }
