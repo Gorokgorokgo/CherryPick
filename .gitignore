@@ -54,3 +54,4 @@ logs/
 ### Claude Code 설정 파일 ###
 CLAUDE.md
 .claude/
+docs
