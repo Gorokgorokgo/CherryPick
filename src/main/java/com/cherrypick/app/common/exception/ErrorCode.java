@@ -1,0 +1,90 @@
+package com.cherrypick.app.common.exception;
+
+import org.springframework.http.HttpStatus;
+
+/**
+ * 시스템 전체 에러 코드 정의
+ * 보안을 위해 민감한 정보 노출 방지, 사용자 친화적 메시지 제공
+ */
+public enum ErrorCode {
+    
+    // 공통 에러
+    INVALID_INPUT_VALUE("C001", "입력값이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+    INVALID_TYPE_VALUE("C002", "타입이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+    ENTITY_NOT_FOUND("C003", "요청한 리소스를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    METHOD_NOT_ALLOWED("C004", "허용되지 않은 HTTP 메서드입니다.", HttpStatus.METHOD_NOT_ALLOWED),
+    ACCESS_DENIED("C005", "접근 권한이 없습니다.", HttpStatus.FORBIDDEN),
+    INTERNAL_SERVER_ERROR("C006", "내부 서버 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    
+    // 인증/인가
+    UNAUTHORIZED("A001", "인증이 필요합니다.", HttpStatus.UNAUTHORIZED),
+    INVALID_TOKEN("A002", "유효하지 않은 토큰입니다.", HttpStatus.UNAUTHORIZED),
+    TOKEN_EXPIRED("A003", "토큰이 만료되었습니다.", HttpStatus.UNAUTHORIZED),
+    INVALID_CREDENTIALS("A004", "인증 정보가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED),
+    PHONE_VERIFICATION_REQUIRED("A005", "전화번호 인증이 필요합니다.", HttpStatus.BAD_REQUEST),
+    VERIFICATION_CODE_EXPIRED("A006", "인증 코드가 만료되었습니다.", HttpStatus.BAD_REQUEST),
+    INVALID_VERIFICATION_CODE("A007", "인증 코드가 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+    
+    // 사용자 관리
+    USER_NOT_FOUND("U001", "사용자를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    DUPLICATE_NICKNAME("U002", "이미 사용 중인 닉네임입니다.", HttpStatus.CONFLICT),
+    DUPLICATE_PHONE_NUMBER("U003", "이미 등록된 전화번호입니다.", HttpStatus.CONFLICT),
+    
+    // 계좌 관리
+    ACCOUNT_NOT_FOUND("AC001", "계좌를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    ACCOUNT_LIMIT_EXCEEDED("AC002", "계좌 등록 한도를 초과했습니다.", HttpStatus.BAD_REQUEST),
+    DUPLICATE_ACCOUNT("AC003", "이미 등록된 계좌입니다.", HttpStatus.CONFLICT),
+    ACCOUNT_ACCESS_DENIED("AC004", "본인의 계좌만 접근할 수 있습니다.", HttpStatus.FORBIDDEN),
+    PRIMARY_ACCOUNT_DELETE_DENIED("AC005", "기본 계좌는 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    ACCOUNT_NOT_VERIFIED("AC006", "인증되지 않은 계좌입니다.", HttpStatus.BAD_REQUEST),
+    
+    // 포인트 시스템
+    INSUFFICIENT_POINTS("P001", "포인트가 부족합니다.", HttpStatus.BAD_REQUEST),
+    INVALID_AMOUNT_UNIT("P002", "금액은 1,000원 단위로 입력해주세요.", HttpStatus.BAD_REQUEST),
+    AMOUNT_LIMIT_EXCEEDED("P003", "금액 한도를 초과했습니다.", HttpStatus.BAD_REQUEST),
+    PAYMENT_PROCESSING_FAILED("P004", "결제 처리에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    TRANSFER_PROCESSING_FAILED("P005", "송금 처리에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    
+    // 경매 시스템
+    AUCTION_NOT_FOUND("AU001", "경매를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    AUCTION_NOT_ACTIVE("AU002", "진행 중인 경매가 아닙니다.", HttpStatus.BAD_REQUEST),
+    AUCTION_ENDED("AU003", "종료된 경매입니다.", HttpStatus.BAD_REQUEST),
+    INSUFFICIENT_DEPOSIT("AU004", "보증금이 부족합니다.", HttpStatus.BAD_REQUEST),
+    INVALID_PRICE_RANGE("AU005", "가격 설정이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+    REGION_INFO_REQUIRED("AU006", "지역 정보가 필요합니다.", HttpStatus.BAD_REQUEST),
+    
+    // 입찰 시스템
+    BID_NOT_FOUND("B001", "입찰을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    SELF_BID_NOT_ALLOWED("B002", "자신의 경매에는 입찰할 수 없습니다.", HttpStatus.FORBIDDEN),
+    INVALID_BID_AMOUNT("B003", "입찰 금액이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+    NO_BID_EXISTS("B004", "입찰 내역이 없습니다.", HttpStatus.NOT_FOUND),
+    
+    // 이미지 업로드
+    FILE_UPLOAD_FAILED("F001", "파일 업로드에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    INVALID_FILE_TYPE("F002", "지원하지 않는 파일 형식입니다.", HttpStatus.BAD_REQUEST),
+    FILE_SIZE_EXCEEDED("F003", "파일 크기가 너무 큽니다.", HttpStatus.BAD_REQUEST),
+    EMPTY_FILE("F004", "빈 파일은 업로드할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    FILE_COUNT_EXCEEDED("F005", "업로드 가능한 파일 수를 초과했습니다.", HttpStatus.BAD_REQUEST);
+    
+    private final String code;
+    private final String message;
+    private final HttpStatus httpStatus;
+    
+    ErrorCode(String code, String message, HttpStatus httpStatus) {
+        this.code = code;
+        this.message = message;
+        this.httpStatus = httpStatus;
+    }
+    
+    public String getCode() {
+        return code;
+    }
+    
+    public String getMessage() {
+        return message;
+    }
+    
+    public HttpStatus getHttpStatus() {
+        return httpStatus;
+    }
+}
