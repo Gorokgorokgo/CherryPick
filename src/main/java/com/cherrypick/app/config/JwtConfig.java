@@ -26,10 +26,10 @@ public class JwtConfig {
         return Keys.hmacShaKeyFor(secret.getBytes());
     }
 
-    public String generateToken(String phoneNumber, Long userId) {
+    public String generateToken(String email, Long userId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
-        return createToken(claims, phoneNumber);
+        return createToken(claims, email);
     }
 
     private String createToken(Map<String, Object> claims, String subject) {
@@ -42,7 +42,7 @@ public class JwtConfig {
                 .compact();
     }
 
-    public String extractPhoneNumber(String token) {
+    public String extractEmail(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
@@ -71,8 +71,8 @@ public class JwtConfig {
         return extractExpiration(token).before(new Date());
     }
 
-    public Boolean validateToken(String token, String phoneNumber) {
-        final String tokenPhoneNumber = extractPhoneNumber(token);
-        return (tokenPhoneNumber.equals(phoneNumber) && !isTokenExpired(token));
+    public Boolean validateToken(String token, String email) {
+        final String tokenEmail = extractEmail(token);
+        return (tokenEmail.equals(email) && !isTokenExpired(token));
     }
 }
