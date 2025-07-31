@@ -1,5 +1,6 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.repository;
 
+import com.cherrypick.app.domain.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

@@ -1,5 +1,6 @@
-package com.cherrypick.app.domain.auction;
+package com.cherrypick.app.domain.auction.repository;
 
+import com.cherrypick.app.domain.auction.entity.AuctionImage;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -1,6 +1,10 @@
-package com.cherrypick.app.domain.auction;
+package com.cherrypick.app.domain.auction.repository;
 
-import com.cherrypick.app.domain.user.User;
+import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.auction.enums.AuctionStatus;
+import com.cherrypick.app.domain.auction.enums.Category;
+import com.cherrypick.app.domain.auction.enums.RegionScope;
+import com.cherrypick.app.domain.user.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

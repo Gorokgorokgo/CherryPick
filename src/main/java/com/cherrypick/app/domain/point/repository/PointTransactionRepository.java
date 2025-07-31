@@ -1,6 +1,6 @@
 package com.cherrypick.app.domain.point.repository;
 
-import com.cherrypick.app.domain.user.User;
+import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.point.entity.PointTransaction;
 import com.cherrypick.app.domain.point.enums.PointTransactionType;
 import org.springframework.data.domain.Page;
