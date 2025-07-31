@@ -46,6 +46,10 @@ dependencies {
     implementation 'io.jsonwebtoken:jjwt-impl:0.11.5' // 내부 구현
     implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5' // Jackson으로 JWT serialize/deserialize
 
+    // AWS SDK for S3
+    implementation 'software.amazon.awssdk:s3:2.21.29' // AWS S3 SDK
+    implementation 'software.amazon.awssdk:auth:2.21.29' // AWS Authentication
+
     // Swagger + OpenAPI 3 문서 자동 생성
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0' // Spring Boot 3.x 호환
 
@@ -64,11 +68,7 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-// IPv6 완전 활성화 설정 (Supabase 연결을 위해)
+// Standard JVM 설정
 tasks.named('bootRun') {
-    systemProperty 'java.net.preferIPv6Addresses', 'true'
-    systemProperty 'java.net.preferIPv4Stack', 'false'
-    systemProperty 'java.net.useSystemProxies', 'true'
-    // IPv6 DNS 설정
-    systemProperty 'sun.net.useExclusiveBind', 'false'
+    systemProperty 'spring.profiles.active', 'dev'
 }
