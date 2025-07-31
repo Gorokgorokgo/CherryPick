@@ -1,5 +1,6 @@
 package com.cherrypick.app.domain.user.controller;
 
+import com.cherrypick.app.common.exception.AuthenticationFailedException;
 import com.cherrypick.app.config.JwtConfig;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
@@ -51,13 +52,9 @@ public class UserController {
     public ResponseEntity<UserProfileResponse> updateProfile(
             @Valid @RequestBody UpdateProfileRequest updateRequest,
             HttpServletRequest request) {
-        try {
-            Long userId = extractUserIdFromRequest(request);
-            UserProfileResponse updatedProfile = userService.updateProfile(userId, updateRequest);
-            return ResponseEntity.ok(updatedProfile);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long userId = extractUserIdFromRequest(request);
+        UserProfileResponse updatedProfile = userService.updateProfile(userId, updateRequest);
+        return ResponseEntity.ok(updatedProfile);
     }
 
     private Long extractUserIdFromRequest(HttpServletRequest request) {
@@ -66,6 +63,6 @@ public class UserController {
             String token = authHeader.substring(7);
             return jwtConfig.extractUserId(token);
         }
-        throw new RuntimeException("인증 토큰이 없습니다.");
+        throw new AuthenticationFailedException();
     }
 }
