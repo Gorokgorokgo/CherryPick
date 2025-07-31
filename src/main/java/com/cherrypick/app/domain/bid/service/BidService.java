@@ -1,5 +1,8 @@
 package com.cherrypick.app.domain.bid.service;
 
+import com.cherrypick.app.common.exception.BusinessException;
+import com.cherrypick.app.common.exception.EntityNotFoundException;
+import com.cherrypick.app.common.exception.ErrorCode;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
@@ -56,26 +59,25 @@ public class BidService {
         
         // 경매 정보 조회 및 유효성 검증
         Auction auction = auctionRepository.findById(request.getAuctionId())
-                .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
+                .orElseThrow(EntityNotFoundException::auction);
         
         validateAuctionForBidding(auction);
         
         // 입찰자 정보 확인
         User bidder = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(EntityNotFoundException::user);
         
         // 자신의 경매에는 입찰할 수 없음
         if (auction.getSeller().getId().equals(userId)) {
-            throw new IllegalArgumentException("자신이 등록한 경매에는 입찰할 수 없습니다.");
+            throw new BusinessException(ErrorCode.SELF_BID_NOT_ALLOWED);
         }
         
         // 입찰 금액 유효성 검증
         validateBidAmount(auction, request.getBidAmount());
         
-        // 포인트 잔액 확인
+        // 포인트 잔액 확인 (민감한 정보 노출 방지)
         if (bidder.getPointBalance() < request.getBidAmount().longValue()) {
-            throw new IllegalArgumentException("포인트 잔액이 부족합니다. 현재 잔액: " + 
-                String.format("%,d", bidder.getPointBalance()) + "원");
+            throw new BusinessException(ErrorCode.INSUFFICIENT_POINTS);
         }
         
         // 기존 최고가 입찰자의 포인트 잠금 해제
@@ -140,7 +142,7 @@ public class BidService {
      */
     public BidResponse getHighestBid(Long auctionId) {
         Bid highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 경매에 입찰이 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.NO_BID_EXISTS));
         
         return BidResponse.from(highestBid, true);
     }
@@ -150,24 +152,23 @@ public class BidService {
      */
     private void validateAuctionForBidding(Auction auction) {
         if (auction.getStatus() != AuctionStatus.ACTIVE) {
-            throw new IllegalArgumentException("진행중인 경매가 아닙니다.");
+            throw new BusinessException(ErrorCode.AUCTION_NOT_ACTIVE);
         }
         
         if (auction.getEndAt().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("종료된 경매입니다.");
+            throw new BusinessException(ErrorCode.AUCTION_ENDED);
         }
     }
     
     /**
-     * 입찰 금액 유효성 검증
+     * 입찰 금액 유효성 검증 (민감한 가격 정보 노출 방지)
      */
     private void validateBidAmount(Auction auction, BigDecimal bidAmount) {
         BigDecimal currentPrice = auction.getCurrentPrice();
         BigDecimal minimumBid = currentPrice.add(BigDecimal.valueOf(1000)); // 최소 1000원 증가
         
         if (bidAmount.compareTo(minimumBid) < 0) {
-            throw new IllegalArgumentException("입찰 금액은 현재가보다 최소 1,000원 이상 높아야 합니다. " +
-                "최소 입찰가: " + String.format("%,d", minimumBid.longValue()) + "원");
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT);
         }
     }
     
