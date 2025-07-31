@@ -1,6 +1,7 @@
 package com.cherrypick.app.domain.auction.dto;
 
-import com.cherrypick.app.domain.auction.Auction;
+import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.auction.entity.AuctionImage;
 import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;

@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.point.dto;
+package com.cherrypick.app.domain.point.dto.request;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;

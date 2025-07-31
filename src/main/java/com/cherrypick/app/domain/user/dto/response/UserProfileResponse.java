@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.dto.response;
 
 import lombok.Data;
 import lombok.Builder;

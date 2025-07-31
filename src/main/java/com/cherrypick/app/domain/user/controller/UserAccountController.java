@@ -1,7 +1,9 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.controller;
 
-import com.cherrypick.app.domain.user.dto.AccountResponse;
-import com.cherrypick.app.domain.user.dto.AddAccountRequest;
+import com.cherrypick.app.domain.user.dto.response.AccountResponse;
+import com.cherrypick.app.domain.user.dto.request.AddAccountRequest;
+import com.cherrypick.app.domain.user.service.UserAccountService;
+import com.cherrypick.app.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;

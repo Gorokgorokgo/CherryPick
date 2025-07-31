@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.point.dto;
+package com.cherrypick.app.domain.point.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

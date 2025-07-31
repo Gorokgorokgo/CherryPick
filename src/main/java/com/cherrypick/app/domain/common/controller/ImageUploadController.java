@@ -1,5 +1,6 @@
-package com.cherrypick.app.domain.common;
+package com.cherrypick.app.domain.common.controller;
 
+import com.cherrypick.app.domain.common.service.ImageUploadService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;

@@ -1,6 +1,6 @@
-package com.cherrypick.app.domain.user.dto;
+package com.cherrypick.app.domain.user.dto.response;
 
-import com.cherrypick.app.domain.user.UserAccount;
+import com.cherrypick.app.domain.user.entity.UserAccount;
 import lombok.Getter;
 import lombok.Setter;
 

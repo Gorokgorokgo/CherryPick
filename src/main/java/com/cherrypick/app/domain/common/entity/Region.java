@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.common;
+package com.cherrypick.app.domain.common.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

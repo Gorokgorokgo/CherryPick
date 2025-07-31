@@ -1,6 +1,9 @@
 package com.cherrypick.app.domain.point.controller;
 
-import com.cherrypick.app.domain.point.dto.*;
+import com.cherrypick.app.domain.point.dto.request.ChargePointRequest;
+import com.cherrypick.app.domain.point.dto.request.WithdrawPointRequest;
+import com.cherrypick.app.domain.point.dto.response.PointBalanceResponse;
+import com.cherrypick.app.domain.point.dto.response.PointTransactionResponse;
 import com.cherrypick.app.domain.point.service.PointService;
 import com.cherrypick.app.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;

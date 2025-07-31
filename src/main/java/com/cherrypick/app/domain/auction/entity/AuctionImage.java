@@ -1,6 +1,6 @@
-package com.cherrypick.app.domain.auction;
+package com.cherrypick.app.domain.auction.entity;
 
-import com.cherrypick.app.domain.common.BaseEntity;
+import com.cherrypick.app.domain.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 

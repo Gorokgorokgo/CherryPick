@@ -2,7 +2,7 @@ package com.cherrypick.app.domain.auction.controller;
 
 import com.cherrypick.app.domain.auction.dto.AuctionResponse;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
-import com.cherrypick.app.domain.auction.AuctionService;
+import com.cherrypick.app.domain.auction.service.AuctionService;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
 import com.cherrypick.app.domain.user.service.UserService;

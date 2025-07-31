@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.point.dto;
+package com.cherrypick.app.domain.point.dto.response;
 
 import com.cherrypick.app.domain.point.entity.PointTransaction;
 import com.cherrypick.app.domain.point.enums.PointTransactionStatus;

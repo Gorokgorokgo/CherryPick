@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

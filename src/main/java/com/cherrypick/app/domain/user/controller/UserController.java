@@ -1,6 +1,9 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.controller;
 
 import com.cherrypick.app.config.JwtConfig;
+import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
+import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
+import com.cherrypick.app.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
