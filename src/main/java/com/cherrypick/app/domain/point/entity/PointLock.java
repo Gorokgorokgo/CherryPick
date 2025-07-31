@@ -1,9 +1,9 @@
 package com.cherrypick.app.domain.point.entity;
 
-import com.cherrypick.app.domain.auction.Auction;
+import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.bid.entity.Bid;
-import com.cherrypick.app.domain.common.BaseEntity;
-import com.cherrypick.app.domain.user.User;
+import com.cherrypick.app.domain.common.entity.BaseEntity;
+import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.point.enums.PointLockStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -39,6 +39,7 @@ public class PointLock extends BaseEntity {
     @Column(name = "locked_amount", nullable = false, precision = 10, scale = 0)
     private BigDecimal lockedAmount;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PointLockStatus status = PointLockStatus.LOCKED;

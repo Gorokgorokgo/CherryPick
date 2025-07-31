@@ -1,6 +1,6 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.entity;
 
-import com.cherrypick.app.domain.common.BaseEntity;
+import com.cherrypick.app.domain.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,9 +33,11 @@ public class UserAccount extends BaseEntity {
     @Column(name = "account_holder", nullable = false)
     private String accountHolder;
 
-    @Column(name = "is_verified", nullable = false)
+    @Builder.Default
+    @Column(name = "is_verified", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean isVerified = false;
 
-    @Column(name = "is_primary", nullable = false)
+    @Builder.Default
+    @Column(name = "is_primary", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean isPrimary = false;
 }

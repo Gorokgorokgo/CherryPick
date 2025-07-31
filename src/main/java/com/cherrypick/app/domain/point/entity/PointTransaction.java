@@ -1,7 +1,7 @@
 package com.cherrypick.app.domain.point.entity;
 
-import com.cherrypick.app.domain.common.BaseEntity;
-import com.cherrypick.app.domain.user.User;
+import com.cherrypick.app.domain.common.entity.BaseEntity;
+import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.point.enums.PointTransactionType;
 import com.cherrypick.app.domain.point.enums.PointTransactionStatus;
 import jakarta.persistence.*;
@@ -45,6 +45,7 @@ public class PointTransaction extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PointTransactionStatus status = PointTransactionStatus.COMPLETED;

@@ -1,6 +1,6 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.entity;
 
-import com.cherrypick.app.domain.common.BaseEntity;
+import com.cherrypick.app.domain.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -36,12 +36,15 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private String password;
 
-    @Column(nullable = false)
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
     private Long pointBalance = 0L;
 
-    @Column(nullable = false)
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 1")
     private Integer level = 1;
 
-    @Column(nullable = false)
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
     private Long experience = 0L;
 }

@@ -1,8 +1,8 @@
 package com.cherrypick.app.domain.transaction.entity;
 
-import com.cherrypick.app.domain.auction.Auction;
-import com.cherrypick.app.domain.common.BaseEntity;
-import com.cherrypick.app.domain.user.User;
+import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.common.entity.BaseEntity;
+import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.transaction.enums.TransactionStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -44,14 +44,17 @@ public class Transaction extends BaseEntity {
     @Column(name = "seller_amount", nullable = false, precision = 10, scale = 0)
     private BigDecimal sellerAmount;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TransactionStatus status = TransactionStatus.PENDING;
 
-    @Column(name = "seller_confirmed", nullable = false)
+    @Builder.Default
+    @Column(name = "seller_confirmed", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean sellerConfirmed = false;
 
-    @Column(name = "buyer_confirmed", nullable = false)
+    @Builder.Default
+    @Column(name = "buyer_confirmed", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean buyerConfirmed = false;
 
     @Column(name = "seller_confirmed_at")
