@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.common;
+package com.cherrypick.app.domain.common.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;

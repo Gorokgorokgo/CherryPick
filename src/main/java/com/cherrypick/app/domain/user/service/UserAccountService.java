@@ -1,7 +1,11 @@
-package com.cherrypick.app.domain.user;
+package com.cherrypick.app.domain.user.service;
 
-import com.cherrypick.app.domain.user.dto.AccountResponse;
-import com.cherrypick.app.domain.user.dto.AddAccountRequest;
+import com.cherrypick.app.domain.user.dto.response.AccountResponse;
+import com.cherrypick.app.domain.user.dto.request.AddAccountRequest;
+import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.user.entity.UserAccount;
+import com.cherrypick.app.domain.user.repository.UserAccountRepository;
+import com.cherrypick.app.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

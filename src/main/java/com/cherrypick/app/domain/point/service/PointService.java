@@ -1,14 +1,17 @@
 package com.cherrypick.app.domain.point.service;
 
-import com.cherrypick.app.domain.point.dto.*;
+import com.cherrypick.app.domain.point.dto.request.ChargePointRequest;
+import com.cherrypick.app.domain.point.dto.request.WithdrawPointRequest;
+import com.cherrypick.app.domain.point.dto.response.PointBalanceResponse;
+import com.cherrypick.app.domain.point.dto.response.PointTransactionResponse;
 import com.cherrypick.app.domain.point.repository.PointTransactionRepository;
 import com.cherrypick.app.domain.point.entity.PointTransaction;
 import com.cherrypick.app.domain.point.enums.PointTransactionType;
 import com.cherrypick.app.domain.point.enums.PointTransactionStatus;
-import com.cherrypick.app.domain.user.User;
-import com.cherrypick.app.domain.user.UserAccountRepository;
-import com.cherrypick.app.domain.user.UserRepository;
-import com.cherrypick.app.domain.user.UserAccount;
+import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.user.repository.UserAccountRepository;
+import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.user.entity.UserAccount;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

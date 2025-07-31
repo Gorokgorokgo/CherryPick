@@ -6,7 +6,7 @@ import com.cherrypick.app.domain.auth.dto.request.SignupRequest;
 import com.cherrypick.app.domain.auth.dto.request.LoginRequest;
 import com.cherrypick.app.domain.auth.dto.request.VerifyCodeRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
-import com.cherrypick.app.domain.user.User;
+import com.cherrypick.app.domain.user.entity.User;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

@@ -1,9 +1,9 @@
 package com.cherrypick.app.domain.user.service;
 
-import com.cherrypick.app.domain.user.User;
-import com.cherrypick.app.domain.user.UserRepository;
-import com.cherrypick.app.domain.user.UpdateProfileRequest;
-import com.cherrypick.app.domain.user.UserProfileResponse;
+import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
+import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

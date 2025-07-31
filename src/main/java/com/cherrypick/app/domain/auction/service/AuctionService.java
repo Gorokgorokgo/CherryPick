@@ -1,9 +1,16 @@
-package com.cherrypick.app.domain.auction;
+package com.cherrypick.app.domain.auction.service;
 
 import com.cherrypick.app.domain.auction.dto.AuctionResponse;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
-import com.cherrypick.app.domain.user.User;
-import com.cherrypick.app.domain.user.UserRepository;
+import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.auction.entity.AuctionImage;
+import com.cherrypick.app.domain.auction.enums.AuctionStatus;
+import com.cherrypick.app.domain.auction.enums.Category;
+import com.cherrypick.app.domain.auction.enums.RegionScope;
+import com.cherrypick.app.domain.auction.repository.AuctionImageRepository;
+import com.cherrypick.app.domain.auction.repository.AuctionRepository;
+import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -69,26 +76,19 @@ public class AuctionService {
         LocalDateTime startAt = LocalDateTime.now();
         LocalDateTime endAt = startAt.plusHours(request.getAuctionTimeHours());
         
-        // 경매 엔티티 생성
-        Auction auction = Auction.builder()
-                .seller(seller)
-                .title(request.getTitle())
-                .description(request.getDescription())
-                .category(request.getCategory())
-                .startPrice(request.getStartPrice())
-                .currentPrice(request.getStartPrice()) // 초기 현재가는 시작가와 동일
-                .hopePrice(request.getHopePrice())
-                .depositAmount(request.calculateDepositAmount())
-                .auctionTimeHours(request.getAuctionTimeHours())
-                .regionScope(request.getRegionScope())
-                .regionCode(request.getRegionCode())
-                .regionName(request.getRegionName())
-                .status(AuctionStatus.ACTIVE) // 등록 즉시 활성 상태
-                .viewCount(0) // 초기 조회수 0
-                .bidCount(0) // 초기 입찰 횟수 0
-                .startAt(startAt)
-                .endAt(endAt)
-                .build();
+        // 경매 엔티티 생성 (정적 팩토리 메서드 사용)
+        Auction auction = Auction.createAuction(
+                seller,
+                request.getTitle(),
+                request.getDescription(),
+                request.getCategory(),
+                request.getStartPrice(),
+                request.getHopePrice(),
+                request.getAuctionTimeHours(),
+                request.getRegionScope(),
+                request.getRegionCode(),
+                request.getRegionName()
+        );
         
         Auction savedAuction = auctionRepository.save(auction);
         
@@ -136,8 +136,8 @@ public class AuctionService {
         Auction auction = auctionRepository.findById(auctionId)
                 .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
         
-        // 조회수 증가
-        auction.setViewCount(auction.getViewCount() + 1);
+        // 조회수 증가 (비즈니스 메서드 사용)
+        auction.increaseViewCount();
         auctionRepository.save(auction);
         
         List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auctionId);
