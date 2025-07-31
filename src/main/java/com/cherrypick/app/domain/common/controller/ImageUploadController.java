@@ -24,7 +24,7 @@ public class ImageUploadController {
     
     private final ImageUploadService imageUploadService;
     
-    @Operation(summary = "단일 이미지 업로드", description = "단일 이미지 파일을 Supabase Storage에 업로드합니다. JPG, PNG 형식만 지원하며, 최대 10MB까지 업로드 가능합니다.")
+    @Operation(summary = "단일 이미지 업로드", description = "단일 이미지 파일을 AWS S3에 업로드합니다. JPG, PNG, WEBP 형식만 지원하며, 최대 5MB까지 업로드 가능합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "이미지 업로드 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류")
@@ -49,7 +49,7 @@ public class ImageUploadController {
         }
     }
     
-    @Operation(summary = "다중 이미지 업로드", description = "여러 이미지 파일을 동시에 Supabase Storage에 업로드합니다. 최대 10개 파일까지 업로드 가능합니다.")
+    @Operation(summary = "다중 이미지 업로드", description = "여러 이미지 파일을 동시에 AWS S3에 업로드합니다. 최대 10개 파일까지 업로드 가능합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "이미지 업로드 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류")
@@ -75,7 +75,7 @@ public class ImageUploadController {
         }
     }
     
-    @Operation(summary = "이미지 삭제", description = "업로드된 이미지를 Supabase Storage에서 삭제합니다.")
+    @Operation(summary = "이미지 삭제", description = "업로드된 이미지를 AWS S3에서 삭제합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "이미지 삭제 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 이미지 URL 또는 삭제 오류")

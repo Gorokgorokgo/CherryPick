@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -57,12 +59,16 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             if (jwtConfig.validateToken(jwtToken, email)) {
                 Long userId = jwtConfig.extractUserId(jwtToken);
                 
-                UsernamePasswordAuthenticationToken authToken = 
-                    new UsernamePasswordAuthenticationToken(email, null, new ArrayList<>());
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                // UserDetails 객체 생성
+                UserDetails userDetails = User.builder()
+                    .username(email)
+                    .password("") // JWT 기반이므로 패스워드 불필요
+                    .authorities(new ArrayList<>())
+                    .build();
                 
-                // userId를 SecurityContext에 저장
-                authToken.setDetails(userId);
+                UsernamePasswordAuthenticationToken authToken = 
+                    new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
