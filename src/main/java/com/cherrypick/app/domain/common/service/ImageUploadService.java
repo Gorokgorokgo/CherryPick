@@ -14,11 +14,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ImageUploadService {
     
-    @Value("${supabase.storage.url}")
-    private String supabaseStorageUrl;
-    
-    @Value("${supabase.storage.bucket}")
+    @Value("${aws.s3.bucket}")
     private String bucketName;
+    
+    @Value("${aws.s3.region}")
+    private String region;
     
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "webp");
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -29,8 +29,8 @@ public class ImageUploadService {
         String fileName = generateFileName(file.getOriginalFilename());
         String fullPath = folder + "/" + fileName;
         
-        // TODO: Supabase Storage API 연동
-        String imageUrl = uploadToSupabase(file, fullPath);
+        // TODO: AWS S3 API 연동
+        String imageUrl = uploadToS3(file, fullPath);
         
         return imageUrl;
     }
@@ -52,8 +52,8 @@ public class ImageUploadService {
     }
     
     public void deleteImage(String imageUrl) {
-        // TODO: Supabase Storage에서 이미지 삭제
-        deleteFromSupabase(imageUrl);
+        // TODO: AWS S3에서 이미지 삭제
+        deleteFromS3(imageUrl);
     }
     
     private void validateFile(MultipartFile file) {
@@ -89,10 +89,10 @@ public class ImageUploadService {
         return filename.substring(lastDotIndex + 1);
     }
     
-    private String uploadToSupabase(MultipartFile file, String path) throws IOException {
-        // TODO: 실제 Supabase Storage API 연동
+    private String uploadToS3(MultipartFile file, String path) throws IOException {
+        // TODO: 실제 AWS S3 API 연동
         // 현재는 임시 URL 반환
-        String tempUrl = String.format("%s/%s/%s", supabaseStorageUrl, bucketName, path);
+        String tempUrl = String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, path);
         
         // 파일 업로드 시뮬레이션
         try {
@@ -105,8 +105,8 @@ public class ImageUploadService {
         return tempUrl;
     }
     
-    private void deleteFromSupabase(String imageUrl) {
-        // TODO: 실제 Supabase Storage API 연동
+    private void deleteFromS3(String imageUrl) {
+        // TODO: 실제 AWS S3 API 연동
         // 현재는 로그만 출력
         System.out.println("이미지 삭제: " + imageUrl);
     }

@@ -13,5 +13,3 @@
 5. Swagger UI 접속 (http://localhost:8080/swagger-ui.html)
 
 6. API 엔드포인트 호출 (회원가입 등)
-
-7. Supabase에서 DB확인

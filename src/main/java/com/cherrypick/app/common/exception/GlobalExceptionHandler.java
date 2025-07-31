@@ -2,6 +2,7 @@ package com.cherrypick.app.common.exception;
 
 import com.cherrypick.app.common.security.SecurityLogger;
 import com.cherrypick.app.common.security.SecurityMetrics;
+import com.cherrypick.app.config.JwtConfig;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -37,6 +38,7 @@ public class GlobalExceptionHandler {
     
     private final SecurityLogger securityLogger;
     private final SecurityMetrics securityMetrics;
+    private final JwtConfig jwtConfig;
     
     /**
      * 비즈니스 로직 예외 처리
@@ -243,7 +245,18 @@ public class GlobalExceptionHandler {
             var authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication != null && authentication.isAuthenticated() 
                 && !"anonymousUser".equals(authentication.getPrincipal())) {
-                return Long.parseLong(authentication.getName());
+                
+                // JWT 토큰에서 userId 클레임 직접 추출
+                if (authentication.getDetails() instanceof String) {
+                    String token = (String) authentication.getDetails();
+                    return jwtConfig.extractUserId(token);
+                }
+                
+                // 백업: Subject가 숫자인 경우 (기존 로직)
+                String name = authentication.getName();
+                if (name.matches("\\d+")) {
+                    return Long.parseLong(name);
+                }
             }
         } catch (Exception e) {
             log.debug("Failed to get current user ID: {}", e.getMessage());

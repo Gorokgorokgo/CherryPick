@@ -30,7 +30,7 @@ public class SwaggerConfig {
                             - 💰 **입찰 시스템**: 실시간 입찰, 자동 입찰
                             - 💳 **포인트 시스템**: 충전, 출금, 거래 내역
                             - 🏦 **계좌 관리**: 다중 계좌 등록 및 관리
-                            - 📷 **이미지 업로드**: Supabase Storage 연동
+                            - 📷 **이미지 업로드**: AWS S3 Storage 연동
                             
                             ### 인증 방법
                             1. `/api/auth/send-code`로 인증 코드 발송
@@ -48,14 +48,14 @@ public class SwaggerConfig {
 )
                 .servers(List.of(
                         new Server()
+                                .url("http://localhost:8080")
+                                .description("Local Development Server"),
+                        new Server()
                                 .url("https://api.cherrypick.com")
                                 .description("Production Server"),
                         new Server()
                                 .url("https://dev-api.cherrypick.com")
-                                .description("Development Server"),
-                        new Server()
-                                .url("http://localhost:8080")
-                                .description("Local Development Server")
+                                .description("Development Server")
                 ))
                 .addSecurityItem(new SecurityRequirement()
                         .addList("Bearer Authentication"))
