@@ -2,13 +2,10 @@ package com.cherrypick.app.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
-import io.swagger.v3.oas.models.info.Contact;
-import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.servers.Server;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.Components;
-import io.swagger.v3.oas.models.ExternalDocumentation;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -48,13 +45,7 @@ public class SwaggerConfig {
                             - 📊 **최소 단위**: 모든 금액은 1,000원 단위
                             """)
                         .version("v1.0.0")
-                        .contact(new Contact()
-                                .name("CherryPick Development Team")
-                                .email("dev@cherrypick.com")
-                                .url("https://github.com/cherrypick-dev"))
-                        .license(new License()
-                                .name("MIT License")
-                                .url("https://opensource.org/licenses/MIT")))
+)
                 .servers(List.of(
                         new Server()
                                 .url("https://api.cherrypick.com")
@@ -66,9 +57,6 @@ public class SwaggerConfig {
                                 .url("http://localhost:8080")
                                 .description("Local Development Server")
                 ))
-                .externalDocs(new ExternalDocumentation()
-                        .description("CherryPick API 가이드 문서")
-                        .url("https://docs.cherrypick.com/api"))
                 .addSecurityItem(new SecurityRequirement()
                         .addList("Bearer Authentication"))
                 .components(new Components()
