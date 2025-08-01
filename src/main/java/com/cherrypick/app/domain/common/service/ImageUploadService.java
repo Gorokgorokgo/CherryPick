@@ -28,7 +28,6 @@ import java.util.UUID;
 public class ImageUploadService {
     
     private final UploadedImageRepository uploadedImageRepository;
-    
     @Value("${aws.s3.bucket}")
     private String bucketName;
     
@@ -40,7 +39,6 @@ public class ImageUploadService {
     
     @Value("${aws.credentials.secret-key}")
     private String secretKey;
-    
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "webp");
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     
