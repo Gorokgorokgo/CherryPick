@@ -19,7 +19,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "7단계 - 입찰 관리", description = "경매 입찰 및 내역 조회 | 포인트 자동 예치/해제 시스템")
+@Tag(name = "8단계 - 입찰 관리", description = "경매 입찰 및 내역 조회 | 포인트 자동 예치/해제 시스템")
 @RestController
 @RequestMapping("/api/bids")
 @RequiredArgsConstructor
