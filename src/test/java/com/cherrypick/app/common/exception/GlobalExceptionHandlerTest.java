@@ -33,6 +33,7 @@ class GlobalExceptionHandlerTest {
     private ObjectMapper objectMapper;
     private com.cherrypick.app.common.security.SecurityLogger securityLogger;
     private com.cherrypick.app.common.security.SecurityMetrics securityMetrics;
+    private com.cherrypick.app.config.JwtConfig jwtConfig;
     private GlobalExceptionHandler globalExceptionHandler;
     
     @BeforeEach
@@ -40,9 +41,10 @@ class GlobalExceptionHandlerTest {
         // Mock dependencies
         securityLogger = Mockito.mock(com.cherrypick.app.common.security.SecurityLogger.class);
         securityMetrics = Mockito.mock(com.cherrypick.app.common.security.SecurityMetrics.class);
+        jwtConfig = Mockito.mock(com.cherrypick.app.config.JwtConfig.class);
         
         // Create the GlobalExceptionHandler with mocked dependencies
-        globalExceptionHandler = new GlobalExceptionHandler(securityLogger, securityMetrics);
+        globalExceptionHandler = new GlobalExceptionHandler(securityLogger, securityMetrics, jwtConfig);
         
         // Set up MockMvc with standalone setup
         mockMvc = MockMvcBuilders.standaloneSetup(new TestController())
