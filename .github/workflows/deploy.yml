@@ -166,7 +166,7 @@ jobs:
         channel: '#deployments'
         webhook_url: ${{ secrets.SLACK_WEBHOOK }}
         text: |
-          CherryPick 배포 ${{ job.status }}
-          Branch: ${{ github.ref }}
-          Commit: ${{ github.sha }}
-          Author: ${{ github.actor }}
+          🚀 CherryPick 배포 ${{ job.status }}
+          🌿 브랜치: ${{ github.ref }}
+          📝 커밋: ${{ github.sha }}
+          👤 작성자: ${{ github.actor }}
