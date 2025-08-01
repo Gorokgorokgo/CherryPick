@@ -1,30 +1,52 @@
 spring:
   application:
-    name: nakchal
-  
-  datasource:
-    url: jdbc:h2:mem:testdb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: password
-  
-  h2:
-    console:
+    name: cherrypick
+
+  servlet:
+    multipart:
       enabled: true
-      path: /h2-console
-  
+      max-file-size: 5MB
+      max-request-size: 10MB
+      file-size-threshold: 1MB
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:cherrypick}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password123}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
 server:
   port: 8080
 
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+aws:
+  s3:
+    bucket: ${AWS_S3_BUCKET:cherrypick-images}
+    region: ${AWS_REGION:ap-northeast-2}
+  credentials:
+    access-key: ${AWS_ACCESS_KEY_ID}
+    secret-key: ${AWS_SECRET_ACCESS_KEY}
+
 logging:
   level:
-    com.nakchal: DEBUG
+    com.cherrypick: DEBUG
     org.springframework.web: DEBUG

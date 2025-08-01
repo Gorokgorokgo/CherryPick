@@ -1,13 +1,12 @@
-package com.nakchal.app;
+package com.cherrypick.app;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class NakchalApplication {
+public class CherrypickApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(NakchalApplication.class, args);
+        SpringApplication.run(CherrypickApplication.class, args);
     }
-
 }
