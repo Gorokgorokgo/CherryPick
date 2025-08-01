@@ -23,7 +23,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Q&A 관리", description = "경매 상품 Q&A 기능 API")
+@Tag(name = "7단계 - Q&A 관리", description = "경매 상품 문의 및 답변 관리 | 판매자-구매자 소통")
 @RestController
 @RequestMapping("/api/auctions/{auctionId}/qna")
 @RequiredArgsConstructor
