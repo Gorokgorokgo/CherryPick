@@ -55,10 +55,18 @@ public class AuthController {
     }
 
     @PostMapping("/signup")
-    @Operation(summary = "회원가입", description = "전화번호와 인증코드로 회원가입을 진행합니다")
+    @Operation(summary = "회원가입", 
+               description = """
+                       전화번호 인증 완료 후 회원가입을 진행합니다.
+                       
+                       **필수 정보**: 전화번호, 닉네임, 이메일, 비밀번호
+                       **선택 정보**: 실명, 생년월일, 성별, 주소, 우편번호, 자기소개, 프로필 공개 설정
+                       
+                       선택 정보는 나중에 프로필 수정에서도 변경 가능합니다.
+                       """)
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "회원가입 성공"),
-            @ApiResponse(responseCode = "400", description = "인증 실패 또는 중복 사용자")
+            @ApiResponse(responseCode = "400", description = "인증 실패, 중복 사용자, 또는 유효성 검증 실패")
     })
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
         System.out.println("AuthController.signup - Request received: " + request.getEmail()); // 디버깅용
