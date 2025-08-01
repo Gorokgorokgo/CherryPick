@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/users")
 @CrossOrigin(origins = "*")
-@Tag(name = "사용자", description = "사용자 관리 API")
+@Tag(name = "2단계 - 사용자 프로필", description = "사용자 정보 관리 | 닉네임, 개인정보 설정")
 @SecurityRequirement(name = "Bearer Authentication")
 public class UserController {
 
