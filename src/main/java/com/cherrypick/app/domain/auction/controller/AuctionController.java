@@ -21,7 +21,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "6단계 - 경매 관리", description = "경매 등록, 조회, 검색 | 보증금 10% 자동 차감")
+@Tag(name = "경매 관리", description = "경매 등록, 조회, 검색 API")
 @RestController
 @RequestMapping("/api/auctions")
 @RequiredArgsConstructor
@@ -30,44 +30,11 @@ public class AuctionController {
     private final AuctionService auctionService;
     private final UserService userService;
     
-    @Operation(summary = "경매 등록", 
-               description = """
-                   새로운 경매를 등록합니다.
-                   
-                   **사용 예시:**
-                   ```json
-                   {
-                     "title": "아이폰 14 Pro 256GB 스페이스 블랙",
-                     "description": "작년 12월 구매, 케이스와 함께 깨끗하게 사용했습니다. 배터리 상태 95%",
-                     "category": "ELECTRONICS",
-                     "startingPrice": 800000,
-                     "hopedPrice": 1200000,
-                     "reservePrice": 1000000,
-                     "regionScope": "NATIONAL",
-                     "regionCode": "11",
-                     "auctionHours": 24,
-                     "imageUrls": [
-                       "https://s3.aws.com/cherrypick/phone1.jpg",
-                       "https://s3.aws.com/cherrypick/phone2.jpg"
-                     ]
-                   }
-                   ```
-                   
-                   **중요 사항:**
-                   - 보증금: 희망가의 10% 자동 차감 (예: 희망가 120만원 → 보증금 12만원)
-                   - Reserve Price: 최저 내정가 설정 가능 (선택사항, 입찰자에게 비공개)
-                   - 가격 범위: 시작가 ≤ Reserve Price ≤ 희망가
-                   - 유찰 조건: 최고 입찰가 < Reserve Price시 유찰 처리
-                   - 이미지: 최소 1개 이상 필수
-                   - 기본 경매 시간: 24시간 (최대 168시간/7일)
-                   - 스나이핑 방지: 마지막 10분 내 입찰시 10분 연장
-                   - 지역 확장: 입찰 부족시 자동으로 확장 범위 제안
-                   - 노쇼 방지: 정상 거래 완료시 보증금 100% 반환
-                   """)
+    @Operation(summary = "경매 등록", description = "새로운 경매를 등록합니다. 보증금(희망가의 10%)이 자동으로 차감되며, 상품 이미지는 최소 1개 이상 필요합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "경매 등록 성공"),
-            @ApiResponse(responseCode = "400", description = "보증금 부족, 이미지 누락, 유효하지 않은 카테고리/지역"),
-            @ApiResponse(responseCode = "401", description = "JWT 토큰 인증 실패")
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (보증금 부족, 유효하지 않은 정보 등)"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
     })
     @PostMapping
     public ResponseEntity<AuctionResponse> createAuction(

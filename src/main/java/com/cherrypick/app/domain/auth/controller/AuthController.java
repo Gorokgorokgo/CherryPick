@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = "*")
-@Tag(name = "1단계 - 인증", description = "전화번호 기반 회원가입/로그인 | 모든 서비스 이용의 첫 번째 단계")
+@Tag(name = "인증", description = "회원가입/로그인 API")
 public class AuthController {
 
     private final AuthService authService;
@@ -27,25 +27,10 @@ public class AuthController {
     }
 
     @PostMapping("/send-code")
-    @Operation(summary = "인증 코드 발송", 
-               description = """
-                   전화번호로 SMS 인증 코드를 발송합니다.
-                   
-                   **사용 예시:**
-                   ```json
-                   {
-                     "phoneNumber": "01012345678"
-                   }
-                   ```
-                   
-                   **주의사항:**
-                   - 전화번호는 하이픈(-) 없이 입력
-                   - 1일 최대 5회 발송 제한
-                   - 인증 코드 유효시간: 3분
-                   """)
+    @Operation(summary = "인증 코드 발송", description = "전화번호로 SMS 인증 코드를 발송합니다")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "인증 코드 발송 성공"),
-            @ApiResponse(responseCode = "400", description = "잘못된 전화번호 형식 또는 일일 한도 초과")
+            @ApiResponse(responseCode = "400", description = "잘못된 요청")
     })
     public ResponseEntity<AuthResponse> sendVerificationCode(
             @Valid @RequestBody PhoneVerificationRequest request) {
@@ -72,41 +57,16 @@ public class AuthController {
     @PostMapping("/signup")
     @Operation(summary = "회원가입", 
                description = """
-                   전화번호 인증 후 회원가입을 진행합니다.
-                   
-                   **필수 정보**: 전화번호, 닉네임, 이메일, 비밀번호
-                   **선택 정보**: 실명, 생년월일, 성별, 주소, 우편번호, 자기소개, 프로필 공개 설정
-                   
-                   선택 정보는 나중에 프로필 수정에서도 변경 가능합니다.
-                   
-                   **사용 예시:**
-                   ```json
-                   {
-                     "phoneNumber": "01012345678",
-                     "verificationCode": "123456",
-                     "email": "user@cherrypick.com",
-                     "nickname": "체리유저",
-                     "agreeToTerms": true,
-                     "agreeToPrivacy": true
-                   }
-                   ```
-                   
-                   **응답 예시:**
-                   ```json
-                   {
-                     "message": "회원가입이 완료되었습니다",
-                     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                     "user": {
-                       "id": 1,
-                       "email": "user@cherrypick.com",
-                       "nickname": "체리유저"
-                     }
-                   }
-                   ```
-                   """)
+                       전화번호 인증 완료 후 회원가입을 진행합니다.
+                       
+                       **필수 정보**: 전화번호, 닉네임, 이메일, 비밀번호
+                       **선택 정보**: 실명, 생년월일, 성별, 주소, 우편번호, 자기소개, 프로필 공개 설정
+                       
+                       선택 정보는 나중에 프로필 수정에서도 변경 가능합니다.
+                       """)
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "회원가입 성공 - JWT 토큰 발급"),
-            @ApiResponse(responseCode = "400", description = "인증 코드 만료/오류, 중복 사용자, 필수 약관 미동의")
+            @ApiResponse(responseCode = "200", description = "회원가입 성공"),
+            @ApiResponse(responseCode = "400", description = "인증 실패, 중복 사용자, 또는 유효성 검증 실패")
     })
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
         System.out.println("AuthController.signup - Request received: " + request.getEmail()); // 디버깅용

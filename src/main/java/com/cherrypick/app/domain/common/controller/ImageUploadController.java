@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "5단계 - 이미지 업로드", description = "경매 상품 이미지 업로드 | AWS S3 연동, 최대 5MB")
+@Tag(name = "이미지 업로드", description = "이미지 업로드 및 삭제 API")
 @RestController
 @RequestMapping("/api/images")
 @RequiredArgsConstructor
