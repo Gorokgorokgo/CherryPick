@@ -21,9 +21,7 @@ services:
 
   # Spring Boot Application
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${ECR_REGISTRY}/cherrypick-app:latest
     container_name: cherrypick-app-prod
     ports:
       - "8080:8080"
@@ -49,6 +47,9 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      
+      # ECR Configuration
+      - ECR_REGISTRY=${ECR_REGISTRY}
       
       # Spring Profile
       - SPRING_PROFILES_ACTIVE=prod
@@ -79,7 +80,8 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      # SSL certificates (mount only if ssl directory exists)
+      # - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       app:
         condition: service_healthy
