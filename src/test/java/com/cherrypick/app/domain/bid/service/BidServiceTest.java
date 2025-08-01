@@ -284,6 +284,7 @@ class BidServiceTest {
                 Category.ELECTRONICS,
                 currentPrice,
                 currentPrice.add(BigDecimal.valueOf(5000)), // hopePrice
+                null, // reservePrice
                 24, // auctionTimeHours
                 RegionScope.NATIONWIDE,
                 null,
