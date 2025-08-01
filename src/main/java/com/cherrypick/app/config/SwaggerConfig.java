@@ -45,9 +45,9 @@ public class SwaggerConfig {
                             
                             ### STEP 3. 경매 활동
                             ```
-                            이미지 업로드       → 경매 등록          → 입찰 참여
-                            POST /images/upload POST /auctions     POST /bids
-                            GET /images        GET /auctions      GET /bids/my
+                            이미지 업로드       → 경매 등록          → Q&A 문의        → 입찰 참여
+                            POST /images/upload POST /auctions     POST /qna/question POST /bids
+                            GET /images        GET /auctions      GET /qna/questions GET /bids/my
                             ```
                             
                             ---
@@ -166,7 +166,10 @@ public class SwaggerConfig {
                                 .name("6단계 - 경매 관리")
                                 .description("경매 등록, 조회, 검색 | 보증금 10% 자동 차감"),
                         new Tag()
-                                .name("7단계 - 입찰 관리")
+                                .name("7단계 - Q&A 관리")
+                                .description("경매 상품 문의 및 답변 관리 | 판매자-구매자 소통"),
+                        new Tag()
+                                .name("8단계 - 입찰 관리")
                                 .description("경매 입찰 및 내역 조회 | 포인트 자동 예치/해제 시스템")
                 ))
                 .components(new Components()
