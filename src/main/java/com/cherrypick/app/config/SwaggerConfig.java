@@ -6,6 +6,7 @@ import io.swagger.v3.oas.models.servers.Server;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.tags.Tag;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -126,6 +127,29 @@ public class SwaggerConfig {
                 ))
                 .addSecurityItem(new SecurityRequirement()
                         .addList("Bearer Authentication"))
+                .tags(List.of(
+                        new Tag()
+                                .name("1단계 - 인증")
+                                .description("전화번호 기반 회원가입/로그인 | 모든 서비스 이용의 첫 번째 단계"),
+                        new Tag()
+                                .name("2단계 - 사용자 프로필")
+                                .description("사용자 정보 관리 | 닉네임, 개인정보 설정"),
+                        new Tag()
+                                .name("3단계 - 계좌 관리")
+                                .description("포인트 충전/출금을 위한 계좌 등록 및 관리 | 본인 명의 계좌만 등록 가능"),
+                        new Tag()
+                                .name("4단계 - 포인트 시스템")
+                                .description("포인트 충전/출금 및 거래 내역 관리 | 모든 경매 거래의 기반"),
+                        new Tag()
+                                .name("5단계 - 이미지 업로드")
+                                .description("경매 상품 이미지 업로드 | AWS S3 연동, 최대 5MB"),
+                        new Tag()
+                                .name("6단계 - 경매 관리")
+                                .description("경매 등록, 조회, 검색 | 보증금 10% 자동 차감"),
+                        new Tag()
+                                .name("7단계 - 입찰 관리")
+                                .description("경매 입찰 및 내역 조회 | 포인트 자동 예치/해제 시스템")
+                ))
                 .components(new Components()
                         .addSecuritySchemes("Bearer Authentication",
                                 new SecurityScheme()
