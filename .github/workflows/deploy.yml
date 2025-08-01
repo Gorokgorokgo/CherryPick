@@ -13,6 +13,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     
     services:
       postgres:
@@ -81,6 +85,7 @@ jobs:
         name: Gradle 테스트
         path: build/test-results/test/*.xml
         reporter: java-junit
+        token: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-deploy:
     needs: test
