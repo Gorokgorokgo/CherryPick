@@ -35,9 +35,10 @@ public class TransactionService {
         User buyer = winningBid.getBidder();
         BigDecimal finalPrice = winningBid.getBidAmount();
 
-        // 판매자별 수수료율 계산 (신규 사용자 무료 기간 고려)
-        BigDecimal commissionRate = businessConfig.getCommissionRateForUser(
-            seller.getCreatedAt().toLocalDate()
+        // 판매자별 최종 수수료율 계산 (레벨 할인 + 마이너스 방지 적용)
+        BigDecimal commissionRate = businessConfig.getFinalCommissionRateForSeller(
+            seller.getCreatedAt().toLocalDate(),
+            seller.getSellerLevel()
         );
 
         // 수수료 계산

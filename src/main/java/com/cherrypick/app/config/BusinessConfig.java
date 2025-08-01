@@ -66,7 +66,7 @@ public class BusinessConfig {
     }
 
     /**
-     * 사용자별 수수료율 계산 (신규 사용자 무료 고려)
+     * 사용자별 수수료율 계산 (신규 사용자 무료 기간 고려)
      */
     public BigDecimal getCommissionRateForUser(LocalDate userCreatedDate) {
         // 신규 사용자 무료 기간 체크
@@ -75,5 +75,41 @@ public class BusinessConfig {
         }
         
         return getCurrentCommissionRate();
+    }
+
+    /**
+     * 판매자 레벨별 할인을 적용한 최종 수수료율 계산
+     * 마이너스 수수료 방지 로직 포함
+     */
+    public BigDecimal getFinalCommissionRateForSeller(LocalDate userCreatedDate, Integer sellerLevel) {
+        // 기본 수수료율 계산
+        BigDecimal baseRate = getCommissionRateForUser(userCreatedDate);
+        
+        // 기본 수수료가 0%면 할인 적용 안함 (프로모션 중이거나 신규 사용자)
+        if (baseRate.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        
+        // 판매자 레벨별 할인율 계산
+        BigDecimal discountRate = getSellerDiscountRate(sellerLevel);
+        
+        // 최종 수수료율 = 기본 수수료율 - 할인율
+        BigDecimal finalRate = baseRate.subtract(discountRate);
+        
+        // 마이너스 방지: 최소 0% 보장
+        return finalRate.max(BigDecimal.ZERO);
+    }
+
+    /**
+     * 판매자 레벨별 할인율 계산
+     */
+    private BigDecimal getSellerDiscountRate(Integer sellerLevel) {
+        if (sellerLevel >= 100) return new BigDecimal("0.018"); // 1.8% 할인
+        if (sellerLevel >= 90) return new BigDecimal("0.012");  // 1.2% 할인  
+        if (sellerLevel >= 70) return new BigDecimal("0.006");  // 0.6% 할인
+        if (sellerLevel >= 50) return new BigDecimal("0.004");  // 0.4% 할인
+        if (sellerLevel >= 30) return new BigDecimal("0.003");  // 0.3% 할인
+        if (sellerLevel >= 10) return new BigDecimal("0.002");  // 0.2% 할인
+        return BigDecimal.ZERO; // 할인 없음
     }
 }
