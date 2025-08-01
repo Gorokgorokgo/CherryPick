@@ -14,8 +14,12 @@ public class UserProfileResponse {
     private String phoneNumber;
     private String nickname;
     private Long pointBalance;
-    private Integer level;
-    private Long experience;
+    
+    // 구매력/판매력 분리
+    private Integer buyerLevel;
+    private Integer buyerExp;
+    private Integer sellerLevel;
+    private Integer sellerExp;
     
     // 프로필 이미지
     private String profileImageUrl;

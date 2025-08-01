@@ -45,8 +45,10 @@ class UserServiceTest {
                 .email("test@example.com")
                 .password("password")
                 .pointBalance(0L)
-                .level(1)
-                .experience(0L)
+                .buyerLevel(1)
+                .buyerExp(0)
+                .sellerLevel(1)
+                .sellerExp(0)
                 .build();
     }
 

@@ -88,8 +88,10 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .pointBalance(0L)
-                .level(1)
-                .experience(0L);
+                .buyerLevel(1)
+                .buyerExp(0)
+                .sellerLevel(1)
+                .sellerExp(0);
 
         // 선택 프로필 정보 설정
         if (request.getRealName() != null && !request.getRealName().trim().isEmpty()) {

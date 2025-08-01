@@ -42,13 +42,24 @@ public class User extends BaseEntity {
     @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
     private Long pointBalance = 0L;
 
+    // 구매력 관련
     @Builder.Default
-    @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 1")
-    private Integer level = 1;
+    @Column(name = "buyer_level", nullable = false, columnDefinition = "INTEGER DEFAULT 1")
+    private Integer buyerLevel = 1;
 
     @Builder.Default
-    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
-    private Long experience = 0L;
+    @Column(name = "buyer_exp", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer buyerExp = 0;
+
+    // 판매력 관련
+    @Builder.Default
+    @Column(name = "seller_level", nullable = false, columnDefinition = "INTEGER DEFAULT 1")
+    private Integer sellerLevel = 1;
+
+    @Builder.Default
+    @Column(name = "seller_exp", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer sellerExp = 0;
+
 
     // 프로필 이미지
     @Column(length = 500)

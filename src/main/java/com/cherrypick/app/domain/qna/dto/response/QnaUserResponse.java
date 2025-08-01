@@ -12,7 +12,8 @@ public class QnaUserResponse {
     private final String nickname;
     private final String maskedNickname;
     private final String profileImageUrl;
-    private final Integer level;
+    private final Integer buyerLevel;
+    private final Integer sellerLevel;
     private final Boolean isSeller;
 
     /**
@@ -24,7 +25,8 @@ public class QnaUserResponse {
             user.getNickname(),
             maskNickname(user.getNickname()),
             user.getProfileImageUrl(),
-            user.getLevel(),
+            user.getBuyerLevel(),
+            user.getSellerLevel(),
             false
         );
     }
@@ -38,7 +40,8 @@ public class QnaUserResponse {
             user.getNickname(),
             user.getNickname(), // 판매자는 마스킹 없이
             user.getProfileImageUrl(),
-            user.getLevel(),
+            user.getBuyerLevel(),
+            user.getSellerLevel(),
             true
         );
     }

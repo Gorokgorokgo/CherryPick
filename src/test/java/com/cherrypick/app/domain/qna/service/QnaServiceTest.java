@@ -64,6 +64,10 @@ class QnaServiceTest {
             .phoneNumber("01012345678")
             .password("password")
             .pointBalance(100000L)
+            .buyerLevel(1)
+            .buyerExp(0)
+            .sellerLevel(3)
+            .sellerExp(1500)
             .build();
         setId(seller, 1L);
 
@@ -74,6 +78,10 @@ class QnaServiceTest {
             .phoneNumber("01087654321")
             .password("password")
             .pointBalance(50000L)
+            .buyerLevel(2)
+            .buyerExp(800)
+            .sellerLevel(1)
+            .sellerExp(0)
             .build();
         setId(questioner, 2L);
 
