@@ -2,9 +2,9 @@ name: CherryPick CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   AWS_REGION: ap-northeast-2
@@ -17,7 +17,7 @@ jobs:
       contents: read
       checks: write
       pull-requests: write
-    
+
     services:
       postgres:
         image: postgres:15
@@ -32,7 +32,7 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-      
+
       redis:
         image: redis:7-alpine
         options: >-
@@ -42,131 +42,140 @@ jobs:
           --health-retries 5
         ports:
           - 6379:6379
-    
+
     steps:
-    - name: 코드 체크아웃
-      uses: actions/checkout@v4
-    
-    - name: JDK 17 설정
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'corretto'
-    
-    - name: Gradle 패키지 캐시
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
-    
-    - name: gradlew 실행 권한 부여
-      run: chmod +x gradlew
-    
-    - name: 테스트 실행
-      run: ./gradlew test
-      env:
-        DB_HOST: localhost
-        DB_PORT: 5432
-        DB_NAME: cherrypick_test
-        DB_USERNAME: postgres
-        DB_PASSWORD: password123
-        REDIS_HOST: localhost
-        REDIS_PORT: 6379
-        JWT_SECRET: test-jwt-secret-key-must-be-at-least-64-characters-long-for-testing
-    
-    - name: 테스트 리포트 생성
-      uses: dorny/test-reporter@v1
-      if: success() || failure()
-      with:
-        name: Gradle 테스트
-        path: build/test-results/test/*.xml
-        reporter: java-junit
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - name: 코드 체크아웃 # GitHub 저장소에서 소스코드 다운로드
+        uses: actions/checkout@v4
+
+      - name: JDK 17 설정 # Java 17 개발환경 설치 및 설정
+
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "corretto"
+
+      - name: Gradle 패키지 캐시 # 의존성 라이브러리 캐싱으로 빌드 속도 향상
+
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: gradlew 실행 권한 부여 # Gradle Wrapper 스크립트 실행 권한 설정
+        run: chmod +x gradlew
+
+      - name: 테스트 실행 # 단위 테스트 및 통합 테스트 실행
+
+        run: ./gradlew test
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: cherrypick_test
+          DB_USERNAME: postgres
+          DB_PASSWORD: password123
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: test-jwt-secret-key-must-be-at-least-64-characters-long-for-testing
+
+      - name: 테스트 리포트 생성 # 테스트 결과를 GitHub PR에 표시
+
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Gradle 테스트
+          path: build/test-results/test/*.xml
+          reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-deploy:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    
+
     steps:
-    - name: 코드 체크아웃  
-      uses: actions/checkout@v4
-    
-    - name: AWS 인증 설정
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-    
-    - name: Amazon ECR 로그인
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-    
-    - name: Docker 이미지 빌드 및 ECR 푸시
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-    
-    - name: EC2 배포
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          # Update environment variables
-          echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
-          echo "DB_PORT=${{ secrets.DB_PORT }}" >> .env
-          echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
-          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
-          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-          echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" >> .env
-          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
-          echo "JWT_EXPIRATION=${{ secrets.JWT_EXPIRATION }}" >> .env
-          echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> .env
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
-          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
-          echo "AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}" >> .env
-          
-          # Login to ECR and pull latest image
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
-          
-          # Stop existing containers
-          docker-compose -f docker-compose.prod.yml down || true
-          
-          # Pull latest images
-          docker-compose -f docker-compose.prod.yml pull
-          
-          # Start services
-          docker-compose -f docker-compose.prod.yml up -d
-          
-          # Clean up old images
-          docker image prune -f
-    
-    - name: 헬스 체크
-      run: |
-        sleep 30
-        curl -f http://${{ secrets.EC2_HOST }}/health || exit 1
-    
-    - name: 슬랙 알림
-      if: always()
-      uses: 8398a7/action-slack@v3
-      with:
-        status: ${{ job.status }}
-        channel: '#deployments'
-        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-        text: |
-          CherryPick 배포 ${{ job.status }}
-          Branch: ${{ github.ref }}
-          Commit: ${{ github.sha }}
-          Author: ${{ github.actor }}
+      - name: 코드 체크아웃 # 배포용 소스코드 다운로드
+        uses: actions/checkout@v4
+
+      - name: AWS 인증 설정 # AWS 서비스 접근을 위한 인증 정보 설정
+
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Amazon ECR 로그인 # Docker 이미지 저장소 로그인
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Docker 이미지 빌드 및 ECR 푸시 # 애플리케이션을 Docker 이미지로 패키징 후 ECR에 업로드
+
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: EC2 배포 # SSH로 EC2 서버에 접속하여 Docker 컨테이너 재시작
+
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Update environment variables
+            echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
+            echo "DB_PORT=${{ secrets.DB_PORT }}" >> .env
+            echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
+            echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
+            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" >> .env
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            echo "JWT_EXPIRATION=${{ secrets.JWT_EXPIRATION }}" >> .env
+            echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> .env
+            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+            echo "AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}" >> .env
+
+            # Login to ECR and pull latest image
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+
+            # Stop existing containers
+            docker-compose -f docker-compose.prod.yml down || true
+
+            # Pull latest images
+            docker-compose -f docker-compose.prod.yml pull
+
+            # Start services
+            docker-compose -f docker-compose.prod.yml up -d
+
+            # Clean up old images
+            docker image prune -f
+
+      - name: 헬스 체크 # 배포된 애플리케이션 정상 동작 확인
+
+        run: |
+          sleep 30
+          curl -f http://${{ secrets.EC2_HOST }}/health || exit 1
+
+      - name: 슬랙 알림 # 배포 결과를 슬랙 채널로 알림
+
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: "#deployments"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            🚀 CherryPick 배포 ${{ job.status }}
+            🌿 브랜치: ${{ github.ref }}
+            📝 커밋: ${{ github.sha }}
+            👤 작성자: ${{ github.actor }}
