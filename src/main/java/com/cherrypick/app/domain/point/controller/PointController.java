@@ -21,7 +21,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "4단계 - 포인트 시스템", description = "포인트 충전/출금 및 거래 내역 관리 | 모든 경매 거래의 기반")
+@Tag(name = "포인트 시스템", description = "포인트 충전, 출금, 잔액 조회, 거래 내역 API")
 @RestController
 @RequestMapping("/api/points")
 @RequiredArgsConstructor
@@ -30,16 +30,7 @@ public class PointController {
     private final PointService pointService;
     private final UserService userService;
     
-    @Operation(summary = "포인트 충전", 
-               description = """
-                   본인 명의 계좌를 통해 포인트를 충전합니다.
-                   
-                   **충전 규칙:**
-                   - 본인 명의 계좌만 사용 가능
-                   - 충전 수수료: 무료
-                   - 최대 보유 포인트: 제한 없음
-                   - 충전 방법: 본인 명의 계좌만 가능
-                   """)
+    @Operation(summary = "포인트 충전", description = "등록된 계좌를 통해 포인트를 충전합니다. 1,000원 단위로 충전 가능하며, 최대 1,000,000원까지 1회 충전 가능합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "충전 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 요청 (금액, 계좌 오류 등)"),
@@ -56,16 +47,7 @@ public class PointController {
         return ResponseEntity.ok(response);
     }
     
-    @Operation(summary = "포인트 출금", 
-               description = """
-                   등록된 계좌로 포인트를 출금합니다.
-                   
-                   **출금 규칙:**
-                   - 충전한 본인 명의 계좌로만 출금 가능
-                   - 출금 수수료: 무료
-                   - 최소 출금 금액: 제한 없음
-                   - 예치된 포인트는 출금 불가 (경매 참여중인 포인트)
-                   """)
+    @Operation(summary = "포인트 출금", description = "등록된 계좌로 포인트를 출금합니다. 10,000원 단위로 출금 가능하며, 수수료 3%가 공제됩니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "출금 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 요청 (잔액 부족, 계좌 오류 등)"),

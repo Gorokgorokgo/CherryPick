@@ -34,10 +34,6 @@ spring:
 server:
   port: 8080
 
-springdoc:
-  swagger-ui:
-    tags-sorter: alpha
-
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}

@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -85,7 +84,6 @@ public class AuctionService {
                 request.getCategory(),
                 request.getStartPrice(),
                 request.getHopePrice(),
-                request.getReservePrice(),
                 request.getAuctionTimeHours(),
                 request.getRegionScope(),
                 request.getRegionCode(),
@@ -165,83 +163,5 @@ public class AuctionService {
                 .toList();
         
         return auctionImageRepository.saveAll(images);
-    }
-    
-    /**
-     * 경매 종료 처리 (Reserve Price 고려)
-     * 
-     * 비즈니스 로직:
-     * 1. 최고 입찰가와 Reserve Price 비교
-     * 2. Reserve Price 미달시 유찰 처리
-     * 3. 보증금 및 예치 포인트 처리
-     * 4. 알림 발송
-     * 
-     * @param auctionId 경매 ID
-     * @param highestBidPrice 최고 입찰가
-     * @param highestBidder 최고 입찰자
-     */
-    @Transactional
-    public void processAuctionEnd(Long auctionId, BigDecimal highestBidPrice, User highestBidder) {
-        Auction auction = auctionRepository.findById(auctionId)
-                .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
-        
-        // 경매 상태 확인
-        if (auction.getStatus() != AuctionStatus.ACTIVE) {
-            throw new IllegalStateException("이미 종료된 경매입니다.");
-        }
-        
-        User seller = auction.getSeller();
-        
-        if (auction.hasReservePrice() && !auction.isReservePriceMet(highestBidPrice)) {
-            // Reserve Price 미달 - 유찰 처리
-            processFailedAuction(auction, seller);
-        } else {
-            // 정상 낙찰 처리
-            processSuccessfulAuction(auction, seller, highestBidder, highestBidPrice);
-        }
-        
-        auctionRepository.save(auction);
-    }
-    
-    /**
-     * 유찰 처리
-     */
-    private void processFailedAuction(Auction auction, User seller) {
-        // 1. 경매 상태를 유찰로 변경
-        auction.endAuction(null, BigDecimal.ZERO);
-        
-        // 2. 판매자 보증금 100% 반환 (판매자 귀책 아님)
-        BigDecimal depositAmount = auction.getDepositAmount();
-        seller.setPointBalance(seller.getPointBalance() + depositAmount.longValue());
-        userRepository.save(seller);
-        
-        // 3. 모든 입찰자의 예치 포인트 해제 (별도 서비스에서 처리)
-        // bidService.releaseAllBidderPoints(auction.getId());
-        
-        // 4. 유찰 알림 발송 (별도 서비스에서 처리)
-        // notificationService.sendAuctionFailedNotification(auction);
-        
-        System.out.println("경매 유찰 처리 완료: " + auction.getTitle() + " (Reserve Price 미달)");
-    }
-    
-    /**
-     * 정상 낙찰 처리
-     */
-    private void processSuccessfulAuction(Auction auction, User seller, User winner, BigDecimal finalPrice) {
-        // 1. 경매 상태를 낙찰 완료로 변경
-        auction.endAuction(winner, finalPrice);
-        
-        // 2. 판매자 보증금 100% 반환
-        BigDecimal depositAmount = auction.getDepositAmount();
-        seller.setPointBalance(seller.getPointBalance() + depositAmount.longValue());
-        userRepository.save(seller);
-        
-        // 3. 낙찰자를 제외한 나머지 입찰자들의 예치 포인트 해제 (별도 서비스에서 처리)
-        // bidService.releaseNonWinnerPoints(auction.getId(), winner.getId());
-        
-        // 4. 낙찰 알림 발송 (별도 서비스에서 처리)
-        // notificationService.sendAuctionWonNotification(auction, winner);
-        
-        System.out.println("경매 낙찰 처리 완료: " + auction.getTitle() + " -> " + winner.getNickname() + " (" + finalPrice + "원)");
     }
 }

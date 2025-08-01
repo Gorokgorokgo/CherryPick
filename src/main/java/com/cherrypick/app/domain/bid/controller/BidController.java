@@ -19,7 +19,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "8단계 - 입찰 관리", description = "경매 입찰 및 내역 조회 | 포인트 자동 예치/해제 시스템")
+@Tag(name = "입찰 관리", description = "경매 입찰, 입찰 내역 조회 API")
 @RestController
 @RequestMapping("/api/bids")
 @RequiredArgsConstructor
@@ -29,36 +29,13 @@ public class BidController {
     private final UserService userService;
     
     @Operation(summary = "입찰하기", 
-               description = """
-                   경매에 입찰합니다.
-                   
-                   **사용 예시:**
-                   ```json
-                   {
-                     "auctionId": 1,
-                     "bidAmount": 950000,
-                     "isAutoBid": false,
-                     "maxAutoBidAmount": 1100000
-                   }
-                   ```
-                   
-                   **포인트 예치 시스템:**
-                   - 입찰 시: 입찰 금액만큼 포인트 잠금
-                   - 새로운 최고가 입찰 시: 이전 최고가 입찰자의 포인트 해제
-                   - 경매 종료 시: 낙찰자는 결제, 나머지는 포인트 해제
-                   
-                   **자동 입찰:**
-                   - isAutoBid: true 설정 시 자동 입찰 활성화
-                   - maxAutoBidAmount: 자동 입찰 최대 금액
-                   - bidPercentage: 현재가의 1~10% 범위 설정 (기본 2%)
-                   - 입찰 딜레이: 1초 후 자동 입찰 실행
-                   - 계산 예시: 현재가 50,000원, 2% 설정시 → 51,000원(50,000 + 1,000) 자동 입찰
-                   """)
+               description = "경매에 입찰합니다. 입찰 금액만큼 포인트가 예치되며, 기존 최고가 입찰자의 포인트는 해제됩니다. " +
+                           "자동 입찰 기능을 사용하면 설정한 최대 금액까지 자동으로 입찰이 진행됩니다.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "입찰 성공 - 포인트 예치 완료"),
-            @ApiResponse(responseCode = "400", description = "포인트 부족, 경매 종료, 본인 경매 입찰 시도, 최소 입찰 금액 미달"),
-            @ApiResponse(responseCode = "401", description = "JWT 토큰 인증 실패"),
-            @ApiResponse(responseCode = "404", description = "존재하지 않는 경매 ID")
+            @ApiResponse(responseCode = "200", description = "입찰 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (포인트 부족, 경매 종료, 자신의 경매 등)"),
+            @ApiResponse(responseCode = "401", description = "인증 실패"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
     })
     @PostMapping
     public ResponseEntity<BidResponse> placeBid(

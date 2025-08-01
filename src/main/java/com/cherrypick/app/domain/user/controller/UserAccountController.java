@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "3단계 - 계좌 관리", description = "포인트 충전/출금을 위한 계좌 등록 및 관리 | 본인 명의 계좌만 등록 가능")
+@Tag(name = "계좌 관리", description = "사용자 계좌 등록, 조회, 삭제 API")
 @RestController
 @RequestMapping("/api/accounts")
 @RequiredArgsConstructor
