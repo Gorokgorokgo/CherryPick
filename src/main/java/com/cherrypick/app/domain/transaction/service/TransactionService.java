@@ -7,13 +7,16 @@ import com.cherrypick.app.domain.transaction.entity.Transaction;
 import com.cherrypick.app.domain.transaction.enums.TransactionStatus;
 import com.cherrypick.app.domain.transaction.repository.TransactionRepository;
 import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.user.service.ExperienceService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -21,6 +24,7 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final BusinessConfig businessConfig;
+    private final ExperienceService experienceService;
 
     /**
      * 경매 종료 후 거래 생성
@@ -79,11 +83,27 @@ public class TransactionService {
 
         // 거래 완료 처리
         transaction.setStatus(TransactionStatus.COMPLETED);
-        transaction.setCompletedAt(LocalDateTime.now());
+        LocalDateTime completedAt = LocalDateTime.now();
+        transaction.setCompletedAt(completedAt);
 
         // 판매자에게 수령 금액 지급
         User seller = transaction.getSeller();
         seller.setPointBalance(seller.getPointBalance() + transaction.getSellerAmount().longValue());
+
+        // 경험치 지급 (구매자/판매자)
+        try {
+            experienceService.awardTransactionExperience(
+                transaction.getBuyer().getId(),
+                transaction.getSeller().getId(),
+                transaction.getFinalPrice(),
+                completedAt,
+                transaction.getAuction()
+            );
+            log.info("거래 완료 경험치 지급 완료 - 거래 ID: {}", transactionId);
+        } catch (Exception e) {
+            log.error("경험치 지급 중 오류 발생 - 거래 ID: {}, 오류: {}", transactionId, e.getMessage());
+            // 경험치 지급 실패가 거래 완료를 막지 않도록 예외를 잡음
+        }
 
         return transactionRepository.save(transaction);
     }
