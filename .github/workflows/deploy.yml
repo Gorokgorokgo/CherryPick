@@ -127,7 +127,7 @@ jobs:
           curl -f http://${{ secrets.EC2_HOST }}:8080/actuator/health || echo "헬스체크 실패 - 수동 확인 필요"
 
       - name: "슬랙 알림 : 배포 결과를 슬랙 채널로 알림"
-        if: always() && secrets.SLACK_WEBHOOK != ''
+        if: always()
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
