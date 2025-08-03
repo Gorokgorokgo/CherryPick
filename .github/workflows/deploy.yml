@@ -98,7 +98,7 @@ jobs:
           echo "EC2_SSH_KEY 길이: $(echo '${{ secrets.EC2_SSH_KEY }}' | wc -c)"
           
       - name: "EC2 배포 : SSH로 EC2 서버에 접속하여 애플리케이션 재시작"
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v0.1.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -127,7 +127,7 @@ jobs:
           curl -f http://${{ secrets.EC2_HOST }}:8080/actuator/health || echo "헬스체크 실패 - 수동 확인 필요"
 
       - name: "슬랙 알림 : 배포 결과를 슬랙 채널로 알림"
-        if: always()
+        if: always() && secrets.SLACK_WEBHOOK != ''
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
