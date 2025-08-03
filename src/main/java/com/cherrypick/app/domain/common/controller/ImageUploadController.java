@@ -3,6 +3,7 @@ package com.cherrypick.app.domain.common.controller;
 import com.cherrypick.app.domain.common.dto.ImageUploadResponse;
 import com.cherrypick.app.domain.common.entity.UploadedImage;
 import com.cherrypick.app.domain.common.service.ImageUploadService;
+import com.cherrypick.app.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -10,6 +11,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -25,19 +28,23 @@ import java.util.Map;
 public class ImageUploadController {
     
     private final ImageUploadService imageUploadService;
+    private final UserService userService;
     
     @Operation(summary = "단일 이미지 업로드", description = "단일 이미지 파일을 AWS S3에 업로드합니다. JPG, PNG, WEBP 형식만 지원하며, 최대 5MB까지 업로드 가능합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "이미지 업로드 성공"),
-            @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류")
+            @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
     })
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<ImageUploadResponse> uploadSingleImage(
             @Parameter(description = "업로드할 이미지 파일") @RequestParam("file") MultipartFile file,
-            @Parameter(description = "저장할 폴더명 (기본: general)") @RequestParam(value = "folder", defaultValue = "general") String folder) {
+            @Parameter(description = "저장할 폴더명 (기본: general)") @RequestParam(value = "folder", defaultValue = "general") String folder,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         
         try {
-            UploadedImage uploadedImage = imageUploadService.uploadImage(file, folder);
+            Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+            UploadedImage uploadedImage = imageUploadService.uploadImage(file, folder, userId);
             ImageUploadResponse response = ImageUploadResponse.from(uploadedImage);
             
             return ResponseEntity.ok(response);
@@ -49,15 +56,18 @@ public class ImageUploadController {
     @Operation(summary = "다중 이미지 업로드", description = "여러 이미지 파일을 동시에 AWS S3에 업로드합니다. 최대 10개 파일까지 업로드 가능합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "이미지 업로드 성공"),
-            @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류")
+            @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
     })
     @PostMapping(value = "/upload/multiple", consumes = "multipart/form-data")
     public ResponseEntity<List<ImageUploadResponse>> uploadMultipleImages(
             @Parameter(description = "업로드할 이미지 파일 목록") @RequestParam("files") List<MultipartFile> files,
-            @Parameter(description = "저장할 폴더명 (기본: general)") @RequestParam(value = "folder", defaultValue = "general") String folder) {
+            @Parameter(description = "저장할 폴더명 (기본: general)") @RequestParam(value = "folder", defaultValue = "general") String folder,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         
         try {
-            List<UploadedImage> uploadedImages = imageUploadService.uploadMultipleImages(files, folder);
+            Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+            List<UploadedImage> uploadedImages = imageUploadService.uploadMultipleImages(files, folder, userId);
             List<ImageUploadResponse> responses = uploadedImages.stream()
                     .map(ImageUploadResponse::from)
                     .toList();
@@ -100,18 +110,12 @@ public class ImageUploadController {
     })
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> deleteImageById(
-            @Parameter(description = "삭제할 이미지 ID") @PathVariable Long id) {
+            @Parameter(description = "삭제할 이미지 ID") @PathVariable Long id,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         
         try {
-            // TODO: 인증 구현 후 실제 사용자 ID로 변경 필요
-            Long currentUserId = null; // 임시: 인증 미구현 상태
-            
-            if (currentUserId != null) {
-                imageUploadService.deleteImageById(id, currentUserId);
-            } else {
-                // 인증이 없는 경우 권한 체크 없이 삭제 (임시)
-                imageUploadService.deleteImageById(id);
-            }
+            Long currentUserId = userService.getUserIdByEmail(userDetails.getUsername());
+            imageUploadService.deleteImageById(id, currentUserId);
             
             Map<String, String> response = new HashMap<>();
             response.put("message", "이미지가 삭제되었습니다.");

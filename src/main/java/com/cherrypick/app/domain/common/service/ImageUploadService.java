@@ -56,7 +56,7 @@ public class ImageUploadService {
         return s3Client;
     }
     
-    public UploadedImage uploadImage(MultipartFile file, String folder) throws IOException {
+    public UploadedImage uploadImage(MultipartFile file, String folder, Long uploaderId) throws IOException {
         validateFile(file);
         
         String originalFilename = file.getOriginalFilename();
@@ -66,7 +66,7 @@ public class ImageUploadService {
         
         // 1단계: 데이터베이스에 이미지 정보 먼저 저장
         UploadedImage uploadedImage = saveImageRecord(originalFilename, storedFilename, 
-                file.getSize(), file.getContentType(), folder, imageUrl);
+                file.getSize(), file.getContentType(), folder, imageUrl, uploaderId);
         
         log.info("DB 저장 완료 - ID: {}, 원본: {}", uploadedImage.getId(), originalFilename);
         
@@ -91,7 +91,7 @@ public class ImageUploadService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public UploadedImage saveImageRecord(String originalFilename, String storedFilename, 
-                                       long fileSize, String contentType, String folder, String imageUrl) {
+                                       long fileSize, String contentType, String folder, String imageUrl, Long uploaderId) {
         UploadedImage uploadedImage = UploadedImage.builder()
                 .originalFilename(originalFilename)
                 .storedFilename(storedFilename)
@@ -99,13 +99,13 @@ public class ImageUploadService {
                 .contentType(contentType)
                 .folderPath(folder)
                 .s3Url(imageUrl)
-                .uploaderId(null) // 추후 인증 연동 시 설정
+                .uploaderId(uploaderId) // 실제 업로더 ID 설정
                 .build();
         
         return uploadedImageRepository.save(uploadedImage);
     }
     
-    public List<UploadedImage> uploadMultipleImages(List<MultipartFile> files, String folder) throws IOException {
+    public List<UploadedImage> uploadMultipleImages(List<MultipartFile> files, String folder, Long uploaderId) throws IOException {
         if (files.size() > 10) {
             throw new IllegalArgumentException("최대 10개의 이미지만 업로드 가능합니다.");
         }
@@ -113,7 +113,7 @@ public class ImageUploadService {
         return files.stream()
                 .map(file -> {
                     try {
-                        return uploadImage(file, folder);
+                        return uploadImage(file, folder, uploaderId);
                     } catch (IOException e) {
                         throw new RuntimeException("이미지 업로드에 실패했습니다: " + e.getMessage());
                     }
