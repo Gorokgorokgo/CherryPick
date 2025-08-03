@@ -53,8 +53,8 @@ dependencies {
     // Swagger + OpenAPI 3 문서 자동 생성
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0' // Spring Boot 3.x 호환
 
-    // .env 환경변수 자동 로드
-    implementation 'me.paulschwarz:spring-dotenv:3.0.0' // .env 파일 → 환경변수로 주입
+    // .env 환경변수 자동 로드 (더 안정적인 라이브러리)
+    implementation 'io.github.cdimascio:dotenv-java:3.0.0'
 
     
     runtimeOnly 'org.postgresql:postgresql'
