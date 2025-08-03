@@ -45,6 +45,9 @@ public class Auction extends BaseEntity {
     @Column(name = "hope_price", nullable = false, precision = 10, scale = 0)
     private BigDecimal hopePrice;
 
+    @Column(name = "reserve_price", precision = 10, scale = 0)
+    private BigDecimal reservePrice;
+
     @Column(name = "deposit_amount", nullable = false, precision = 10, scale = 0)
     private BigDecimal depositAmount;
 
@@ -94,6 +97,7 @@ public class Auction extends BaseEntity {
             Category category,
             BigDecimal startPrice,
             BigDecimal hopePrice,
+            BigDecimal reservePrice,
             Integer auctionTimeHours,
             RegionScope regionScope,
             String regionCode,
@@ -110,6 +114,7 @@ public class Auction extends BaseEntity {
             startPrice,
             startPrice, // currentPrice는 startPrice로 시작
             hopePrice,
+            reservePrice,
             hopePrice.multiply(BigDecimal.valueOf(0.1)), // 보증금은 희망가의 10%
             auctionTimeHours,
             regionScope,
@@ -150,11 +155,32 @@ public class Auction extends BaseEntity {
     }
     
     /**
-     * 경매 종료 처리
+     * 경매 종료 처리 (Reserve Price 고려)
      */
-    public void endAuction(User winner) {
-        this.status = AuctionStatus.ENDED;
-        this.winner = winner;
+    public void endAuction(User winner, BigDecimal finalPrice) {
+        if (reservePrice != null && finalPrice.compareTo(reservePrice) < 0) {
+            // Reserve Price 미달 - 유찰 처리
+            this.status = AuctionStatus.NO_RESERVE_MET;
+            this.winner = null;
+        } else {
+            // 정상 낙찰
+            this.status = AuctionStatus.ENDED;
+            this.winner = winner;
+        }
+    }
+    
+    /**
+     * Reserve Price 달성 여부 확인
+     */
+    public boolean isReservePriceMet(BigDecimal currentBidPrice) {
+        return reservePrice == null || currentBidPrice.compareTo(reservePrice) >= 0;
+    }
+    
+    /**
+     * Reserve Price 설정 여부 확인
+     */
+    public boolean hasReservePrice() {
+        return reservePrice != null && reservePrice.compareTo(BigDecimal.ZERO) > 0;
     }
     
     /**

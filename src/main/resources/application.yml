@@ -34,6 +34,10 @@ spring:
 server:
   port: 8080
 
+springdoc:
+  swagger-ui:
+    tags-sorter: alpha
+
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}
@@ -45,6 +49,16 @@ aws:
   credentials:
     access-key: ${AWS_ACCESS_KEY_ID}
     secret-key: ${AWS_SECRET_ACCESS_KEY}
+
+# 비즈니스 설정
+business:
+  commission:
+    rate: ${COMMISSION_RATE:0.03}  # 기본 3% (0.00 = 0%, 0.01 = 1%)
+    new-user-free-days: ${NEW_USER_FREE_DAYS:30}  # 신규 사용자 무료 기간 (일)
+    promotion:
+      enabled: ${PROMOTION_ENABLED:false}  # 프로모션 활성화
+      rate: ${PROMOTION_RATE:0.00}  # 프로모션 수수료율
+      end-date: ${PROMOTION_END_DATE:2024-12-31}  # 프로모션 종료일
 
 logging:
   level:

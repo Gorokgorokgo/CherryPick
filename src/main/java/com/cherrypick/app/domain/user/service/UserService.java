@@ -3,7 +3,9 @@ package com.cherrypick.app.domain.user.service;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
+import com.cherrypick.app.domain.user.dto.request.UpdateProfileImageRequest;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
+import com.cherrypick.app.domain.common.service.ImageUploadService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,9 +17,11 @@ import java.util.Optional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final ImageUploadService imageUploadService;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, ImageUploadService imageUploadService) {
         this.userRepository = userRepository;
+        this.imageUploadService = imageUploadService;
     }
 
     @Transactional(readOnly = true)
@@ -30,8 +34,20 @@ public class UserService {
                 .phoneNumber(user.getPhoneNumber())
                 .nickname(user.getNickname())
                 .pointBalance(user.getPointBalance())
-                .level(user.getLevel())
-                .experience(user.getExperience())
+                .buyerLevel(user.getBuyerLevel())
+                .buyerExp(user.getBuyerExp())
+                .sellerLevel(user.getSellerLevel())
+                .sellerExp(user.getSellerExp())
+                .profileImageUrl(user.getProfileImageUrl())
+                .realName(user.getRealName())
+                .birthDate(user.getBirthDate())
+                .gender(user.getGender())
+                .address(user.getAddress())
+                .zipCode(user.getZipCode())
+                .bio(user.getBio())
+                .isProfilePublic(user.getIsProfilePublic())
+                .isRealNamePublic(user.getIsRealNamePublic())
+                .isBirthDatePublic(user.getIsBirthDatePublic())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();
@@ -47,21 +63,97 @@ public class UserService {
             throw new RuntimeException("이미 사용 중인 닉네임입니다.");
         }
 
+        // 기본 정보 업데이트
         user.setNickname(request.getNickname());
+        
+        // 프로필 이미지 업데이트 (기존 이미지가 있고 새 이미지가 다르면 기존 이미지 삭제)
+        if (request.getProfileImageUrl() != null) {
+            if (user.getProfileImageUrl() != null && 
+                !user.getProfileImageUrl().equals(request.getProfileImageUrl())) {
+                try {
+                    imageUploadService.deleteImage(user.getProfileImageUrl());
+                } catch (Exception e) {
+                    // 이미지 삭제 실패는 로그만 남기고 진행
+                    System.err.println("기존 프로필 이미지 삭제 실패: " + e.getMessage());
+                }
+            }
+            user.setProfileImageUrl(request.getProfileImageUrl());
+        }
+        
+        // 추가 개인정보 업데이트
+        if (request.getRealName() != null) {
+            user.setRealName(request.getRealName());
+        }
+        if (request.getBirthDate() != null) {
+            user.setBirthDate(request.getBirthDate());
+        }
+        if (request.getGender() != null) {
+            user.setGender(request.getGender());
+        }
+        if (request.getAddress() != null) {
+            user.setAddress(request.getAddress());
+        }
+        if (request.getZipCode() != null) {
+            user.setZipCode(request.getZipCode());
+        }
+        if (request.getBio() != null) {
+            user.setBio(request.getBio());
+        }
+        
+        // 프로필 공개 설정 업데이트
+        if (request.getIsProfilePublic() != null) {
+            user.setIsProfilePublic(request.getIsProfilePublic());
+        }
+        if (request.getIsRealNamePublic() != null) {
+            user.setIsRealNamePublic(request.getIsRealNamePublic());
+        }
+        if (request.getIsBirthDatePublic() != null) {
+            user.setIsBirthDatePublic(request.getIsBirthDatePublic());
+        }
+        
         user.setUpdatedAt(LocalDateTime.now());
-
         User updatedUser = userRepository.save(user);
 
-        return UserProfileResponse.builder()
-                .id(updatedUser.getId())
-                .phoneNumber(updatedUser.getPhoneNumber())
-                .nickname(updatedUser.getNickname())
-                .pointBalance(updatedUser.getPointBalance())
-                .level(updatedUser.getLevel())
-                .experience(updatedUser.getExperience())
-                .createdAt(updatedUser.getCreatedAt())
-                .updatedAt(updatedUser.getUpdatedAt())
-                .build();
+        return getUserProfile(updatedUser.getId());
+    }
+
+    public UserProfileResponse updateProfileImage(Long userId, UpdateProfileImageRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        // 기존 프로필 이미지 삭제
+        if (user.getProfileImageUrl() != null) {
+            try {
+                imageUploadService.deleteImage(user.getProfileImageUrl());
+            } catch (Exception e) {
+                System.err.println("기존 프로필 이미지 삭제 실패: " + e.getMessage());
+            }
+        }
+
+        user.setProfileImageUrl(request.getProfileImageUrl());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        return getUserProfile(userId);
+    }
+
+    public UserProfileResponse deleteProfileImage(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        if (user.getProfileImageUrl() != null) {
+            try {
+                imageUploadService.deleteImage(user.getProfileImageUrl());
+            } catch (Exception e) {
+                System.err.println("프로필 이미지 삭제 실패: " + e.getMessage());
+            }
+            
+            user.setProfileImageUrl(null);
+            user.setUpdatedAt(LocalDateTime.now());
+            userRepository.save(user);
+        }
+
+        return getUserProfile(userId);
     }
 
     @Transactional(readOnly = true)

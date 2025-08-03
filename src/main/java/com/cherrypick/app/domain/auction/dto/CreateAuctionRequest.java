@@ -39,6 +39,9 @@ public class CreateAuctionRequest {
     @DecimalMin(value = "1000", message = "희망가는 최소 1,000원입니다.")
     private BigDecimal hopePrice;
     
+    @Schema(description = "최저 내정가 (Reserve Price) - 선택사항", example = "500000")
+    private BigDecimal reservePrice;
+    
     @Schema(description = "경매 진행 시간 (시간 단위)", example = "72", required = true)
     @NotNull(message = "경매 시간은 필수입니다.")
     @Min(value = 24, message = "경매 시간은 최소 24시간입니다.")
@@ -63,6 +66,16 @@ public class CreateAuctionRequest {
     public void validate() {
         if (startPrice.compareTo(hopePrice) > 0) {
             throw new IllegalArgumentException("시작가는 희망가보다 클 수 없습니다.");
+        }
+        
+        // Reserve Price 유효성 검증
+        if (reservePrice != null) {
+            if (reservePrice.compareTo(startPrice) < 0) {
+                throw new IllegalArgumentException("최저 내정가는 시작가보다 작을 수 없습니다.");
+            }
+            if (reservePrice.compareTo(hopePrice) > 0) {
+                throw new IllegalArgumentException("최저 내정가는 희망가보다 클 수 없습니다.");
+            }
         }
         
         // 1000원 단위 체크
