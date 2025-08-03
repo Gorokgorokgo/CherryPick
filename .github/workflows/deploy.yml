@@ -91,6 +91,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
+      - name: "Secrets 확인"
+        run: |
+          echo "EC2_HOST 길이: $(echo '${{ secrets.EC2_HOST }}' | wc -c)"
+          echo "EC2_USER 길이: $(echo '${{ secrets.EC2_USER }}' | wc -c)" 
+          echo "EC2_SSH_KEY 길이: $(echo '${{ secrets.EC2_SSH_KEY }}' | wc -c)"
+          
       - name: "EC2 배포 : SSH로 EC2 서버에 접속하여 애플리케이션 재시작"
         uses: appleboy/ssh-action@v1.0.3
         with:
