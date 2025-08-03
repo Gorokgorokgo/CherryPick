@@ -5,7 +5,10 @@ import com.cherrypick.app.config.JwtConfig;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileImageRequest;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
+import com.cherrypick.app.domain.user.dto.response.UserLevelInfoResponse;
+import com.cherrypick.app.domain.user.dto.response.LevelProgressResponse;
 import com.cherrypick.app.domain.user.service.UserService;
+import com.cherrypick.app.domain.user.service.ExperienceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,10 +29,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserController {
 
     private final UserService userService;
+    private final ExperienceService experienceService;
     private final JwtConfig jwtConfig;
 
-    public UserController(UserService userService, JwtConfig jwtConfig) {
+    public UserController(UserService userService, ExperienceService experienceService, JwtConfig jwtConfig) {
         this.userService = userService;
+        this.experienceService = experienceService;
         this.jwtConfig = jwtConfig;
     }
 
@@ -97,5 +102,42 @@ public class UserController {
             return jwtConfig.extractUserId(token);
         }
         throw new AuthenticationFailedException();
+    }
+    
+    @GetMapping("/level")
+    @Operation(summary = "레벨 정보 조회", description = "구매자/판매자 레벨 진행률을 조회합니다 (레벨대별 차등 표시)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "레벨 정보 조회 성공"),
+        @ApiResponse(responseCode = "401", description = "인증 실패"),
+        @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없음")
+    })
+    public ResponseEntity<UserLevelInfoResponse> getUserLevelInfo(HttpServletRequest request) {
+        Long userId = extractUserIdFromRequest(request);
+        UserLevelInfoResponse levelInfo = experienceService.getUserLevelInfo(userId);
+        return ResponseEntity.ok(levelInfo);
+    }
+    
+    @GetMapping("/level/buyer")
+    @Operation(summary = "구매자 레벨 진행률 조회", description = "구매자 레벨 진행률을 조회합니다 (심리적 배려)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "구매자 레벨 정보 조회 성공"),
+        @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<LevelProgressResponse> getBuyerLevelProgress(HttpServletRequest request) {
+        Long userId = extractUserIdFromRequest(request);
+        LevelProgressResponse progress = experienceService.getBuyerLevelProgress(userId);
+        return ResponseEntity.ok(progress);
+    }
+    
+    @GetMapping("/level/seller")
+    @Operation(summary = "판매자 레벨 진행률 조회", description = "판매자 레벨 진행률을 조회합니다 (심리적 배려)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "판매자 레벨 정보 조회 성공"),
+        @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<LevelProgressResponse> getSellerLevelProgress(HttpServletRequest request) {
+        Long userId = extractUserIdFromRequest(request);
+        LevelProgressResponse progress = experienceService.getSellerLevelProgress(userId);
+        return ResponseEntity.ok(progress);
     }
 }

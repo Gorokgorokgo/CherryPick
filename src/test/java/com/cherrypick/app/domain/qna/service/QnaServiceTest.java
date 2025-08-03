@@ -93,6 +93,7 @@ class QnaServiceTest {
             Category.ELECTRONICS,
             BigDecimal.valueOf(10000),
             BigDecimal.valueOf(50000),
+            BigDecimal.valueOf(45000),
             24,
             RegionScope.NATIONWIDE,
             null,

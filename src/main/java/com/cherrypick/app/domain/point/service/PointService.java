@@ -66,9 +66,10 @@ public class PointService {
         }
         
         // 계좌 인증 상태 확인 (1원 인증 등 완료된 계좌만 사용)
-        if (!account.getIsVerified()) {
-            throw new IllegalArgumentException("인증된 계좌만 사용할 수 있습니다.");
-        }
+        // TODO: 임시로 주석 처리 - 계좌 인증 시스템 완성 후 활성화 필요
+        // if (!account.getIsVerified()) {
+        //     throw new IllegalArgumentException("인증된 계좌만 사용할 수 있습니다.");
+        // }
         
         // 외부 결제 API 연동 (토스페이, 카카오페이, 네이버페이 등)
         boolean paymentSuccess = processPayment(account, request.getAmount());
@@ -121,9 +122,10 @@ public class PointService {
             throw new IllegalArgumentException("본인의 계좌로만 출금할 수 있습니다.");
         }
         
-        if (!account.getIsVerified()) {
-            throw new IllegalArgumentException("인증된 계좌로만 출금할 수 있습니다.");
-        }
+        // TODO: 임시로 주석 처리 - 계좌 인증 시스템 완성 후 활성화 필요
+        // if (!account.getIsVerified()) {
+        //     throw new IllegalArgumentException("인증된 계좌로만 출금할 수 있습니다.");
+        // }
         
         // TODO: 실제 송금 API 연동
         boolean transferSuccess = processTransfer(account, request.getAmount());
