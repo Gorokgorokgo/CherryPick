@@ -66,6 +66,11 @@ public enum ErrorCode {
     EMPTY_FILE("F004", "빈 파일은 업로드할 수 없습니다.", HttpStatus.BAD_REQUEST),
     FILE_COUNT_EXCEEDED("F005", "업로드 가능한 파일 수를 초과했습니다.", HttpStatus.BAD_REQUEST),
     
+    // 이미지 관리
+    IMAGE_NOT_FOUND("I001", "이미지를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    IMAGE_DELETE_ACCESS_DENIED("I002", "본인이 업로드한 이미지만 삭제할 수 있습니다.", HttpStatus.FORBIDDEN),
+    IMAGE_ALREADY_DELETED("I003", "이미 삭제된 이미지입니다.", HttpStatus.BAD_REQUEST),
+    
     // Q&A 시스템
     QUESTION_NOT_FOUND("Q001", "질문을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     ANSWER_NOT_FOUND("Q002", "답변을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
