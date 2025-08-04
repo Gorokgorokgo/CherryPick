@@ -19,7 +19,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "8단계 - 입찰 관리", description = "경매 입찰 및 내역 조회 | 포인트 자동 예치/해제 시스템")
+@Tag(name = "8단계 - 입찰 관리", description = "경매 입찰 및 내역 조회 | 개정된 비즈니스 모델 - 무료 입찰 시스템")
 @RestController
 @RequestMapping("/api/bids")
 @RequiredArgsConstructor
@@ -42,10 +42,10 @@ public class BidController {
                    }
                    ```
                    
-                   **포인트 예치 시스템:**
-                   - 입찰 시: 입찰 금액만큼 포인트 잠금
-                   - 새로운 최고가 입찰 시: 이전 최고가 입찰자의 포인트 해제
-                   - 경매 종료 시: 낙찰자는 결제, 나머지는 포인트 해제
+                   **개정된 입찰 시스템:**
+                   - 무료 입찰 참여 (포인트 예치 시스템 제거)
+                   - 레벨 기반 입찰 제한으로 신뢰도 관리
+                   - 경매 종료 시: 낙찰자와 판매자 연결 서비스 생성
                    
                    **자동 입찰:**
                    - isAutoBid: true 설정 시 자동 입찰 활성화
@@ -55,7 +55,7 @@ public class BidController {
                    - 계산 예시: 현재가 50,000원, 2% 설정시 → 51,000원(50,000 + 1,000) 자동 입찰
                    """)
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "입찰 성공 - 포인트 예치 완료"),
+            @ApiResponse(responseCode = "200", description = "입찰 성공 - 무료 입찰 완료"),
             @ApiResponse(responseCode = "400", description = "포인트 부족, 경매 종료, 본인 경매 입찰 시도, 최소 입찰 금액 미달"),
             @ApiResponse(responseCode = "401", description = "JWT 토큰 인증 실패"),
             @ApiResponse(responseCode = "404", description = "존재하지 않는 경매 ID")
