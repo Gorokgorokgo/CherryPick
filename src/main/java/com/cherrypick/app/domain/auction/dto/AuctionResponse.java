@@ -23,7 +23,6 @@ public class AuctionResponse {
     private BigDecimal startPrice;
     private BigDecimal currentPrice;
     private BigDecimal hopePrice;
-    private BigDecimal depositAmount;
     private Integer auctionTimeHours;
     private RegionScope regionScope;
     private String regionCode;
@@ -56,7 +55,6 @@ public class AuctionResponse {
         response.setStartPrice(auction.getStartPrice());
         response.setCurrentPrice(auction.getCurrentPrice());
         response.setHopePrice(auction.getHopePrice());
-        response.setDepositAmount(auction.getDepositAmount());
         response.setAuctionTimeHours(auction.getAuctionTimeHours());
         response.setRegionScope(auction.getRegionScope());
         response.setRegionCode(auction.getRegionCode());
