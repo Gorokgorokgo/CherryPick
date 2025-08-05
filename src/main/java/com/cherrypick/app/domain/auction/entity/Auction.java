@@ -48,8 +48,7 @@ public class Auction extends BaseEntity {
     @Column(name = "reserve_price", precision = 10, scale = 0)
     private BigDecimal reservePrice;
 
-    @Column(name = "deposit_amount", nullable = false, precision = 10, scale = 0)
-    private BigDecimal depositAmount;
+    // 보증금 시스템 제거 - 법적 리스크 해결
 
     @Column(name = "auction_time_hours", nullable = false)
     private Integer auctionTimeHours;
@@ -115,7 +114,6 @@ public class Auction extends BaseEntity {
             startPrice, // currentPrice는 startPrice로 시작
             hopePrice,
             reservePrice,
-            hopePrice.multiply(BigDecimal.valueOf(0.1)), // 보증금은 희망가의 10%
             auctionTimeHours,
             regionScope,
             regionCode,

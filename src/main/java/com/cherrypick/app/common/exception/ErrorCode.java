@@ -64,7 +64,28 @@ public enum ErrorCode {
     INVALID_FILE_TYPE("F002", "지원하지 않는 파일 형식입니다.", HttpStatus.BAD_REQUEST),
     FILE_SIZE_EXCEEDED("F003", "파일 크기가 너무 큽니다.", HttpStatus.BAD_REQUEST),
     EMPTY_FILE("F004", "빈 파일은 업로드할 수 없습니다.", HttpStatus.BAD_REQUEST),
-    FILE_COUNT_EXCEEDED("F005", "업로드 가능한 파일 수를 초과했습니다.", HttpStatus.BAD_REQUEST);
+    FILE_COUNT_EXCEEDED("F005", "업로드 가능한 파일 수를 초과했습니다.", HttpStatus.BAD_REQUEST),
+    
+    // 이미지 관리
+    IMAGE_NOT_FOUND("I001", "이미지를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    IMAGE_DELETE_ACCESS_DENIED("I002", "본인이 업로드한 이미지만 삭제할 수 있습니다.", HttpStatus.FORBIDDEN),
+    IMAGE_ALREADY_DELETED("I003", "이미 삭제된 이미지입니다.", HttpStatus.BAD_REQUEST),
+    
+    // Q&A 시스템
+    QUESTION_NOT_FOUND("Q001", "질문을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    ANSWER_NOT_FOUND("Q002", "답변을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    QUESTION_CONTENT_EMPTY("Q003", "질문 내용을 입력해주세요.", HttpStatus.BAD_REQUEST),
+    QUESTION_CONTENT_TOO_LONG("Q004", "질문은 1,000자 이내로 작성해주세요.", HttpStatus.BAD_REQUEST),
+    ANSWER_CONTENT_EMPTY("Q005", "답변 내용을 입력해주세요.", HttpStatus.BAD_REQUEST),
+    ANSWER_CONTENT_TOO_LONG("Q006", "답변은 1,000자 이내로 작성해주세요.", HttpStatus.BAD_REQUEST),
+    SELF_QUESTION_NOT_ALLOWED("Q007", "본인의 경매에는 질문할 수 없습니다.", HttpStatus.FORBIDDEN),
+    QUESTION_TIME_LIMIT_EXCEEDED("Q008", "경매 종료 30분 전부터는 질문할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    ANSWERED_QUESTION_CANNOT_MODIFY("Q009", "답변이 달린 질문은 수정하거나 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    ONLY_SELLER_CAN_ANSWER("Q010", "판매자만 답변할 수 있습니다.", HttpStatus.FORBIDDEN),
+    ANSWER_ALREADY_EXISTS("Q011", "이미 답변이 등록되어 있습니다.", HttpStatus.CONFLICT),
+    ANSWER_AFTER_AUCTION_END("Q012", "경매가 종료된 후에는 답변을 수정하거나 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    NOT_QUESTION_AUTHOR("Q013", "질문 작성자만 수정하거나 삭제할 수 있습니다.", HttpStatus.FORBIDDEN),
+    NOT_ANSWER_AUTHOR("Q014", "답변 작성자만 수정하거나 삭제할 수 있습니다.", HttpStatus.FORBIDDEN);
     
     private final String code;
     private final String message;

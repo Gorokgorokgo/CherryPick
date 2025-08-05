@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UpdateQuestionRequest {
 
-    @NotBlank(message = "질문 내용은 필수입니다.")
-    @Size(max = 1000, message = "질문은 1000자 이내로 작성해주세요.")
+    @NotBlank(message = "질문 내용을 입력해주세요.")
+    @Size(max = 1000, message = "질문은 1,000자 이내로 작성해주세요.")
     private String content;
 }
