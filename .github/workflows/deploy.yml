@@ -106,20 +106,30 @@ jobs:
           script: |
             # 프로젝트 디렉토리로 이동
             cd /home/ec2-user/CherryPick
-            
+        
             # 최신 코드 받기
             git pull origin main
-            
+        
             # 기존 애플리케이션 종료
             pkill -f CherryPick || true
-            
-            # 새 애플리케이션 시작 (백그라운드)
+            sleep 30
+        
+            # 이전 로그 백업
+            mv app.log app.log.bak 2>/dev/null || true
+        
+            # 새 애플리케이션 시작
             nohup ./gradlew bootRun > app.log 2>&1 &
-            
-            # 잠시 대기 후 상태 확인
-            sleep 15
-            echo "애플리케이션 상태 확인:"
-            ps aux | grep CherryPick | grep -v grep || echo "애플리케이션이 시작되지 않았습니다"
+        
+            # 시작 확인 (60초 대기)
+            sleep 60
+            echo "=== 프로세스 상태 ==="
+            ps aux | grep CherryPick | grep -v grep || echo "프로세스 없음"
+        
+            echo "=== 최근 로그 ==="
+            tail -50 app.log
+        
+            echo "=== 오류 검색 ==="
+            grep -i "error\|exception" app.log | tail -10 || echo "오류 없음"
 
       - name: "헬스 체크 : 배포된 애플리케이션 정상 동작 확인"
         run: |
