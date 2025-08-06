@@ -110,16 +110,63 @@ jobs:
             # 최신 코드 받기
             git pull origin main
             
-            # 기존 애플리케이션 종료
-            pkill -f CherryPick || true
+            # 기존 Java 프로세스 안전하게 종료
+            echo "=== 기존 프로세스 종료 ==="
+            JAVA_PID=$(ps aux | grep "bootRun" | grep -v grep | awk '{print $2}')
+            if [ ! -z "$JAVA_PID" ]; then
+                echo "Java 프로세스 찾음: $JAVA_PID"
+                kill -TERM $JAVA_PID
+                echo "30초 대기 중..."
+                sleep 30
+                
+                # 여전히 살아있으면 강제 종료
+                if ps -p $JAVA_PID > /dev/null 2>&1; then
+                    echo "강제 종료 실행"
+                    kill -9 $JAVA_PID
+                fi
+            else
+                echo "실행 중인 Java 프로세스 없음"
+            fi
             
-            # 새 애플리케이션 시작 (백그라운드)
+            # 이전 로그 백업
+            if [ -f app.log ]; then
+                mv app.log app.log.bak
+            fi
+            
+            # 환경변수 로드
+            source .env
+            
+            # 새 애플리케이션 시작
+            echo "=== 새 애플리케이션 시작 ==="
             nohup ./gradlew bootRun > app.log 2>&1 &
+            NEW_PID=$!
+            echo "새 프로세스 PID: $NEW_PID"
             
-            # 잠시 대기 후 상태 확인
-            sleep 15
-            echo "애플리케이션 상태 확인:"
-            ps aux | grep CherryPick | grep -v grep || echo "애플리케이션이 시작되지 않았습니다"
+            # 시작 확인 (90초 대기)
+            echo "=== 애플리케이션 시작 대기 (90초) ==="
+            for i in {1..18}; do
+                echo "대기 중... ${i}/18 ($(($i * 5))초)"
+                sleep 5
+                
+                # 포트 8080 확인
+                if netstat -tlnp | grep :8080 > /dev/null; then
+                    echo "✅ 포트 8080이 열렸습니다!"
+                    break
+                fi
+            done
+            
+            # 최종 상태 확인
+            echo "=== 프로세스 상태 ==="
+            ps aux | grep java | grep -v grep || echo "Java 프로세스 없음"
+            
+            echo "=== 포트 상태 ==="
+            netstat -tlnp | grep :8080 || echo "8080 포트 사용 안함"
+            
+            echo "=== 최근 로그 (50줄) ==="
+            tail -50 app.log
+            
+            echo "=== 오류 검색 ==="
+            grep -i "error\|exception\|failed" app.log | tail -15 || echo "특별한 오류 없음"
 
       - name: "헬스 체크 : 배포된 애플리케이션 정상 동작 확인"
         run: |
