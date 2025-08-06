@@ -142,16 +142,21 @@ jobs:
             NEW_PID=$!
             echo "새 프로세스 PID: $NEW_PID"
             
-            # 시작 확인 (90초 대기)
-            echo "=== 애플리케이션 시작 대기 (90초) ==="
-            for i in {1..18}; do
-                echo "대기 중... ${i}/18 ($(($i * 5))초)"
+            # 시작 확인 (최대 60초, 포트 열리면 즉시 완료)
+            echo "=== 애플리케이션 시작 확인 (최대 60초) ==="
+            for i in {1..12}; do
                 sleep 5
+                echo "확인 중... ${i}/12 ($(($i * 5))초)"
                 
                 # 포트 8080 확인
                 if netstat -tlnp | grep :8080 > /dev/null; then
-                    echo "✅ 포트 8080이 열렸습니다!"
+                    echo "✅ 애플리케이션 시작 완료! ($(($i * 5))초)"
                     break
+                fi
+                
+                # 마지막 시도
+                if [ $i -eq 12 ]; then
+                    echo "⚠️ 60초 대기 완료 - 포트 상태 확인 필요"
                 fi
             done
             
