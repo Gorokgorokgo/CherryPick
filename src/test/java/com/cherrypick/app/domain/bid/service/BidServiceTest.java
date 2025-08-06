@@ -87,10 +87,6 @@ class BidServiceTest {
             // given
             given(auctionRepository.findById(1L)).willReturn(Optional.of(activeAuction));
             given(userRepository.findById(2L)).willReturn(Optional.of(bidder));
-            given(pointLockRepository.findByAuctionIdAndStatus(1L, PointLockStatus.LOCKED))
-                    .willReturn(Collections.emptyList());
-            given(bidRepository.findTopByAuctionIdOrderByBidTimeDesc(1L))
-                    .willReturn(Optional.empty());
             
             Bid savedBid = createBid(1L, activeAuction, bidder, BigDecimal.valueOf(15000));
             given(bidRepository.save(any(Bid.class))).willReturn(savedBid);
@@ -107,7 +103,7 @@ class BidServiceTest {
             
             verify(bidRepository).save(any(Bid.class));
             verify(auctionRepository).save(any(Auction.class));
-            verify(pointLockRepository).save(any(PointLock.class));
+            // 포인트 예치 시스템 제거로 인해 pointLockRepository.save() 호출하지 않음
         }
         
         @Test
@@ -150,22 +146,23 @@ class BidServiceTest {
         }
         
         @Test
-        @DisplayName("보안: 포인트 부족 시 민감한 정보 노출 방지")
-        void placeBid_InsufficientPoints_NoSensitiveDataExposure() {
+        @DisplayName("보안: 입찰 금액 부족 시 실제 금액 정보 노출 방지 - 추가 시나리오")
+        void placeBid_InvalidBidAmount_AdditionalSecurityCheck() {
             // given
-            User poorBidder = createUser(3L, "poor@test.com", "가난한입찰자", 5000L);
+            PlaceBidRequest veryLowBidRequest = createBidRequest(1L, BigDecimal.valueOf(5000), false, null);
             given(auctionRepository.findById(1L)).willReturn(Optional.of(activeAuction));
-            given(userRepository.findById(3L)).willReturn(Optional.of(poorBidder));
+            given(userRepository.findById(2L)).willReturn(Optional.of(bidder));
             
             // when & then
-            assertThatThrownBy(() -> bidService.placeBid(3L, validBidRequest))
+            assertThatThrownBy(() -> bidService.placeBid(2L, veryLowBidRequest))
                     .isInstanceOf(BusinessException.class)
                     .satisfies(e -> {
                         BusinessException be = (BusinessException) e;
-                        assertThat(be.getErrorCode()).isEqualTo(ErrorCode.INSUFFICIENT_POINTS);
-                        // 실제 잔액 정보가 메시지에 포함되지 않는지 확인
-                        assertThat(be.getMessage()).doesNotContain("5000");
-                        assertThat(be.getMessage()).doesNotContain("5,000");
+                        assertThat(be.getErrorCode()).isEqualTo(ErrorCode.INVALID_BID_AMOUNT);
+                        // 실제 현재가나 최소 증가폭 정보가 노출되지 않는지 확인
+                        assertThat(be.getMessage()).doesNotContain("10000");
+                        assertThat(be.getMessage()).doesNotContain("1000");
+                        assertThat(be.getMessage()).doesNotContain("11000");
                     });
         }
         

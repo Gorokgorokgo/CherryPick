@@ -14,6 +14,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
@@ -55,7 +56,7 @@ public class ImageUploadService {
         return s3Client;
     }
     
-    public String uploadImage(MultipartFile file, String folder) throws IOException {
+    public UploadedImage uploadImage(MultipartFile file, String folder, Long uploaderId) throws IOException {
         validateFile(file);
         
         String originalFilename = file.getOriginalFilename();
@@ -65,7 +66,7 @@ public class ImageUploadService {
         
         // 1단계: 데이터베이스에 이미지 정보 먼저 저장
         UploadedImage uploadedImage = saveImageRecord(originalFilename, storedFilename, 
-                file.getSize(), file.getContentType(), folder, imageUrl);
+                file.getSize(), file.getContentType(), folder, imageUrl, uploaderId);
         
         log.info("DB 저장 완료 - ID: {}, 원본: {}", uploadedImage.getId(), originalFilename);
         
@@ -75,7 +76,7 @@ public class ImageUploadService {
             log.info("S3 업로드 완료: {}", imageUrl);
             
             log.info("이미지 업로드 완료 - ID: {}, URL: {}", uploadedImage.getId(), imageUrl);
-            return imageUrl;
+            return uploadedImage;
             
         } catch (Exception e) {
             // S3 업로드 실패 시 DB 레코드 삭제
@@ -90,7 +91,7 @@ public class ImageUploadService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public UploadedImage saveImageRecord(String originalFilename, String storedFilename, 
-                                       long fileSize, String contentType, String folder, String imageUrl) {
+                                       long fileSize, String contentType, String folder, String imageUrl, Long uploaderId) {
         UploadedImage uploadedImage = UploadedImage.builder()
                 .originalFilename(originalFilename)
                 .storedFilename(storedFilename)
@@ -98,13 +99,13 @@ public class ImageUploadService {
                 .contentType(contentType)
                 .folderPath(folder)
                 .s3Url(imageUrl)
-                .uploaderId(null) // 추후 인증 연동 시 설정
+                .uploaderId(uploaderId) // 실제 업로더 ID 설정
                 .build();
         
         return uploadedImageRepository.save(uploadedImage);
     }
     
-    public List<String> uploadMultipleImages(List<MultipartFile> files, String folder) throws IOException {
+    public List<UploadedImage> uploadMultipleImages(List<MultipartFile> files, String folder, Long uploaderId) throws IOException {
         if (files.size() > 10) {
             throw new IllegalArgumentException("최대 10개의 이미지만 업로드 가능합니다.");
         }
@@ -112,7 +113,7 @@ public class ImageUploadService {
         return files.stream()
                 .map(file -> {
                     try {
-                        return uploadImage(file, folder);
+                        return uploadImage(file, folder, uploaderId);
                     } catch (IOException e) {
                         throw new RuntimeException("이미지 업로드에 실패했습니다: " + e.getMessage());
                     }
@@ -121,14 +122,78 @@ public class ImageUploadService {
     }
     
     public void deleteImage(String imageUrl) {
-        // S3에서 삭제
-        deleteFromS3(imageUrl);
+        // 1. 데이터베이스에서 먼저 삭제 (트랜잭션 보장)
+        UploadedImage image = uploadedImageRepository.findByS3Url(imageUrl)
+                .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다."));
         
-        // 데이터베이스에서 삭제
-        uploadedImageRepository.findByS3Url(imageUrl)
-                .ifPresent(uploadedImageRepository::delete);
+        uploadedImageRepository.delete(image);
+        log.info("DB에서 이미지 삭제 완료: {}", imageUrl);
         
-        log.info("이미지 삭제 완료: {}", imageUrl);
+        // 2. S3에서 삭제 (실패해도 DB는 이미 삭제됨)
+        try {
+            deleteFromS3(imageUrl);
+            log.info("S3에서 이미지 삭제 완료: {}", imageUrl);
+        } catch (Exception e) {
+            // S3 삭제 실패 시 로깅만 하고 사용자에게는 성공으로 응답
+            log.warn("S3 삭제 실패 (DB는 삭제됨): {}, 오류: {}", imageUrl, e.getMessage());
+            // TODO: 추후 비동기 재시도 큐 또는 배치 정리 작업 추가
+        }
+    }
+    
+    /**
+     * ID로 이미지 삭제 (권한 체크 포함)
+     * 
+     * @param imageId 삭제할 이미지 ID
+     * @param userId 요청 사용자 ID (권한 체크용)
+     */
+    public void deleteImageById(Long imageId, Long userId) {
+        // 1. 이미지 조회
+        UploadedImage image = uploadedImageRepository.findById(imageId)
+                .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다."));
+        
+        // 2. 권한 체크 (업로더 본인만 삭제 가능)
+        if (image.getUploaderId() != null && !image.getUploaderId().equals(userId)) {
+            throw new IllegalArgumentException("본인이 업로드한 이미지만 삭제할 수 있습니다.");
+        }
+        
+        // 3. 데이터베이스에서 먼저 삭제 (트랜잭션 보장)
+        uploadedImageRepository.delete(image);
+        log.info("DB에서 이미지 삭제 완료 - ID: {}, URL: {}", imageId, image.getS3Url());
+        
+        // 4. S3에서 삭제 (실패해도 DB는 이미 삭제됨)
+        try {
+            deleteFromS3(image.getS3Url());
+            log.info("S3에서 이미지 삭제 완료 - ID: {}, URL: {}", imageId, image.getS3Url());
+        } catch (Exception e) {
+            // S3 삭제 실패 시 로깅만 하고 사용자에게는 성공으로 응답
+            log.warn("S3 삭제 실패 (DB는 삭제됨) - ID: {}, URL: {}, 오류: {}", imageId, image.getS3Url(), e.getMessage());
+            // TODO: 추후 비동기 재시도 큐 또는 배치 정리 작업 추가
+        }
+    }
+    
+    /**
+     * ID로 이미지 삭제 (권한 체크 없음 - 관리자용)
+     * 
+     * @param imageId 삭제할 이미지 ID
+     */
+    public void deleteImageById(Long imageId) {
+        // 1. 이미지 조회
+        UploadedImage image = uploadedImageRepository.findById(imageId)
+                .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다."));
+        
+        // 2. 데이터베이스에서 먼저 삭제 (트랜잭션 보장)
+        uploadedImageRepository.delete(image);
+        log.info("DB에서 이미지 삭제 완료 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
+        
+        // 3. S3에서 삭제 (실패해도 DB는 이미 삭제됨)
+        try {
+            deleteFromS3(image.getS3Url());
+            log.info("S3에서 이미지 삭제 완료 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
+        } catch (Exception e) {
+            // S3 삭제 실패 시 로깅만 하고 사용자에게는 성공으로 응답
+            log.warn("S3 삭제 실패 (DB는 삭제됨, 관리자) - ID: {}, URL: {}, 오류: {}", imageId, image.getS3Url(), e.getMessage());
+            // TODO: 추후 비동기 재시도 큐 또는 배치 정리 작업 추가
+        }
     }
     
     /**
@@ -236,8 +301,14 @@ public class ImageUploadService {
             getS3Client().deleteObject(deleteObjectRequest);
             
             log.info("S3 삭제 완료: {}", imageUrl);
+            
+        } catch (NoSuchKeyException e) {
+            // 이미 삭제된 파일 - 멱등성 보장으로 정상 처리
+            log.info("파일이 이미 삭제됨 (멱등성 보장): {}", imageUrl);
+            
         } catch (Exception e) {
             log.error("S3 삭제 실패: url={}, error={}", imageUrl, e.getMessage(), e);
+            throw e; // 다른 예외는 상위로 전달하여 재시도 로직에서 처리
         }
     }
 }

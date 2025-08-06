@@ -37,16 +37,19 @@ public class BidService {
     private final PointLockRepository pointLockRepository;
     
     /**
-     * 입찰하기
+     * 입찰하기 (개정된 비즈니스 모델)
      * 
      * 비즈니스 로직:
      * 1. 경매 유효성 검증 (진행중, 종료시간 등)
      * 2. 입찰자 정보 확인
      * 3. 입찰 금액 유효성 검증 (최소 증가폭, 현재가 등)
-     * 4. 포인트 잔액 확인 및 예치(Lock)
-     * 5. 기존 입찰자의 포인트 잠금 해제
-     * 6. 새 입찰 등록
-     * 7. 경매 현재가 업데이트
+     * 4. 새 입찰 등록
+     * 5. 경매 현재가 업데이트
+     * 
+     * 개정된 정책:
+     * - 포인트 예치(Lock) 시스템 완전 제거 (법적 리스크 해결)
+     * - 무료 입찰로 참여 장벽 낮춤
+     * - 레벨 시스템으로 신뢰도 관리
      * 
      * @param userId 입찰자 사용자 ID
      * @param request 입찰 요청 정보
@@ -74,17 +77,6 @@ public class BidService {
         
         // 입찰 금액 유효성 검증
         validateBidAmount(auction, request.getBidAmount());
-        
-        // 포인트 잔액 확인 (민감한 정보 노출 방지)
-        if (bidder.getPointBalance() < request.getBidAmount().longValue()) {
-            throw new BusinessException(ErrorCode.INSUFFICIENT_POINTS);
-        }
-        
-        // 기존 최고가 입찰자의 포인트 잠금 해제
-        releaseExistingBidLocks(auction);
-        
-        // 새 입찰자의 포인트 예치(Lock)
-        lockBidAmount(bidder, auction, request.getBidAmount());
         
         // 입찰 생성
         Bid bid = Bid.builder()
@@ -172,37 +164,6 @@ public class BidService {
         }
     }
     
-    /**
-     * 기존 입찰자들의 포인트 잠금 해제
-     */
-    private void releaseExistingBidLocks(Auction auction) {
-        List<PointLock> activeLocks = pointLockRepository.findByAuctionIdAndStatus(
-                auction.getId(), PointLockStatus.LOCKED);
-        
-        for (PointLock lock : activeLocks) {
-            lock.setStatus(PointLockStatus.UNLOCKED);
-            lock.setUnlockedAt(LocalDateTime.now());
-        }
-        
-        pointLockRepository.saveAll(activeLocks);
-    }
-    
-    /**
-     * 새 입찰자의 포인트 예치(Lock)
-     */
-    private void lockBidAmount(User bidder, Auction auction, BigDecimal bidAmount) {
-        // 가장 최근 입찰을 기준으로 PointLock 생성
-        Bid latestBid = bidRepository.findTopByAuctionIdOrderByBidTimeDesc(auction.getId()).orElse(null);
-        
-        PointLock pointLock = PointLock.builder()
-                .user(bidder)
-                .auction(auction)
-                .bid(latestBid) // 아직 저장되지 않은 입찰이므로 이전 입찰 참조
-                .lockedAmount(bidAmount)
-                .status(PointLockStatus.LOCKED)
-                .lockedAt(LocalDateTime.now())
-                .build();
-        
-        pointLockRepository.save(pointLock);
-    }
+    // 포인트 예치(Lock) 시스템 제거 - 법적 리스크 해결
+    // 기존의 releaseExistingBidLocks()와 lockBidAmount() 메서드 제거
 }
