@@ -102,18 +102,11 @@ jobs:
           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws configure set region ap-northeast-2
           
-          # 이전 GitHub Actions IP 제거 (description으로 구분)
-          aws ec2 revoke-security-group-ingress \
-            --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
-            --protocol tcp --port 22 \
-            --source-group ${{ secrets.AWS_SECURITY_GROUP_ID }} 2>/dev/null || true
-            
-          # 현재 IP를 보안 그룹에 추가
+          # 현재 IP를 보안 그룹에 추가 (기존에 있어도 무시)
           aws ec2 authorize-security-group-ingress \
             --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
             --protocol tcp --port 22 \
-            --cidr ${RUNNER_IP}/32 \
-            --group-name "GitHub Actions SSH Access"
+            --cidr ${RUNNER_IP}/32 2>/dev/null || echo "IP already exists or error occurred"
             
       - name: "EC2 배포 : SSH로 EC2 서버에 접속하여 애플리케이션 재시작"
         uses: appleboy/ssh-action@v0.1.5
