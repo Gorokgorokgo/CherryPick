@@ -16,6 +16,7 @@ import com.cherrypick.app.domain.point.enums.PointLockStatus;
 import com.cherrypick.app.domain.point.repository.PointLockRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +36,7 @@ public class BidService {
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
     private final PointLockRepository pointLockRepository;
+    private final WebSocketMessagingService webSocketMessagingService;
     
     /**
      * 입찰하기 (개정된 비즈니스 모델)
@@ -96,6 +98,14 @@ public class BidService {
         auction.increaseBidCount();
         auctionRepository.save(auction);
         
+        // 실시간 입찰 알림 전송 (WebSocket)
+        webSocketMessagingService.notifyNewBid(
+            auction.getId(),
+            request.getBidAmount(),
+            auction.getBidCount(),
+            bidder.getNickname() != null ? bidder.getNickname() : "익명" + bidder.getId()
+        );
+        
         return BidResponse.from(savedBid, true);
     }
     
@@ -153,14 +163,30 @@ public class BidService {
     }
     
     /**
-     * 입찰 금액 유효성 검증 (민감한 가격 정보 노출 방지)
+     * 입찰 금액 유효성 검증 (5-10% 비율 기반)
      */
     private void validateBidAmount(Auction auction, BigDecimal bidAmount) {
         BigDecimal currentPrice = auction.getCurrentPrice();
-        BigDecimal minimumBid = currentPrice.add(BigDecimal.valueOf(1000)); // 최소 1000원 증가
+        
+        // 1. 5% 증가 체크 (최소 입찰 증가율)
+        BigDecimal minimumBid = currentPrice.multiply(BigDecimal.valueOf(1.05));
+        
+        // 2. 10% 이상 증가는 제한 (너무 큰 증가폭 방지)
+        BigDecimal maximumBid = currentPrice.multiply(BigDecimal.valueOf(1.10));
         
         if (bidAmount.compareTo(minimumBid) < 0) {
-            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT);
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
+                "입찰가는 현재가의 5% 이상 높아야 합니다.");
+        }
+        
+        if (bidAmount.compareTo(maximumBid) > 0) {
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT,
+                "한 번에 10% 이상 증가한 입찰은 제한됩니다.");
+        }
+        
+        // 3. 100원 단위 체크
+        if (bidAmount.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, "입찰가는 100원 단위로 입력해주세요.");
         }
     }
     

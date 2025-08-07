@@ -29,6 +29,32 @@ public class ConnectionServiceImpl {
     private final LevelPermissionService levelPermissionService;
     
     /**
+     * 연결 서비스 생성 (스케줄러용 - 간소화된 파라미터)
+     * 
+     * @param auctionId 경매 ID
+     * @param buyerId 구매자 ID (낙찰자)
+     * @return 연결 서비스 정보
+     */
+    @Transactional
+    public ConnectionResponse createConnection(Long auctionId, Long buyerId) {
+        // 경매 정보 확인
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
+        
+        // 구매자 정보 확인
+        User buyer = userRepository.findById(buyerId)
+                .orElseThrow(() -> new IllegalArgumentException("구매자를 찾을 수 없습니다."));
+        
+        // 기존 메서드 호출 (판매자 정보와 최종 낙찰가는 경매에서 추출)
+        return createConnection(
+            auctionId, 
+            auction.getSeller().getId(), 
+            buyerId, 
+            auction.getCurrentPrice()
+        );
+    }
+    
+    /**
      * 연결 서비스 생성 (경매 낙찰 시 자동 생성)
      * 
      * 비즈니스 로직:
