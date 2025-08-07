@@ -29,14 +29,14 @@ public class CreateAuctionRequest {
     @NotNull(message = "카테고리는 필수입니다.")
     private Category category;
     
-    @Schema(description = "시작가 (1,000원 단위)", example = "100000", required = true)
+    @Schema(description = "시작가 (100원 단위)", example = "100000", required = true)
     @NotNull(message = "시작가는 필수입니다.")
-    @DecimalMin(value = "1000", message = "시작가는 최소 1,000원입니다.")
+    @DecimalMin(value = "100", message = "시작가는 최소 100원입니다.")
     private BigDecimal startPrice;
     
-    @Schema(description = "희망가 (1,000원 단위)", example = "800000", required = true)
+    @Schema(description = "희망가 (100원 단위)", example = "800000", required = true)
     @NotNull(message = "희망가는 필수입니다.")
-    @DecimalMin(value = "1000", message = "희망가는 최소 1,000원입니다.")
+    @DecimalMin(value = "100", message = "희망가는 최소 100원입니다.")
     private BigDecimal hopePrice;
     
     @Schema(description = "최저 내정가 (Reserve Price) - 선택사항", example = "500000")
@@ -78,13 +78,18 @@ public class CreateAuctionRequest {
             }
         }
         
-        // 1000원 단위 체크
-        if (startPrice.remainder(BigDecimal.valueOf(1000)).compareTo(BigDecimal.ZERO) != 0) {
-            throw new IllegalArgumentException("시작가는 1,000원 단위로 설정해주세요.");
+        // 100원 단위 체크
+        if (startPrice.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
+            throw new IllegalArgumentException("시작가는 100원 단위로 설정해주세요.");
         }
         
-        if (hopePrice.remainder(BigDecimal.valueOf(1000)).compareTo(BigDecimal.ZERO) != 0) {
-            throw new IllegalArgumentException("희망가는 1,000원 단위로 설정해주세요.");
+        if (hopePrice.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
+            throw new IllegalArgumentException("희망가는 100원 단위로 설정해주세요.");
+        }
+        
+        // Reserve Price도 100원 단위 체크
+        if (reservePrice != null && reservePrice.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
+            throw new IllegalArgumentException("최저 내정가는 100원 단위로 설정해주세요.");
         }
         
         // 지역 범위에 따른 지역 정보 검증
