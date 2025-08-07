@@ -57,6 +57,9 @@ class BidServiceTest {
     @Mock
     private PointLockRepository pointLockRepository;
     
+    @Mock
+    private com.cherrypick.app.domain.common.service.WebSocketMessagingService webSocketMessagingService;
+    
     @InjectMocks
     private BidService bidService;
     
@@ -74,7 +77,7 @@ class BidServiceTest {
         activeAuction = createAuction(1L, seller, BigDecimal.valueOf(10000), 
                 AuctionStatus.ACTIVE, LocalDateTime.now().plusHours(2));
         
-        validBidRequest = createBidRequest(1L, BigDecimal.valueOf(15000), false, null);
+        validBidRequest = createBidRequest(1L, BigDecimal.valueOf(10500), false, null);
     }
     
     @Nested
@@ -88,7 +91,7 @@ class BidServiceTest {
             given(auctionRepository.findById(1L)).willReturn(Optional.of(activeAuction));
             given(userRepository.findById(2L)).willReturn(Optional.of(bidder));
             
-            Bid savedBid = createBid(1L, activeAuction, bidder, BigDecimal.valueOf(15000));
+            Bid savedBid = createBid(1L, activeAuction, bidder, BigDecimal.valueOf(10500));
             given(bidRepository.save(any(Bid.class))).willReturn(savedBid);
             given(auctionRepository.save(any(Auction.class))).willReturn(activeAuction);
             
@@ -97,7 +100,7 @@ class BidServiceTest {
             
             // then
             assertThat(result).isNotNull();
-            assertThat(result.getBidAmount()).isEqualTo(BigDecimal.valueOf(15000));
+            assertThat(result.getBidAmount()).isEqualTo(BigDecimal.valueOf(10500));
             assertThat(result.getBidderId()).isEqualTo(2L);
             assertThat(result.getIsHighestBid()).isTrue();
             
@@ -229,7 +232,7 @@ class BidServiceTest {
         @DisplayName("성공: 최고가 입찰 조회")
         void getHighestBid_Success() {
             // given
-            Bid highestBid = createBid(1L, activeAuction, bidder, BigDecimal.valueOf(15000));
+            Bid highestBid = createBid(1L, activeAuction, bidder, BigDecimal.valueOf(10500));
             given(bidRepository.findTopByAuctionIdOrderByBidAmountDesc(1L))
                     .willReturn(Optional.of(highestBid));
             
@@ -238,7 +241,7 @@ class BidServiceTest {
             
             // then
             assertThat(result).isNotNull();
-            assertThat(result.getBidAmount()).isEqualTo(BigDecimal.valueOf(15000));
+            assertThat(result.getBidAmount()).isEqualTo(BigDecimal.valueOf(10500));
             assertThat(result.getIsHighestBid()).isTrue();
         }
         
