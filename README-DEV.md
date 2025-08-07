@@ -85,8 +85,10 @@ docker-compose -f docker-compose.dev.yml down
 docker-compose -f docker-compose.dev.yml down -v
 ```
 
-## 📝 팁
+## 📝 수동 배포
 
-- **데이터 초기화**: 컨테이너 재시작시 `sql/init/` 폴더의 스크립트 자동 실행
-- **포트 충돌**: 다른 PostgreSQL이 실행 중이면 포트 변경
-- **IDE 설정**: IntelliJ Database Tool로 PostgreSQL 연결 가능
+cd /home/ec2-user/CherryPick
+git pull origin main
+pkill -f bootRun
+source .env
+nohup ./gradlew bootRun > app.log 2>&1 &

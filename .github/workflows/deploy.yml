@@ -1,220 +1,220 @@
-name: CherryPick CI/CD Pipeline
+# name: CherryPick CI/CD Pipeline
 
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
+# on:
+#   push:
+#     branches: [main, develop]
+#   pull_request:
+#     branches: [main]
 
-# 환경변수 없음 (ECR 사용하지 않음)
+# # 환경변수 없음 (ECR 사용하지 않음)
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: read
+#       checks: write
+#       pull-requests: write
 
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: cherrypick_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password123
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+#     services:
+#       postgres:
+#         image: postgres:15
+#         env:
+#           POSTGRES_DB: cherrypick_test
+#           POSTGRES_USER: postgres
+#           POSTGRES_PASSWORD: password123
+#         options: >-
+#           --health-cmd pg_isready
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#         ports:
+#           - 5432:5432
 
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
+#       redis:
+#         image: redis:7-alpine
+#         options: >-
+#           --health-cmd "redis-cli ping"
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#         ports:
+#           - 6379:6379
 
-    steps:
-      - name: "코드 체크아웃 : GitHub 저장소에서 소스코드 다운로드"
-        uses: actions/checkout@v4
+#     steps:
+#       - name: "코드 체크아웃 : GitHub 저장소에서 소스코드 다운로드"
+#         uses: actions/checkout@v4
 
-      - name: "JDK 17 설정 : Java 17 개발환경 설치 및 설정"
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "corretto"
+#       - name: "JDK 17 설정 : Java 17 개발환경 설치 및 설정"
+#         uses: actions/setup-java@v4
+#         with:
+#           java-version: "17"
+#           distribution: "corretto"
 
-      - name: "Gradle 패키지 캐시 : 의존성 라이브러리 캐싱으로 빌드 속도 향상"
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+#       - name: "Gradle 패키지 캐시 : 의존성 라이브러리 캐싱으로 빌드 속도 향상"
+#         uses: actions/cache@v3
+#         with:
+#           path: |
+#             ~/.gradle/caches
+#             ~/.gradle/wrapper
+#           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+#           restore-keys: |
+#             ${{ runner.os }}-gradle-
 
-      - name: "gradlew 실행 권한 부여 : Gradle Wrapper 스크립트 실행 권한 설정"
-        run: chmod +x gradlew
+#       - name: "gradlew 실행 권한 부여 : Gradle Wrapper 스크립트 실행 권한 설정"
+#         run: chmod +x gradlew
 
-      - name: "테스트 실행 : 단위 테스트 및 통합 테스트 실행"
-        run: ./gradlew test
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: cherrypick_test
-          DB_USERNAME: postgres
-          DB_PASSWORD: password123
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          JWT_SECRET: test-jwt-secret-key-must-be-at-least-64-characters-long-for-testing
+#       - name: "테스트 실행 : 단위 테스트 및 통합 테스트 실행"
+#         run: ./gradlew test
+#         env:
+#           DB_HOST: localhost
+#           DB_PORT: 5432
+#           DB_NAME: cherrypick_test
+#           DB_USERNAME: postgres
+#           DB_PASSWORD: password123
+#           REDIS_HOST: localhost
+#           REDIS_PORT: 6379
+#           JWT_SECRET: test-jwt-secret-key-must-be-at-least-64-characters-long-for-testing
 
-      - name: "테스트 리포트 생성 : 테스트 결과를 GitHub PR에 표시"
-        uses: dorny/test-reporter@v1
-        if: success() || failure()
-        with:
-          name: Gradle 테스트
-          path: build/test-results/test/*.xml
-          reporter: java-junit
-          token: ${{ secrets.GITHUB_TOKEN }}
+#       - name: "테스트 리포트 생성 : 테스트 결과를 GitHub PR에 표시"
+#         uses: dorny/test-reporter@v1
+#         if: success() || failure()
+#         with:
+#           name: Gradle 테스트
+#           path: build/test-results/test/*.xml
+#           reporter: java-junit
+#           token: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+#   deploy:
+#     needs: test
+#     runs-on: ubuntu-latest
+#     if: github.ref == 'refs/heads/main'
 
-    steps:
-      - name: "현재 IP 확인 및 AWS 보안 그룹 업데이트"
-        run: |
-          # 현재 GitHub Actions runner IP 확인
-          export RUNNER_IP=$(curl -s https://api.ipify.org)
-          echo "GitHub Actions Runner IP: $RUNNER_IP"
+#     steps:
+#       - name: "현재 IP 확인 및 AWS 보안 그룹 업데이트"
+#         run: |
+#           # 현재 GitHub Actions runner IP 확인
+#           export RUNNER_IP=$(curl -s https://api.ipify.org)
+#           echo "GitHub Actions Runner IP: $RUNNER_IP"
           
-          # AWS CLI 설정 및 보안 그룹 업데이트
-          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws configure set region ap-northeast-2
+#           # AWS CLI 설정 및 보안 그룹 업데이트
+#           aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws configure set region ap-northeast-2
           
-          # 현재 IP를 보안 그룹에 추가 (기존에 있어도 무시)
-          aws ec2 authorize-security-group-ingress \
-            --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
-            --protocol tcp --port 22 \
-            --cidr ${RUNNER_IP}/32 2>/dev/null || echo "IP already exists or error occurred"
+#           # 현재 IP를 보안 그룹에 추가 (기존에 있어도 무시)
+#           aws ec2 authorize-security-group-ingress \
+#             --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
+#             --protocol tcp --port 22 \
+#             --cidr ${RUNNER_IP}/32 2>/dev/null || echo "IP already exists or error occurred"
             
-      - name: "EC2 배포 : SSH로 EC2 서버에 접속하여 애플리케이션 재시작"
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # 프로젝트 디렉토리로 이동
-            cd /home/ec2-user/CherryPick
+#       - name: "EC2 배포 : SSH로 EC2 서버에 접속하여 애플리케이션 재시작"
+#         uses: appleboy/ssh-action@v0.1.5
+#         with:
+#           host: ${{ secrets.EC2_HOST }}
+#           username: ${{ secrets.EC2_USER }}
+#           key: ${{ secrets.EC2_SSH_KEY }}
+#           script: |
+#             # 프로젝트 디렉토리로 이동
+#             cd /home/ec2-user/CherryPick
             
-            # 최신 코드 받기
-            git pull origin main
+#             # 최신 코드 받기
+#             git pull origin main
             
-            # 기존 Java 프로세스 안전하게 종료
-            echo "=== 기존 프로세스 종료 ==="
-            JAVA_PID=$(ps aux | grep "bootRun" | grep -v grep | awk '{print $2}')
-            if [ ! -z "$JAVA_PID" ]; then
-                echo "Java 프로세스 찾음: $JAVA_PID"
-                kill -TERM $JAVA_PID
-                echo "30초 대기 중..."
-                sleep 30
+#             # 기존 Java 프로세스 안전하게 종료
+#             echo "=== 기존 프로세스 종료 ==="
+#             JAVA_PID=$(ps aux | grep "bootRun" | grep -v grep | awk '{print $2}')
+#             if [ ! -z "$JAVA_PID" ]; then
+#                 echo "Java 프로세스 찾음: $JAVA_PID"
+#                 kill -TERM $JAVA_PID
+#                 echo "30초 대기 중..."
+#                 sleep 30
                 
-                # 여전히 살아있으면 강제 종료
-                if ps -p $JAVA_PID > /dev/null 2>&1; then
-                    echo "강제 종료 실행"
-                    kill -9 $JAVA_PID
-                fi
-            else
-                echo "실행 중인 Java 프로세스 없음"
-            fi
+#                 # 여전히 살아있으면 강제 종료
+#                 if ps -p $JAVA_PID > /dev/null 2>&1; then
+#                     echo "강제 종료 실행"
+#                     kill -9 $JAVA_PID
+#                 fi
+#             else
+#                 echo "실행 중인 Java 프로세스 없음"
+#             fi
             
-            # 이전 로그 백업
-            if [ -f app.log ]; then
-                mv app.log app.log.bak
-            fi
+#             # 이전 로그 백업
+#             if [ -f app.log ]; then
+#                 mv app.log app.log.bak
+#             fi
             
-            # 환경변수 로드
-            source .env
+#             # 환경변수 로드
+#             source .env
             
-            # 새 애플리케이션 시작
-            echo "=== 새 애플리케이션 시작 ==="
-            nohup ./gradlew bootRun > app.log 2>&1 &
-            NEW_PID=$!
-            echo "새 프로세스 PID: $NEW_PID"
+#             # 새 애플리케이션 시작
+#             echo "=== 새 애플리케이션 시작 ==="
+#             nohup ./gradlew bootRun > app.log 2>&1 &
+#             NEW_PID=$!
+#             echo "새 프로세스 PID: $NEW_PID"
             
-            # 시작 확인 (최대 60초, 포트 열리면 즉시 완료)
-            echo "=== 애플리케이션 시작 확인 (최대 60초) ==="
-            for i in {1..12}; do
-                sleep 5
-                echo "확인 중... ${i}/12 ($(($i * 5))초)"
+#             # 시작 확인 (최대 60초, 포트 열리면 즉시 완료)
+#             echo "=== 애플리케이션 시작 확인 (최대 60초) ==="
+#             for i in {1..12}; do
+#                 sleep 5
+#                 echo "확인 중... ${i}/12 ($(($i * 5))초)"
                 
-                # 포트 8080 확인
-                if netstat -tlnp | grep :8080 > /dev/null; then
-                    echo " 애플리케이션 시작 완료! ($(($i * 5))초)"
-                    break
-                fi
+#                 # 포트 8080 확인
+#                 if netstat -tlnp | grep :8080 > /dev/null; then
+#                     echo " 애플리케이션 시작 완료! ($(($i * 5))초)"
+#                     break
+#                 fi
                 
-                # 마지막 시도
-                if [ $i -eq 12 ]; then
-                    echo " 60초 대기 완료 - 포트 상태 확인 필요"
-                fi
-            done
+#                 # 마지막 시도
+#                 if [ $i -eq 12 ]; then
+#                     echo " 60초 대기 완료 - 포트 상태 확인 필요"
+#                 fi
+#             done
             
-            # 최종 상태 확인
-            echo "=== 프로세스 상태 ==="
-            ps aux | grep java | grep -v grep || echo "Java 프로세스 없음"
+#             # 최종 상태 확인
+#             echo "=== 프로세스 상태 ==="
+#             ps aux | grep java | grep -v grep || echo "Java 프로세스 없음"
             
-            echo "=== 포트 상태 ==="
-            netstat -tlnp | grep :8080 || echo "8080 포트 사용 안함"
+#             echo "=== 포트 상태 ==="
+#             netstat -tlnp | grep :8080 || echo "8080 포트 사용 안함"
             
-            echo "=== 최근 로그 (50줄) ==="
-            tail -50 app.log
+#             echo "=== 최근 로그 (50줄) ==="
+#             tail -50 app.log
             
-            echo "=== 오류 검색 ==="
-            grep -i "error\|exception\|failed" app.log | tail -15 || echo "특별한 오류 없음"
+#             echo "=== 오류 검색 ==="
+#             grep -i "error\|exception\|failed" app.log | tail -15 || echo "특별한 오류 없음"
 
-      - name: "헬스 체크 : 배포된 애플리케이션 정상 동작 확인"
-        run: |
-          sleep 20
-          curl -f http://${{ secrets.EC2_HOST }}:8080/actuator/health || echo "헬스체크 실패 - 수동 확인 필요"
+#       - name: "헬스 체크 : 배포된 애플리케이션 정상 동작 확인"
+#         run: |
+#           sleep 20
+#           curl -f http://${{ secrets.EC2_HOST }}:8080/actuator/health || echo "헬스체크 실패 - 수동 확인 필요"
           
-      - name: "보안 그룹에서 GitHub Actions IP 제거"
-        if: always()  # 성공/실패 여부에 관계없이 실행
-        run: |
-          export RUNNER_IP=$(curl -s https://api.ipify.org)
-          echo "Removing GitHub Actions IP: $RUNNER_IP from security group"
+#       - name: "보안 그룹에서 GitHub Actions IP 제거"
+#         if: always()  # 성공/실패 여부에 관계없이 실행
+#         run: |
+#           export RUNNER_IP=$(curl -s https://api.ipify.org)
+#           echo "Removing GitHub Actions IP: $RUNNER_IP from security group"
           
-          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws configure set region ap-northeast-2
+#           aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws configure set region ap-northeast-2
           
-          # GitHub Actions IP를 보안 그룹에서 제거
-          aws ec2 revoke-security-group-ingress \
-            --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
-            --protocol tcp --port 22 \
-            --cidr ${RUNNER_IP}/32 2>/dev/null || echo "IP 제거 실패 또는 이미 제거됨"
+#           # GitHub Actions IP를 보안 그룹에서 제거
+#           aws ec2 revoke-security-group-ingress \
+#             --group-id ${{ secrets.AWS_SECURITY_GROUP_ID }} \
+#             --protocol tcp --port 22 \
+#             --cidr ${RUNNER_IP}/32 2>/dev/null || echo "IP 제거 실패 또는 이미 제거됨"
 
-      - name: "슬랙 알림 : 배포 결과를 슬랙 채널로 알림"
-        if: always()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          channel: "#deployments"
-          text: |
-            🚀 CherryPick 배포 ${{ job.status }}
-            🌿 브랜치: ${{ github.ref }}
-            📝 커밋: ${{ github.sha }}
-            👤 작성자: ${{ github.actor }}
+#       - name: "슬랙 알림 : 배포 결과를 슬랙 채널로 알림"
+#         if: always()
+#         env:
+#           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+#         uses: 8398a7/action-slack@v3
+#         with:
+#           status: ${{ job.status }}
+#           channel: "#deployments"
+#           text: |
+#             🚀 CherryPick 배포 ${{ job.status }}
+#             🌿 브랜치: ${{ github.ref }}
+#             📝 커밋: ${{ github.sha }}
+#             👤 작성자: ${{ github.actor }}
