@@ -176,12 +176,12 @@ public class BidService {
         
         if (bidAmount.compareTo(minimumBid) < 0) {
             throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
-                "입찰가는 현재가의 5% 이상 높아야 합니다. 최소 " + minimumBid.intValue() + "원 이상 입찰해주세요.");
+                "입찰가는 현재가의 5% 이상 높아야 합니다.");
         }
         
         if (bidAmount.compareTo(maximumBid) > 0) {
             throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT,
-                "한 번에 10% 이상 증가한 입찰은 제한됩니다. 최대 " + maximumBid.intValue() + "원까지 입찰 가능합니다.");
+                "한 번에 10% 이상 증가한 입찰은 제한됩니다.");
         }
         
         // 3. 100원 단위 체크
