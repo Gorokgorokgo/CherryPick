@@ -50,6 +50,7 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
+          check-latest: true
 
       - name: "Gradle 패키지 캐시 : 의존성 라이브러리 캐싱으로 빌드 속도 향상"
         uses: actions/cache@v3
@@ -66,6 +67,14 @@ jobs:
 
       - name: "Gradle Wrapper 검증 : 무결성 확인"
         uses: gradle/wrapper-validation-action@v1
+
+      - name: "Java 환경 확인"
+        run: |
+          echo "JAVA_HOME: $JAVA_HOME"
+          echo "Java version:"
+          java -version
+          echo "Java path:"
+          which java
 
       - name: "테스트 실행 : 단위 테스트 및 통합 테스트 실행"
         run: ./gradlew test --no-daemon --stacktrace
