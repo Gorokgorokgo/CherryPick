@@ -29,16 +29,30 @@ import java.util.UUID;
 public class ImageUploadService {
     
     private final UploadedImageRepository uploadedImageRepository;
-    @Value("${aws.s3.bucket}")
+    // AWS 설정 (기존 설정 보관)
+    // @Value("${aws.s3.bucket}")
+    // private String bucketName;
+    // @Value("${aws.s3.region}")
+    // private String region;
+    // @Value("${aws.credentials.access-key}")
+    // private String accessKey;
+    // @Value("${aws.credentials.secret-key}")
+    // private String secretKey;
+    
+    // NCP Object Storage 설정
+    @Value("${ncp.object-storage.bucket}")
     private String bucketName;
     
-    @Value("${aws.s3.region}")
+    @Value("${ncp.object-storage.region}")
     private String region;
     
-    @Value("${aws.credentials.access-key}")
+    @Value("${ncp.object-storage.endpoint}")
+    private String endpoint;
+    
+    @Value("${ncp.credentials.access-key}")
     private String accessKey;
     
-    @Value("${aws.credentials.secret-key}")
+    @Value("${ncp.credentials.secret-key}")
     private String secretKey;
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "webp");
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -47,10 +61,11 @@ public class ImageUploadService {
     
     private S3Client getS3Client() {
         if (s3Client == null) {
-            AwsBasicCredentials awsCredentials = AwsBasicCredentials.create(accessKey, secretKey);
+            AwsBasicCredentials credentials = AwsBasicCredentials.create(accessKey, secretKey);
             s3Client = S3Client.builder()
                     .region(Region.of(region))
-                    .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
+                    .endpointOverride(java.net.URI.create(endpoint)) // NCP Object Storage 엔드포인트
+                    .credentialsProvider(StaticCredentialsProvider.create(credentials))
                     .build();
         }
         return s3Client;
@@ -62,7 +77,8 @@ public class ImageUploadService {
         String originalFilename = file.getOriginalFilename();
         String storedFilename = generateFileName(originalFilename);
         String fullPath = folder + "/" + storedFilename;
-        String imageUrl = String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, fullPath);
+        // NCP Object Storage URL 형식
+        String imageUrl = String.format("https://%s.kr.object.ncloudstorage.com/%s", bucketName, fullPath);
         
         // 1단계: 데이터베이스에 이미지 정보 먼저 저장
         UploadedImage uploadedImage = saveImageRecord(originalFilename, storedFilename, 
@@ -287,9 +303,8 @@ public class ImageUploadService {
     
     private void deleteFromS3(String imageUrl) {
         try {
-            // URL에서 S3 키 추출
+            // URL에서 Object Storage 키 추출 (NCP 형식)
             String key = imageUrl.substring(imageUrl.indexOf(bucketName) + bucketName.length() + 1);
-            key = key.substring(key.indexOf('/') + 1);
             
             log.info("S3 삭제 시작: bucket={}, key={}", bucketName, key);
             
