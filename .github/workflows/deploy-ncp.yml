@@ -155,11 +155,11 @@ jobs:
           # NCP CLI Configuration 파일 직접 생성 (Interactive 모드 회피)
           mkdir -p ~/.ncloud
           cat > ~/.ncloud/configure << EOF
-[DEFAULT]
-ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
-ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-ncloud_api_url = https://ncloud.apigw.ntruss.com
-EOF
+          [DEFAULT]
+          ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
+          ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+          ncloud_api_url = https://ncloud.apigw.ntruss.com
+          EOF
           
           echo "✓ NCP CLI Configuration 파일 생성 완료"
           echo "Configuration file contents:"
@@ -301,11 +301,11 @@ EOF
           # NCP CLI Configuration 파일 직접 생성 (Interactive 모드 회피)
           mkdir -p ~/.ncloud
           cat > ~/.ncloud/configure << EOF
-[DEFAULT]
-ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
-ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-ncloud_api_url = https://ncloud.apigw.ntruss.com
-EOF
+          [DEFAULT]
+          ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
+          ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+          ncloud_api_url = https://ncloud.apigw.ntruss.com
+          EOF
           
           echo "✓ NCP CLI Configuration 파일 생성 완료"
           echo "Configuration file contents:"
