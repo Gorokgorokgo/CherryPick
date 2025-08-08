@@ -12,11 +12,6 @@ env:
   APP_NAME: cherrypick
   JAR_FILE: cherrypick-0.0.1-SNAPSHOT.jar
   DOCKER_IMAGE: cherrypick-app
-  
-  # NCP 서버 설정 
-  NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-  NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-  NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT || '22' }}
 
 jobs:
   test:
@@ -209,11 +204,11 @@ jobs:
         mkdir -p ~/.ssh
         echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_HOST }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H -p ${{ secrets.NCP_SERVER_PORT || '22' }} ${{ secrets.NCP_SERVER_HOST }} >> ~/.ssh/known_hosts
 
     - name: Create production environment file on server
       run: |
-        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        ssh -p ${{ secrets.NCP_SERVER_PORT || '22' }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} << 'EOF'
         sudo mkdir -p /opt/cherrypick
         sudo tee /opt/cherrypick/.env.prod > /dev/null << 'ENVEOF'
         # NCP 운영 환경 설정
@@ -249,11 +244,11 @@ jobs:
 
     - name: Copy deployment files to server
       run: |
-        scp -P ${{ env.NCP_SERVER_PORT }} -r deploy/* ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }}:/tmp/cherrypick-deploy/
+        scp -P ${{ secrets.NCP_SERVER_PORT || '22' }} -r deploy/* ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }}:/tmp/cherrypick-deploy/
 
     - name: Create systemd service file
       run: |
-        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        ssh -p ${{ secrets.NCP_SERVER_PORT || '22' }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} << 'EOF'
         sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
         [Unit]
         Description=CherryPick Auction Service
@@ -295,7 +290,7 @@ jobs:
 
     - name: Deploy application
       run: |
-        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        ssh -p ${{ secrets.NCP_SERVER_PORT || '22' }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} << 'EOF'
         cd /tmp/cherrypick-deploy
         chmod +x deploy.sh
         ./deploy.sh
@@ -305,9 +300,9 @@ jobs:
       run: |
         echo "🔍 Verifying deployment..."
         for i in {1..12}; do
-          if curl -f -s http://${{ env.NCP_SERVER_HOST }}:8080/actuator/health | grep -q "UP"; then
+          if curl -f -s http://${{ secrets.NCP_SERVER_HOST }}:8080/actuator/health | grep -q "UP"; then
             echo "✅ Deployment verification successful!"
-            curl -s http://${{ env.NCP_SERVER_HOST }}:8080/actuator/info || echo "Info endpoint not available"
+            curl -s http://${{ secrets.NCP_SERVER_HOST }}:8080/actuator/info || echo "Info endpoint not available"
             exit 0
           fi
           echo "Waiting for service... ($i/12)"
@@ -319,7 +314,7 @@ jobs:
     - name: Cleanup deployment files
       if: always()
       run: |
-        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        ssh -p ${{ secrets.NCP_SERVER_PORT || '22' }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} << 'EOF'
         rm -rf /tmp/cherrypick-deploy
         EOF
 
@@ -328,8 +323,8 @@ jobs:
       run: |
         if [ "${{ job.status }}" == "success" ]; then
           echo "🎉 Successfully deployed CherryPick to NCP!"
-          echo "📱 Application URL: http://${{ env.NCP_SERVER_HOST }}:8080"
-          echo "📊 Health Check: http://${{ env.NCP_SERVER_HOST }}:8080/actuator/health"
+          echo "📱 Application URL: http://${{ secrets.NCP_SERVER_HOST }}:8080"
+          echo "📊 Health Check: http://${{ secrets.NCP_SERVER_HOST }}:8080/actuator/health"
         else
           echo "❌ Deployment failed. Please check the logs."
         fi
@@ -347,11 +342,11 @@ jobs:
         mkdir -p ~/.ssh
         echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_HOST }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H -p ${{ secrets.NCP_SERVER_PORT || '22' }} ${{ secrets.NCP_SERVER_HOST }} >> ~/.ssh/known_hosts
 
     - name: Rollback to previous version
       run: |
-        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        ssh -p ${{ secrets.NCP_SERVER_PORT || '22' }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} << 'EOF'
         cd /opt/cherrypick
         
         # Find latest backup
@@ -380,7 +375,7 @@ jobs:
     - name: Verify rollback
       run: |
         sleep 30
-        if curl -f http://${{ env.NCP_SERVER_HOST }}:8080/actuator/health; then
+        if curl -f http://${{ secrets.NCP_SERVER_HOST }}:8080/actuator/health; then
           echo "✅ Rollback verification successful!"
         else
           echo "❌ Rollback verification failed!"
