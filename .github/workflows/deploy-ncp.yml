@@ -120,9 +120,22 @@ jobs:
           # NCP CLI 설치 (최신 버전)
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -q ncloud-cli.zip
-          sudo chmod +x ncloud
-          sudo mv ncloud /usr/local/bin/
-          rm -f ncloud-cli.zip
+          
+          # cli_linux 디렉토리에서 ncloud 실행파일 찾기
+          find . -name "ncloud" -type f
+          NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
+          
+          if [ -n "$NCLOUD_PATH" ]; then
+            sudo chmod +x "$NCLOUD_PATH"
+            sudo cp "$NCLOUD_PATH" /usr/local/bin/ncloud
+            echo "NCP CLI installed successfully from: $NCLOUD_PATH"
+          else
+            echo "ncloud executable not found in extracted files"
+            exit 1
+          fi
+          
+          # 임시 파일 정리
+          rm -rf CLI_1.1.25_20250717 ncloud-cli.zip
          
           # NCP CLI 설정 및 ACG(Access Control Group) 업데이트
           ncloud configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
@@ -224,9 +237,21 @@ jobs:
           # NCP CLI 설치 (제거 작업용)
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -q ncloud-cli.zip
-          sudo chmod +x ncloud
-          sudo mv ncloud /usr/local/bin/
-          rm -f ncloud-cli.zip
+          
+          # cli_linux 디렉토리에서 ncloud 실행파일 찾기
+          NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
+          
+          if [ -n "$NCLOUD_PATH" ]; then
+            sudo chmod +x "$NCLOUD_PATH"
+            sudo cp "$NCLOUD_PATH" /usr/local/bin/ncloud
+            echo "NCP CLI installed successfully from: $NCLOUD_PATH"
+          else
+            echo "ncloud executable not found, skipping ACG cleanup"
+            exit 0
+          fi
+          
+          # 임시 파일 정리
+          rm -rf CLI_1.1.25_20250717 ncloud-cli.zip
          
           # NCP CLI 설정
           ncloud configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
