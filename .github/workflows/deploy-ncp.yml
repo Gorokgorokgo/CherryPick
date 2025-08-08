@@ -169,9 +169,10 @@ jobs:
           echo "=== ACG 인바운드 규칙 추가 시작 ==="
           for attempt in 1 2 3; do
             echo "ACG 규칙 추가 시도 $attempt/3..."
-            if ./ncloud server addAccessControlGroupInboundRule \
-              --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
-              --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22'; then
+            if ./ncloud vserver addAccessControlGroupInboundRule \
+              --vpcNo ${{ secrets.NCP_VPC_NO }} \
+              --accessControlGroupNo ${{ secrets.NCP_ACG_NO }} \
+              --accessControlGroupRuleList 'protocolTypeCode="TCP", ipBlock="'${RUNNER_IP}'/32", portRange="22"'; then
               echo "✓ ACG 규칙 추가 성공"
               break
             else
@@ -315,9 +316,10 @@ jobs:
           echo "=== ACG에서 IP 제거 시작 ==="
           for attempt in 1 2 3; do
             echo "ACG 규칙 제거 시도 $attempt/3..."
-            if ./ncloud server deleteAccessControlGroupInboundRule \
-              --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
-              --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22' 2>/dev/null; then
+            if ./ncloud vserver deleteAccessControlGroupInboundRule \
+              --vpcNo ${{ secrets.NCP_VPC_NO }} \
+              --accessControlGroupNo ${{ secrets.NCP_ACG_NO }} \
+              --accessControlGroupRuleList 'protocolTypeCode="TCP", ipBlock="'${RUNNER_IP}'/32", portRange="22"' 2>/dev/null; then
               echo "✓ ACG 규칙 제거 성공"
               break
             else
