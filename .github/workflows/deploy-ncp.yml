@@ -154,10 +154,18 @@ jobs:
           cd "$NCLOUD_DIR"
           echo "Working directory changed to: $(pwd)"
           
-          ./ncloud configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
-          ./ncloud configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-          ./ncloud configure set region KR
-          echo "✓ NCP CLI 설정 완료"
+          # NCP CLI Configuration 파일 직접 생성 (Interactive 모드 회피)
+          mkdir -p ~/.ncloud
+          cat > ~/.ncloud/configure << EOF
+          [DEFAULT]
+          ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
+          ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+          ncloud_api_url = https://ncloud.apigw.ntruss.com
+          EOF
+          
+          echo "✓ NCP CLI Configuration 파일 생성 완료"
+          echo "Configuration file contents:"
+          cat ~/.ncloud/configure | sed 's/ncloud_secret_access_key = .*/ncloud_secret_access_key = ***masked***/'
           
           # 현재 IP를 ACG에 추가 (SSH 접근 허용) - 재시도 로직 포함
           echo "=== ACG 인바운드 규칙 추가 시작 ==="
@@ -296,10 +304,16 @@ jobs:
           NCLOUD_DIR=$(dirname "$NCLOUD_PATH")
           cd "$NCLOUD_DIR"
           
-          ./ncloud configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
-          ./ncloud configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-          ./ncloud configure set region KR
-          echo "✓ NCP CLI 설정 완료"
+          # NCP CLI Configuration 파일 직접 생성 (Interactive 모드 회피)
+          mkdir -p ~/.ncloud
+          cat > ~/.ncloud/configure << EOF
+          [DEFAULT]
+          ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
+          ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+          ncloud_api_url = https://ncloud.apigw.ntruss.com
+          EOF
+          
+          echo "✓ NCP CLI Configuration 파일 생성 완료"
           
           # GitHub Actions IP를 ACG에서 제거 - 재시도 로직 포함
           echo "=== ACG에서 IP 제거 시작 ==="
