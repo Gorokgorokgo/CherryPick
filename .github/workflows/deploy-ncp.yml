@@ -115,7 +115,6 @@ jobs:
           # 현재 GitHub Actions runner IP 확인
           export RUNNER_IP=$(curl -s https://api.ipify.org)
           echo "GitHub Actions Runner IP: $RUNNER_IP"
-         
           # NCP CLI 설치 (최신 버전)
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -o -q ncloud-cli.zip
@@ -186,7 +185,6 @@ EOF
           done
           
           cd - > /dev/null  # 원래 디렉토리로 복귀
-           
       - name: "NCP Server 배포 : SSH로 NCP 서버에 접속하여 애플리케이션 재시작"
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -196,10 +194,9 @@ EOF
           script: |
             # 프로젝트 디렉토리로 이동 (NCP 서버 경로)
             cd /home/ncp/CherryPick
-           
+            
             # 최신 코드 받기
             git pull origin main
-           
             # 기존 Java 프로세스 안전하게 종료
             echo "=== 기존 프로세스 종료 ==="
             JAVA_PID=$(ps aux | grep "bootRun" | grep -v grep | awk '{print $2}')
@@ -208,7 +205,7 @@ EOF
                 kill -TERM $JAVA_PID
                 echo "30초 대기 중..."
                 sleep 30
-               
+                
                 # 여전히 살아있으면 강제 종료
                 if ps -p $JAVA_PID > /dev/null 2>&1; then
                     echo "강제 종료 실행"
@@ -217,49 +214,49 @@ EOF
             else
                 echo "실행 중인 Java 프로세스 없음"
             fi
-           
+            
             # 이전 로그 백업
             if [ -f app.log ]; then
                 mv app.log app.log.bak
             fi
-           
+            
             # 환경변수 로드
             source .env
-           
+            
             # 새 애플리케이션 시작
             echo "=== 새 애플리케이션 시작 ==="
             nohup ./gradlew bootRun > app.log 2>&1 &
             NEW_PID=$!
             echo "새 프로세스 PID: $NEW_PID"
-           
+            
             # 시작 확인 (최대 60초, 포트 열리면 즉시 완료)
             echo "=== 애플리케이션 시작 확인 (최대 60초) ==="
             for i in {1..12}; do
                 sleep 5
                 echo "확인 중... ${i}/12 ($(($i * 5))초)"
-               
+                
                 # 포트 8080 확인
                 if netstat -tlnp | grep :8080 > /dev/null; then
                     echo "✓ 애플리케이션 시작 완료! ($(($i * 5))초)"
                     break
                 fi
-               
+                
                 # 마지막 시도
                 if [ $i -eq 12 ]; then
                     echo "⚠ 60초 대기 완료 - 포트 상태 확인 필요"
                 fi
             done
-           
+            
             # 최종 상태 확인
             echo "=== 프로세스 상태 ==="
             ps aux | grep java | grep -v grep || echo "Java 프로세스 없음"
-           
+            
             echo "=== 포트 상태 ==="
             netstat -tlnp | grep :8080 || echo "8080 포트 사용 안함"
-           
+            
             echo "=== 최근 로그 (50줄) ==="
             tail -50 app.log
-           
+            
             echo "=== 오류 검색 ==="
             grep -i "error\|exception\|failed" app.log | tail -15 || echo "특별한 오류 없음"
 
@@ -267,13 +264,11 @@ EOF
         run: |
           sleep 20
           curl -f http://${{ secrets.NCP_SERVER_HOST }}:8080/actuator/health || echo "헬스체크 실패 - 수동 확인 필요"
-         
       - name: "ACG에서 GitHub Actions IP 제거"
         if: always()  # 성공/실패 여부에 관계없이 실행
         run: |
           export RUNNER_IP=$(curl -s https://api.ipify.org)
           echo "Removing GitHub Actions IP: $RUNNER_IP from ACG"
-         
           # NCP CLI 설치 (제거 작업용)
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -o -q ncloud-cli.zip
