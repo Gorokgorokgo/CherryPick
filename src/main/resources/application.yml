@@ -42,13 +42,24 @@ jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}
 
-aws:
-  s3:
-    bucket: ${AWS_S3_BUCKET:cherrypick-images}
-    region: ${AWS_REGION:ap-northeast-2}
+# AWS Configuration (기존 설정 보관)
+# aws:
+#   s3:
+#     bucket: ${AWS_S3_BUCKET:cherrypick-images}
+#     region: ${AWS_REGION:ap-northeast-2}
+#   credentials:
+#     access-key: ${AWS_ACCESS_KEY_ID}
+#     secret-key: ${AWS_SECRET_ACCESS_KEY}
+
+# Naver Cloud Platform Object Storage Configuration
+ncp:
+  object-storage:
+    endpoint: ${NCP_OBJECT_STORAGE_ENDPOINT:https://kr.object.ncloudstorage.com}
+    bucket: ${NCP_OBJECT_STORAGE_BUCKET:cherrypick-images}
+    region: ${NCP_REGION:kr-standard}
   credentials:
-    access-key: ${AWS_ACCESS_KEY_ID}
-    secret-key: ${AWS_SECRET_ACCESS_KEY}
+    access-key: ${NCP_ACCESS_KEY_ID}
+    secret-key: ${NCP_SECRET_ACCESS_KEY}
 
 # 비즈니스 설정
 business:

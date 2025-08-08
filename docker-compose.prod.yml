@@ -21,17 +21,17 @@ services:
 
   # Spring Boot Application
   app:
-    image: ${ECR_REGISTRY}/cherrypick-app:latest
+    image: ${NCP_CONTAINER_REGISTRY}/cherrypick-app:latest
     container_name: cherrypick-app-prod
     ports:
       - "8080:8080"
     environment:
-      # Database Configuration (AWS RDS)
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_NAME=${DB_NAME:-cherrypick}
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
+      # Database Configuration (NCP Cloud DB for PostgreSQL)
+      - DB_HOST=${NCP_DB_HOST}
+      - DB_PORT=${NCP_DB_PORT:-5432}
+      - DB_NAME=${NCP_DB_NAME:-cherrypick}
+      - DB_USERNAME=${NCP_DB_USERNAME}
+      - DB_PASSWORD=${NCP_DB_PASSWORD}
       
       # Redis Configuration
       - REDIS_HOST=redis
@@ -42,14 +42,15 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRATION=${JWT_EXPIRATION:-86400000}
       
-      # AWS Configuration
-      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      # NCP Object Storage Configuration
+      - NCP_OBJECT_STORAGE_ENDPOINT=${NCP_OBJECT_STORAGE_ENDPOINT:-https://kr.object.ncloudstorage.com}
+      - NCP_OBJECT_STORAGE_BUCKET=${NCP_OBJECT_STORAGE_BUCKET}
+      - NCP_REGION=${NCP_REGION:-kr-standard}
+      - NCP_ACCESS_KEY_ID=${NCP_ACCESS_KEY_ID}
+      - NCP_SECRET_ACCESS_KEY=${NCP_SECRET_ACCESS_KEY}
       
-      # ECR Configuration
-      - ECR_REGISTRY=${ECR_REGISTRY}
+      # NCP Container Registry Configuration
+      - NCP_CONTAINER_REGISTRY=${NCP_CONTAINER_REGISTRY}
       
       # Spring Profile
       - SPRING_PROFILES_ACTIVE=prod
