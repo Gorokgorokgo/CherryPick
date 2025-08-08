@@ -92,3 +92,7 @@ git pull origin main
 pkill -f bootRun
 source .env
 nohup ./gradlew bootRun > app.log 2>&1 &
+
+- **API 문서**: http://223.130.161.180:8080/swagger-ui.html
+- **Health Check**: http://223.130.161.180:8080/actuator/health
+- **pgAdmin**: http://223.130.161.180:8081 (admin@cherrypick.com / admin123)
