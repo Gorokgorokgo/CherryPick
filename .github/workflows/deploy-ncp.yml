@@ -7,6 +7,12 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
 env:
   # 애플리케이션 설정
   APP_NAME: cherrypick
@@ -103,13 +109,29 @@ jobs:
         SPRING_PROFILES_ACTIVE: test
         GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4 -Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
 
-    - name: Test Report
-      uses: dorny/test-reporter@v1
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
       if: success() || failure()
       with:
-        name: Gradle Test Results
+        name: test-results
         path: build/test-results/test/*.xml
-        reporter: java-junit
+        retention-days: 30
+
+    - name: Test Summary
+      if: success() || failure()
+      run: |
+        if [ -d "build/test-results/test" ]; then
+          echo "📊 Test Results Summary:"
+          find build/test-results/test -name "*.xml" | wc -l | xargs echo "Test files found:"
+          if grep -r "failures=" build/test-results/test/*.xml | grep -v 'failures="0"' > /dev/null 2>&1; then
+            echo "❌ Some tests failed"
+            grep -r "failures=" build/test-results/test/*.xml | grep -v 'failures="0"'
+          else
+            echo "✅ All tests passed"
+          fi
+        else
+          echo "⚠️ No test results found"
+        fi
 
   build:
     name: Build Application
