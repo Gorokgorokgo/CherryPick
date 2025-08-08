@@ -323,16 +323,42 @@ jobs:
         name: deployment-package
         path: deploy/
 
-    - name: Setup SSH key
+    - name: Setup SSH connection (Key + Password)
       env:
         NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
         NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
+        NCP_SERVER_PASSWORD: ${{ secrets.NCP_SERVER_PASSWORD }}
       run: |
+        # Install sshpass for password authentication
+        sudo apt-get update && sudo apt-get install -y sshpass
+        
+        # Setup SSH key
         mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
         echo "${{ secrets.NCP_SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_HOST >> ~/.ssh/known_hosts
+        
+        # Set default port if not specified
+        SSH_PORT=${NCP_SERVER_PORT:-22}
+        echo "🔗 Connecting to $NCP_SERVER_HOST:$SSH_PORT with SSH key + password authentication"
+        
+        # Create SSH config for this host (NCP requires both key and password)
+        cat >> ~/.ssh/config << EOF
+        Host $NCP_SERVER_HOST
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          Port $SSH_PORT
+          IdentityFile ~/.ssh/id_rsa
+          PasswordAuthentication yes
+          PreferredAuthentications publickey,password
+        EOF
+        
+        chmod 600 ~/.ssh/config
+        
+        # Test connection (SSH key + password required for NCP)
+        echo "🧪 Testing SSH connection with key + password..."
+        sshpass -p "$NCP_SERVER_PASSWORD" ssh -o ConnectTimeout=10 -i ~/.ssh/id_rsa $NCP_SERVER_USER@$NCP_SERVER_HOST "echo '✅ SSH connection successful'"
 
     - name: Create production environment file on server
       env:
@@ -340,7 +366,7 @@ jobs:
         NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         sudo mkdir -p /opt/cherrypick
         sudo tee /opt/cherrypick/.env.prod > /dev/null << 'ENVEOF'
         # ========================================
@@ -409,7 +435,7 @@ jobs:
         ssh -p ${NCP_SERVER_PORT:-22} -o ConnectTimeout=10 -o BatchMode=yes $NCP_SERVER_USER@$NCP_SERVER_HOST "echo 'SSH connection successful'"
         
         # Check server resources
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         echo "💾 Checking system resources:"
         
         # Check disk space (minimum 1GB free)
@@ -452,13 +478,13 @@ jobs:
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
         # Create deployment directory
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST "mkdir -p /tmp/cherrypick-deploy"
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST "mkdir -p /tmp/cherrypick-deploy"
         
         # Copy files with verification
-        scp -P ${NCP_SERVER_PORT:-22} -r deploy/* $NCP_SERVER_USER@$NCP_SERVER_HOST:/tmp/cherrypick-deploy/
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" scp -i ~/.ssh/id_rsa -P ${NCP_SERVER_PORT:-22} -r deploy/* $NCP_SERVER_USER@$NCP_SERVER_HOST:/tmp/cherrypick-deploy/
         
         # Verify copied files
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         echo "🔍 Verifying deployment files..."
         cd /tmp/cherrypick-deploy
         
@@ -492,7 +518,7 @@ jobs:
         NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
         [Unit]
         Description=CherryPick Auction Service
@@ -538,7 +564,7 @@ jobs:
         NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         cd /tmp/cherrypick-deploy
         chmod +x deploy.sh
         ./deploy.sh
@@ -552,7 +578,7 @@ jobs:
       run: |
         echo "🔍 Post-deployment validation started..."
         
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         echo "🔧 Checking system service status..."
         
         # Check if systemd service is active
@@ -619,7 +645,7 @@ jobs:
         NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         rm -rf /tmp/cherrypick-deploy
         EOF
 
@@ -636,7 +662,7 @@ jobs:
           echo "🏥 Health Check: http://$NCP_SERVER_HOST:8080/actuator/health"
           
           # Log successful deployment
-          ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+          sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
           echo "$(date): Successful deployment from GitHub Actions" | sudo tee -a /opt/cherrypick/deployment.log
           EOF
           
@@ -644,7 +670,7 @@ jobs:
           echo "❌ Deployment failed. Checking rollback status..."
           
           # Check if automatic rollback occurred
-          ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+          sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
           if systemctl is-active --quiet cherrypick-app; then
             if curl -f --connect-timeout 3 --max-time 5 http://localhost:8080/actuator/health >/dev/null 2>&1; then
               echo "✅ Service is running - automatic rollback likely succeeded"
@@ -671,16 +697,42 @@ jobs:
       name: production
 
     steps:
-    - name: Setup SSH key
+    - name: Setup SSH connection for rollback (Key + Password)
       env:
         NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
         NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
+        NCP_SERVER_PASSWORD: ${{ secrets.NCP_SERVER_PASSWORD }}
       run: |
+        # Install sshpass for password authentication
+        sudo apt-get update && sudo apt-get install -y sshpass
+        
+        # Setup SSH key
         mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
         echo "${{ secrets.NCP_SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_HOST >> ~/.ssh/known_hosts
+        
+        # Set default port if not specified
+        SSH_PORT=${NCP_SERVER_PORT:-22}
+        echo "🔗 Connecting to $NCP_SERVER_HOST:$SSH_PORT for rollback with SSH key + password authentication"
+        
+        # Create SSH config for this host (NCP requires both key and password)
+        cat >> ~/.ssh/config << EOF
+        Host $NCP_SERVER_HOST
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          Port $SSH_PORT
+          IdentityFile ~/.ssh/id_rsa
+          PasswordAuthentication yes
+          PreferredAuthentications publickey,password
+        EOF
+        
+        chmod 600 ~/.ssh/config
+        
+        # Test connection (SSH key + password required for NCP)
+        echo "🧪 Testing SSH connection for rollback with key + password..."
+        sshpass -p "$NCP_SERVER_PASSWORD" ssh -o ConnectTimeout=10 -i ~/.ssh/id_rsa $NCP_SERVER_USER@$NCP_SERVER_HOST "echo '✅ SSH connection successful for rollback'"
 
     - name: Enhanced rollback to previous version
       env:
@@ -688,7 +740,7 @@ jobs:
         NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
-        ssh -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
         cd /opt/cherrypick
         
         echo "🔍 Listing available backups..."
