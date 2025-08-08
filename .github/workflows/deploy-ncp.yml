@@ -16,7 +16,7 @@ permissions:
 env:
   # 애플리케이션 설정
   APP_NAME: cherrypick
-  JAR_FILE: cherrypick-0.0.1-SNAPSHOT.jar
+  JAR_FILE: CherryPick-0.0.1-SNAPSHOT.jar
   DOCKER_IMAGE: cherrypick-app
 
 jobs:
@@ -168,9 +168,26 @@ jobs:
 
     - name: Build application with optimization
       run: |
-        ./gradlew bootJar --parallel --build-cache --configure-on-demand
+        echo "🚀 Starting build process..."
+        echo "Java version: $(java -version 2>&1 | head -1)"
+        echo "Gradle version: $(./gradlew --version | grep Gradle)"
+        ./gradlew clean bootJar --parallel --build-cache --configure-on-demand --info
       env:
         GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4 -Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
+
+    - name: Verify build output
+      run: |
+        echo "🔍 Checking build output..."
+        ls -la build/ || echo "build directory not found"
+        ls -la build/libs/ || echo "build/libs directory not found"
+        if [ -f "build/libs/${{ env.JAR_FILE }}" ]; then
+          echo "✅ JAR file found: $(ls -lh build/libs/${{ env.JAR_FILE }})"
+        else
+          echo "❌ JAR file not found: ${{ env.JAR_FILE }}"
+          echo "Available files in build/libs/:"
+          ls -la build/libs/ || echo "No files found"
+          exit 1
+        fi
 
     - name: Create deployment artifact
       run: |
@@ -185,7 +202,7 @@ jobs:
         set -e
         
         APP_NAME="cherrypick"
-        JAR_FILE="cherrypick-0.0.1-SNAPSHOT.jar"
+        JAR_FILE="CherryPick-0.0.1-SNAPSHOT.jar"
         SERVICE_NAME="cherrypick-app"
         
         echo "🚀 Starting deployment of $APP_NAME..."
@@ -486,7 +503,7 @@ jobs:
         User=cherrypick
         Group=cherrypick
         WorkingDirectory=/opt/cherrypick
-        ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod cherrypick-0.0.1-SNAPSHOT.jar
+        ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod CherryPick-0.0.1-SNAPSHOT.jar
         SuccessExitStatus=143
         TimeoutStopSec=10
         Restart=on-failure
@@ -679,7 +696,7 @@ jobs:
         
         # Find latest backup
         BACKUP_FILE=$(ls -t *.backup.* 2>/dev/null | head -1)
-        ENV_BACKUP="${BACKUP_FILE//cherrypick-0.0.1-SNAPSHOT.jar/.env.prod}"
+        ENV_BACKUP="${BACKUP_FILE//CherryPick-0.0.1-SNAPSHOT.jar/.env.prod}"
         
         if [ -z "$BACKUP_FILE" ]; then
             echo "❌ No backup file found for rollback!"
@@ -687,13 +704,13 @@ jobs:
         fi
         
         echo "🔄 Rolling back to: $BACKUP_FILE"
-        echo "📦 Current application size: $(du -h cherrypick-0.0.1-SNAPSHOT.jar 2>/dev/null || echo 'N/A')"
+        echo "📦 Current application size: $(du -h CherryPick-0.0.1-SNAPSHOT.jar 2>/dev/null || echo 'N/A')"
         echo "📦 Backup application size: $(du -h $BACKUP_FILE)"
         
         # Create pre-rollback snapshot
         ROLLBACK_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        if [ -f "cherrypick-0.0.1-SNAPSHOT.jar" ]; then
-            sudo cp "cherrypick-0.0.1-SNAPSHOT.jar" "cherrypick-0.0.1-SNAPSHOT.jar.pre-rollback.$ROLLBACK_TIMESTAMP"
+        if [ -f "CherryPick-0.0.1-SNAPSHOT.jar" ]; then
+            sudo cp "CherryPick-0.0.1-SNAPSHOT.jar" "CherryPick-0.0.1-SNAPSHOT.jar.pre-rollback.$ROLLBACK_TIMESTAMP"
             echo "📸 Created pre-rollback snapshot"
         fi
         
@@ -711,9 +728,9 @@ jobs:
         done
         
         # Restore application backup
-        sudo cp "$BACKUP_FILE" "cherrypick-0.0.1-SNAPSHOT.jar"
-        sudo chown cherrypick:cherrypick "cherrypick-0.0.1-SNAPSHOT.jar"
-        sudo chmod 755 "cherrypick-0.0.1-SNAPSHOT.jar"
+        sudo cp "$BACKUP_FILE" "CherryPick-0.0.1-SNAPSHOT.jar"
+        sudo chown cherrypick:cherrypick "CherryPick-0.0.1-SNAPSHOT.jar"
+        sudo chmod 755 "CherryPick-0.0.1-SNAPSHOT.jar"
         
         # Restore environment backup if exists
         if [ -f "$ENV_BACKUP" ]; then
