@@ -121,29 +121,25 @@ jobs:
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -q ncloud-cli.zip
           
-          # cli_linux 디렉토리에서 ncloud 실행파일 찾기
-          find . -name "ncloud" -type f
+          # cli_linux 디렉토리에서 ncloud 실행파일 경로 찾기
           NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
           
-          if [ -n "$NCLOUD_PATH" ]; then
-            sudo chmod +x "$NCLOUD_PATH"
-            sudo cp "$NCLOUD_PATH" /usr/local/bin/ncloud
-            echo "NCP CLI installed successfully from: $NCLOUD_PATH"
-          else
+          if [ -z "$NCLOUD_PATH" ]; then
             echo "ncloud executable not found in extracted files"
             exit 1
           fi
           
-          # 임시 파일 정리
-          rm -rf CLI_1.1.25_20250717 ncloud-cli.zip
-         
-          # NCP CLI 설정 및 ACG(Access Control Group) 업데이트
-          ncloud configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
-          ncloud configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-          ncloud configure set region KR
-         
+          # 실행 권한 부여
+          chmod +x "$NCLOUD_PATH"
+          echo "NCP CLI path: $NCLOUD_PATH"
+          
+          # NCP CLI 설정 및 ACG(Access Control Group) 업데이트 (찾은 경로로 직접 실행)
+          "$NCLOUD_PATH" configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
+          "$NCLOUD_PATH" configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+          "$NCLOUD_PATH" configure set region KR
+          
           # 현재 IP를 ACG에 추가 (SSH 접근 허용)
-          ncloud server addAccessControlGroupInboundRule \
+          "$NCLOUD_PATH" server addAccessControlGroupInboundRule \
             --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
             --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22' || echo "IP already exists or error occurred"
            
@@ -238,28 +234,25 @@ jobs:
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -q ncloud-cli.zip
           
-          # cli_linux 디렉토리에서 ncloud 실행파일 찾기
+          # cli_linux 디렉토리에서 ncloud 실행파일 경로 찾기
           NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
           
-          if [ -n "$NCLOUD_PATH" ]; then
-            sudo chmod +x "$NCLOUD_PATH"
-            sudo cp "$NCLOUD_PATH" /usr/local/bin/ncloud
-            echo "NCP CLI installed successfully from: $NCLOUD_PATH"
-          else
+          if [ -z "$NCLOUD_PATH" ]; then
             echo "ncloud executable not found, skipping ACG cleanup"
             exit 0
           fi
           
-          # 임시 파일 정리
-          rm -rf CLI_1.1.25_20250717 ncloud-cli.zip
-         
-          # NCP CLI 설정
-          ncloud configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
-          ncloud configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-          ncloud configure set region KR
-         
+          # 실행 권한 부여
+          chmod +x "$NCLOUD_PATH"
+          echo "NCP CLI path: $NCLOUD_PATH"
+          
+          # NCP CLI 설정 (찾은 경로로 직접 실행)
+          "$NCLOUD_PATH" configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
+          "$NCLOUD_PATH" configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+          "$NCLOUD_PATH" configure set region KR
+          
           # GitHub Actions IP를 ACG에서 제거
-          ncloud server deleteAccessControlGroupInboundRule \
+          "$NCLOUD_PATH" server deleteAccessControlGroupInboundRule \
             --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
             --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22' 2>/dev/null || echo "IP 제거 실패 또는 이미 제거됨"
 
