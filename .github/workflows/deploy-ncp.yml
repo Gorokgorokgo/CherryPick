@@ -168,9 +168,26 @@ jobs:
 
     - name: Build application with optimization
       run: |
-        ./gradlew bootJar --parallel --build-cache --configure-on-demand
+        echo "🚀 Starting build process..."
+        echo "Java version: $(java -version 2>&1 | head -1)"
+        echo "Gradle version: $(./gradlew --version | grep Gradle)"
+        ./gradlew clean bootJar --parallel --build-cache --configure-on-demand --info
       env:
         GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4 -Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
+
+    - name: Verify build output
+      run: |
+        echo "🔍 Checking build output..."
+        ls -la build/ || echo "build directory not found"
+        ls -la build/libs/ || echo "build/libs directory not found"
+        if [ -f "build/libs/${{ env.JAR_FILE }}" ]; then
+          echo "✅ JAR file found: $(ls -lh build/libs/${{ env.JAR_FILE }})"
+        else
+          echo "❌ JAR file not found: ${{ env.JAR_FILE }}"
+          echo "Available files in build/libs/:"
+          ls -la build/libs/ || echo "No files found"
+          exit 1
+        fi
 
     - name: Create deployment artifact
       run: |
