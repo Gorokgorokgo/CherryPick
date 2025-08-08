@@ -121,6 +121,14 @@ jobs:
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -q ncloud-cli.zip
           
+          # JRE 경로 문제 해결: 심볼릭 링크 생성 (jre8 -> jre)
+          cd CLI_1.1.25_20250717/cli_linux
+          if [ -d "jre" ] && [ ! -d "jre8" ]; then
+            ln -sf jre jre8
+            echo "✓ JRE 경로 문제 해결: jre8 -> jre 심볼릭 링크 생성"
+          fi
+          cd ../..
+          
           # cli_linux 디렉토리에서 ncloud 실행파일 경로 찾기
           NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
           
@@ -133,15 +141,38 @@ jobs:
           chmod +x "$NCLOUD_PATH"
           echo "NCP CLI path: $NCLOUD_PATH"
           
+          # JRE 환경 검증 (디버깅)
+          NCLOUD_DIR=$(dirname "$NCLOUD_PATH")
+          echo "=== JRE 환경 검증 ==="
+          echo "Working directory: $(pwd)"
+          echo "NCLOUD_DIR: $NCLOUD_DIR"
+          ls -la "$NCLOUD_DIR"/jre*/bin/java* 2>/dev/null || echo "Java 실행파일 확인 필요"
+          
           # NCP CLI 설정 및 ACG(Access Control Group) 업데이트 (찾은 경로로 직접 실행)
+          echo "=== NCP CLI 설정 시작 ==="
           "$NCLOUD_PATH" configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
           "$NCLOUD_PATH" configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
           "$NCLOUD_PATH" configure set region KR
+          echo "✓ NCP CLI 설정 완료"
           
-          # 현재 IP를 ACG에 추가 (SSH 접근 허용)
-          "$NCLOUD_PATH" server addAccessControlGroupInboundRule \
-            --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
-            --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22' || echo "IP already exists or error occurred"
+          # 현재 IP를 ACG에 추가 (SSH 접근 허용) - 재시도 로직 포함
+          echo "=== ACG 인바운드 규칙 추가 시작 ==="
+          for attempt in 1 2 3; do
+            echo "ACG 규칙 추가 시도 $attempt/3..."
+            if "$NCLOUD_PATH" server addAccessControlGroupInboundRule \
+              --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
+              --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22'; then
+              echo "✓ ACG 규칙 추가 성공"
+              break
+            else
+              echo "⚠ ACG 규칙 추가 실패 (시도 $attempt/3)"
+              if [ $attempt -eq 3 ]; then
+                echo "❌ ACG 규칙 추가 최종 실패 - IP가 이미 존재하거나 권한 문제"
+              else
+                sleep 5
+              fi
+            fi
+          done
            
       - name: "NCP Server 배포 : SSH로 NCP 서버에 접속하여 애플리케이션 재시작"
         uses: appleboy/ssh-action@v0.1.5
@@ -234,6 +265,14 @@ jobs:
           wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
           unzip -q ncloud-cli.zip
           
+          # JRE 경로 문제 해결: 심볼릭 링크 생성 (jre8 -> jre)
+          cd CLI_1.1.25_20250717/cli_linux
+          if [ -d "jre" ] && [ ! -d "jre8" ]; then
+            ln -sf jre jre8
+            echo "✓ JRE 경로 문제 해결: jre8 -> jre 심볼릭 링크 생성"
+          fi
+          cd ../..
+          
           # cli_linux 디렉토리에서 ncloud 실행파일 경로 찾기
           NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
           
@@ -247,14 +286,30 @@ jobs:
           echo "NCP CLI path: $NCLOUD_PATH"
           
           # NCP CLI 설정 (찾은 경로로 직접 실행)
+          echo "=== NCP CLI 설정 (정리 작업용) ==="
           "$NCLOUD_PATH" configure set access_key_id ${{ secrets.NCP_ACCESS_KEY_ID }}
           "$NCLOUD_PATH" configure set secret_access_key ${{ secrets.NCP_SECRET_ACCESS_KEY }}
           "$NCLOUD_PATH" configure set region KR
+          echo "✓ NCP CLI 설정 완료"
           
-          # GitHub Actions IP를 ACG에서 제거
-          "$NCLOUD_PATH" server deleteAccessControlGroupInboundRule \
-            --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
-            --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22' 2>/dev/null || echo "IP 제거 실패 또는 이미 제거됨"
+          # GitHub Actions IP를 ACG에서 제거 - 재시도 로직 포함
+          echo "=== ACG에서 IP 제거 시작 ==="
+          for attempt in 1 2 3; do
+            echo "ACG 규칙 제거 시도 $attempt/3..."
+            if "$NCLOUD_PATH" server deleteAccessControlGroupInboundRule \
+              --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
+              --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22' 2>/dev/null; then
+              echo "✓ ACG 규칙 제거 성공"
+              break
+            else
+              echo "⚠ ACG 규칙 제거 실패 (시도 $attempt/3)"
+              if [ $attempt -eq 3 ]; then
+                echo "❌ ACG 규칙 제거 최종 실패 - 규칙이 존재하지 않거나 권한 문제"
+              else
+                sleep 3
+              fi
+            fi
+          done
 
       - name: "슬랙 알림 : 배포 결과를 슬랙 채널로 알림"
         if: always()
@@ -269,6 +324,7 @@ jobs:
           fi
           
           curl -X POST -H "Content-type: application/json" \
+          --connect-timeout 30 --max-time 60 \
           --data "{
             \"text\": \"$EMOJI CherryPick NCP 배포 $STATUS\",
             \"attachments\": [{
@@ -280,4 +336,4 @@ jobs:
               ]
             }]
           }" \
-          "${{ secrets.SLACK_WEBHOOK }}"
+          "${{ secrets.SLACK_WEBHOOK }}" || echo "슬랙 알림 전송 실패 - 수동 확인 필요"
