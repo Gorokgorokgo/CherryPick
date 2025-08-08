@@ -1,26 +1,35 @@
-name: CherryPick NCP CI/CD Pipeline
+name: Deploy to NCP (Naver Cloud Platform)
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  # 애플리케이션 설정
+  APP_NAME: cherrypick
+  JAR_FILE: cherrypick-0.0.1-SNAPSHOT.jar
+  DOCKER_IMAGE: cherrypick-app
+  
+  # NCP 서버 설정 
+  NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
+  NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
+  NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT || '22' }}
 
 jobs:
   test:
+    name: Run Tests
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
-
+    
     services:
       postgres:
-        image: postgres:15
+        image: postgres:15-alpine
         env:
-          POSTGRES_DB: cherrypick
+          POSTGRES_DB: cherrypick_test
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password123
+          POSTGRES_PASSWORD: test_password
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -28,7 +37,7 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-
+      
       redis:
         image: redis:7-alpine
         options: >-
@@ -38,323 +47,342 @@ jobs:
           --health-retries 5
         ports:
           - 6379:6379
+
     steps:
-      - name: "코드 체크아웃 : GitHub 저장소에서 소스코드 다운로드"
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: "JDK 17 설정 : Java 17 개발환경 설치 및 설정"
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-          check-latest: true
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
 
-      - name: "Gradle 패키지 캐시 : 의존성 라이브러리 캐싱으로 빌드 속도 향상"
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
 
-      - name: "gradlew 실행 권한 부여 : Gradle Wrapper 스크립트 실행 권한 설정"
-        run: chmod +x gradlew
+    - name: Create test environment file
+      run: |
+        cat > .env.test << EOF
+        NCP_DB_HOST=localhost
+        NCP_DB_PORT=5432
+        NCP_DB_NAME=cherrypick_test
+        NCP_DB_USERNAME=postgres
+        NCP_DB_PASSWORD=test_password
+        REDIS_HOST=localhost
+        REDIS_PORT=6379
+        REDIS_PASSWORD=
+        JWT_SECRET=test-jwt-secret-key-must-be-at-least-64-characters-long-for-security-purposes
+        JWT_EXPIRATION=86400000
+        SPRING_PROFILES_ACTIVE=test
+        NCP_OBJECT_STORAGE_ENDPOINT=https://kr.object.ncloudstorage.com
+        NCP_OBJECT_STORAGE_BUCKET=cherrypick-test
+        NCP_ACCESS_KEY_ID=test
+        NCP_SECRET_ACCESS_KEY=test
+        NCP_REGION=kr-standard
+        COMMISSION_RATE=0.03
+        NEW_USER_FREE_DAYS=30
+        PROMOTION_ENABLED=false
+        PROMOTION_RATE=0.00
+        PROMOTION_END_DATE=2025-12-31
+        EOF
 
-      - name: "Gradle Wrapper 검증 : 무결성 확인"
-        uses: gradle/wrapper-validation-action@v1
+    - name: Run tests
+      run: ./gradlew test
+      env:
+        SPRING_PROFILES_ACTIVE: test
 
-      - name: "Java 환경 확인"
-        run: |
-          echo "JAVA_HOME: $JAVA_HOME"
-          echo "Java version:"
-          java -version
-          echo "Java path:"
-          which java
+    - name: Test Report
+      uses: dorny/test-reporter@v1
+      if: success() || failure()
+      with:
+        name: Gradle Test Results
+        path: build/test-results/test/*.xml
+        reporter: java-junit
 
-      - name: "테스트 실행 : 단위 테스트 및 통합 테스트 실행"
-        run: ./gradlew test --no-daemon --stacktrace -Dorg.gradle.java.home="$JAVA_HOME"
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: cherrypick_test
-          DB_USERNAME: postgres
-          DB_PASSWORD: password123
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          JWT_SECRET: test-jwt-secret-key-must-be-at-least-64-characters-long-for-testing
-          SPRING_PROFILES_ACTIVE: test
-          # NCP 설정 (GitHub Secrets 사용)
-          NCP_OBJECT_STORAGE_ENDPOINT: ${{ secrets.NCP_OBJECT_STORAGE_ENDPOINT }}
-          NCP_OBJECT_STORAGE_BUCKET: ${{ secrets.NCP_OBJECT_STORAGE_BUCKET }}
-          NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
-          NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-          NCP_REGION: ${{ secrets.NCP_REGION }}
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
 
-      - name: "테스트 리포트 생성 : 테스트 결과를 GitHub PR에 표시"
-        uses: dorny/test-reporter@v1
-        if: success() || failure()
-        with:
-          name: Gradle 테스트
-          path: build/test-results/test/*.xml
-          reporter: java-junit
-          token: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build application
+      run: ./gradlew bootJar
+
+    - name: Create deployment artifact
+      run: |
+        mkdir -p deploy
+        cp build/libs/${{ env.JAR_FILE }} deploy/
+        cp docker-compose.prod.yml deploy/ || echo "docker-compose.prod.yml not found, skipping"
+        cp -r scripts deploy/ || echo "scripts directory not found, skipping"
+        
+        # Create deployment script
+        cat > deploy/deploy.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        APP_NAME="cherrypick"
+        JAR_FILE="cherrypick-0.0.1-SNAPSHOT.jar"
+        SERVICE_NAME="cherrypick-app"
+        
+        echo "🚀 Starting deployment of $APP_NAME..."
+        
+        # Stop existing service
+        sudo systemctl stop $SERVICE_NAME || echo "Service was not running"
+        
+        # Backup current version
+        if [ -f "/opt/$APP_NAME/$JAR_FILE" ]; then
+            sudo mv "/opt/$APP_NAME/$JAR_FILE" "/opt/$APP_NAME/$JAR_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+        fi
+        
+        # Deploy new version
+        sudo mkdir -p /opt/$APP_NAME
+        sudo cp $JAR_FILE /opt/$APP_NAME/
+        sudo chown cherrypick:cherrypick /opt/$APP_NAME/$JAR_FILE
+        sudo chmod 755 /opt/$APP_NAME/$JAR_FILE
+        
+        # Start service
+        sudo systemctl start $SERVICE_NAME
+        sudo systemctl enable $SERVICE_NAME
+        
+        # Health check
+        echo "⏳ Waiting for application to start..."
+        for i in {1..30}; do
+            if curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+                echo "✅ Application is healthy!"
+                break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 10
+        done
+        
+        if ! curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+            echo "❌ Health check failed!"
+            exit 1
+        fi
+        
+        echo "🎉 Deployment completed successfully!"
+        EOF
+        
+        chmod +x deploy/deploy.sh
+
+    - name: Upload deployment artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-package
+        path: deploy/
+        retention-days: 30
 
   deploy:
-    needs: test
+    name: Deploy to NCP Server
     runs-on: ubuntu-latest
+    needs: build
     if: github.ref == 'refs/heads/main'
+    environment: 
+      name: production
+      url: http://${{ secrets.NCP_SERVER_HOST }}:8080
 
     steps:
-      - name: "코드 체크아웃"
-        uses: actions/checkout@v4
+    - name: Download deployment artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: deployment-package
+        path: deploy/
 
-      - name: "현재 IP 확인 및 NCP ACG 업데이트"
-        run: |
-          # 현재 GitHub Actions runner IP 확인
-          export RUNNER_IP=$(curl -s https://api.ipify.org)
-          echo "GitHub Actions Runner IP: $RUNNER_IP"
-          # NCP CLI 설치 (최신 버전)
-          wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
-          unzip -o -q ncloud-cli.zip
-          
-          # JRE 경로 문제 해결: 심볼릭 링크 생성 (jre8 -> jre)
-          cd CLI_1.1.25_20250717/cli_linux
-          if [ -d "jre" ] && [ ! -d "jre8" ]; then
-            ln -sf jre jre8
-            echo "✓ JRE 경로 문제 해결: jre8 -> jre 심볼릭 링크 생성"
-          fi
-          cd ../..
-          
-          # cli_linux 디렉토리에서 ncloud 실행파일 경로 찾기
-          NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
-          
-          if [ -z "$NCLOUD_PATH" ]; then
-            echo "ncloud executable not found in extracted files"
-            exit 1
-          fi
-          
-          # 실행 권한 부여
-          chmod +x "$NCLOUD_PATH"
-          echo "NCP CLI path: $NCLOUD_PATH"
-          
-          # JRE 환경 검증 (디버깅)
-          NCLOUD_DIR=$(dirname "$NCLOUD_PATH")
-          echo "=== JRE 환경 검증 ==="
-          echo "Working directory: $(pwd)"
-          echo "NCLOUD_DIR: $NCLOUD_DIR"
-          ls -la "$NCLOUD_DIR"/jre*/bin/java* 2>/dev/null || echo "Java 실행파일 확인 필요"
-          
-          # NCP CLI 설정 및 ACG(Access Control Group) 업데이트 (디렉토리 이동 후 실행)
-          echo "=== NCP CLI 설정 시작 ==="
-          NCLOUD_DIR=$(dirname "$NCLOUD_PATH")
-          cd "$NCLOUD_DIR"
-          echo "Working directory changed to: $(pwd)"
-          
-          # NCP CLI Configuration 파일 직접 생성 (Interactive 모드 회피)
-          mkdir -p ~/.ncloud
-          cat > ~/.ncloud/configure << EOF
-          [DEFAULT]
-          ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
-          ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-          ncloud_api_url = https://ncloud.apigw.ntruss.com
-          EOF
-          
-          echo "✓ NCP CLI Configuration 파일 생성 완료"
-          echo "Configuration file contents:"
-          cat ~/.ncloud/configure | sed 's/ncloud_secret_access_key = .*/ncloud_secret_access_key = ***masked***/'
-          
-          # 현재 IP를 ACG에 추가 (SSH 접근 허용) - 재시도 로직 포함
-          echo "=== ACG 인바운드 규칙 추가 시작 ==="
-          for attempt in 1 2 3; do
-            echo "ACG 규칙 추가 시도 $attempt/3..."
-            if ./ncloud server addAccessControlGroupInboundRule \
-              --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
-              --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22'; then
-              echo "✓ ACG 규칙 추가 성공"
-              break
-            else
-              echo "⚠ ACG 규칙 추가 실패 (시도 $attempt/3)"
-              if [ $attempt -eq 3 ]; then
-                echo "❌ ACG 규칙 추가 최종 실패 - IP가 이미 존재하거나 권한 문제"
-              else
-                sleep 5
-              fi
-            fi
-          done
-          
-          cd - > /dev/null  # 원래 디렉토리로 복귀
-      - name: "NCP Server 배포 : SSH로 NCP 서버에 접속하여 애플리케이션 재시작"
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.NCP_SERVER_HOST }}
-          username: ${{ secrets.NCP_SERVER_USER }}
-          key: ${{ secrets.NCP_SERVER_SSH_KEY }}
-          script: |
-            # 프로젝트 디렉토리로 이동 (NCP 서버 경로)
-            cd /home/ncp/CherryPick
-            
-            # 최신 코드 받기
-            git pull origin main
-            # 기존 Java 프로세스 안전하게 종료
-            echo "=== 기존 프로세스 종료 ==="
-            JAVA_PID=$(ps aux | grep "bootRun" | grep -v grep | awk '{print $2}')
-            if [ ! -z "$JAVA_PID" ]; then
-                echo "Java 프로세스 찾음: $JAVA_PID"
-                kill -TERM $JAVA_PID
-                echo "30초 대기 중..."
-                sleep 30
-                
-                # 여전히 살아있으면 강제 종료
-                if ps -p $JAVA_PID > /dev/null 2>&1; then
-                    echo "강제 종료 실행"
-                    kill -9 $JAVA_PID
-                fi
-            else
-                echo "실행 중인 Java 프로세스 없음"
-            fi
-            
-            # 이전 로그 백업
-            if [ -f app.log ]; then
-                mv app.log app.log.bak
-            fi
-            
-            # 환경변수 로드
-            source .env
-            
-            # 새 애플리케이션 시작
-            echo "=== 새 애플리케이션 시작 ==="
-            nohup ./gradlew bootRun > app.log 2>&1 &
-            NEW_PID=$!
-            echo "새 프로세스 PID: $NEW_PID"
-            
-            # 시작 확인 (최대 60초, 포트 열리면 즉시 완료)
-            echo "=== 애플리케이션 시작 확인 (최대 60초) ==="
-            for i in {1..12}; do
-                sleep 5
-                echo "확인 중... ${i}/12 ($(($i * 5))초)"
-                
-                # 포트 8080 확인
-                if netstat -tlnp | grep :8080 > /dev/null; then
-                    echo "✓ 애플리케이션 시작 완료! ($(($i * 5))초)"
-                    break
-                fi
-                
-                # 마지막 시도
-                if [ $i -eq 12 ]; then
-                    echo "⚠ 60초 대기 완료 - 포트 상태 확인 필요"
-                fi
-            done
-            
-            # 최종 상태 확인
-            echo "=== 프로세스 상태 ==="
-            ps aux | grep java | grep -v grep || echo "Java 프로세스 없음"
-            
-            echo "=== 포트 상태 ==="
-            netstat -tlnp | grep :8080 || echo "8080 포트 사용 안함"
-            
-            echo "=== 최근 로그 (50줄) ==="
-            tail -50 app.log
-            
-            echo "=== 오류 검색 ==="
-            grep -i "error\|exception\|failed" app.log | tail -15 || echo "특별한 오류 없음"
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: "헬스 체크 : 배포된 애플리케이션 정상 동작 확인"
-        run: |
-          sleep 20
-          curl -f http://${{ secrets.NCP_SERVER_HOST }}:8080/actuator/health || echo "헬스체크 실패 - 수동 확인 필요"
-      - name: "ACG에서 GitHub Actions IP 제거"
-        if: always()  # 성공/실패 여부에 관계없이 실행
-        run: |
-          export RUNNER_IP=$(curl -s https://api.ipify.org)
-          echo "Removing GitHub Actions IP: $RUNNER_IP from ACG"
-          # NCP CLI 설치 (제거 작업용)
-          wget -O ncloud-cli.zip https://www.ncloud.com/api/support/download/files/cli/CLI_1.1.25_20250717.zip
-          unzip -o -q ncloud-cli.zip
-          
-          # JRE 경로 문제 해결: 심볼릭 링크 생성 (jre8 -> jre)
-          cd CLI_1.1.25_20250717/cli_linux
-          if [ -d "jre" ] && [ ! -d "jre8" ]; then
-            ln -sf jre jre8
-            echo "✓ JRE 경로 문제 해결: jre8 -> jre 심볼릭 링크 생성"
-          fi
-          cd ../..
-          
-          # cli_linux 디렉토리에서 ncloud 실행파일 경로 찾기
-          NCLOUD_PATH=$(find . -name "ncloud" -type f | head -1)
-          
-          if [ -z "$NCLOUD_PATH" ]; then
-            echo "ncloud executable not found, skipping ACG cleanup"
+    - name: Create production environment file on server
+      run: |
+        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        sudo mkdir -p /opt/cherrypick
+        sudo tee /opt/cherrypick/.env.prod > /dev/null << 'ENVEOF'
+        # NCP 운영 환경 설정
+        NCP_DB_HOST=${{ secrets.NCP_DB_HOST }}
+        NCP_DB_PORT=${{ secrets.NCP_DB_PORT }}
+        NCP_DB_NAME=${{ secrets.NCP_DB_NAME }}
+        NCP_DB_USERNAME=${{ secrets.NCP_DB_USERNAME }}
+        NCP_DB_PASSWORD=${{ secrets.NCP_DB_PASSWORD }}
+        REDIS_HOST=${{ secrets.REDIS_HOST }}
+        REDIS_PORT=${{ secrets.REDIS_PORT }}
+        REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+        JWT_SECRET=${{ secrets.JWT_SECRET }}
+        JWT_EXPIRATION=${{ secrets.JWT_EXPIRATION }}
+        SPRING_PROFILES_ACTIVE=prod
+        SERVER_PORT=8080
+        LOGGING_LEVEL_ROOT=INFO
+        LOGGING_LEVEL_CHERRYPICK=INFO
+        LOGGING_LEVEL_SQL=WARN
+        NCP_OBJECT_STORAGE_ENDPOINT=${{ secrets.NCP_OBJECT_STORAGE_ENDPOINT }}
+        NCP_OBJECT_STORAGE_BUCKET=${{ secrets.NCP_OBJECT_STORAGE_BUCKET }}
+        NCP_ACCESS_KEY_ID=${{ secrets.NCP_ACCESS_KEY_ID }}
+        NCP_SECRET_ACCESS_KEY=${{ secrets.NCP_SECRET_ACCESS_KEY }}
+        NCP_REGION=${{ secrets.NCP_REGION }}
+        COMMISSION_RATE=${{ secrets.COMMISSION_RATE }}
+        NEW_USER_FREE_DAYS=${{ secrets.NEW_USER_FREE_DAYS }}
+        PROMOTION_ENABLED=${{ secrets.PROMOTION_ENABLED }}
+        PROMOTION_RATE=${{ secrets.PROMOTION_RATE }}
+        PROMOTION_END_DATE=${{ secrets.PROMOTION_END_DATE }}
+        ENVEOF
+        sudo chown cherrypick:cherrypick /opt/cherrypick/.env.prod
+        sudo chmod 600 /opt/cherrypick/.env.prod
+        EOF
+
+    - name: Copy deployment files to server
+      run: |
+        scp -P ${{ env.NCP_SERVER_PORT }} -r deploy/* ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }}:/tmp/cherrypick-deploy/
+
+    - name: Create systemd service file
+      run: |
+        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
+        [Unit]
+        Description=CherryPick Auction Service
+        After=network.target
+        
+        [Service]
+        Type=simple
+        User=cherrypick
+        Group=cherrypick
+        WorkingDirectory=/opt/cherrypick
+        ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod cherrypick-0.0.1-SNAPSHOT.jar
+        SuccessExitStatus=143
+        TimeoutStopSec=10
+        Restart=on-failure
+        RestartSec=5
+        
+        # Environment
+        Environment="SPRING_PROFILES_ACTIVE=prod"
+        EnvironmentFile=/opt/cherrypick/.env.prod
+        
+        # Security
+        NoNewPrivileges=true
+        PrivateTmp=true
+        ProtectSystem=strict
+        ProtectHome=true
+        ReadWritePaths=/opt/cherrypick
+        
+        # Logging
+        StandardOutput=journal
+        StandardError=journal
+        SyslogIdentifier=cherrypick-app
+        
+        [Install]
+        WantedBy=multi-user.target
+        SERVICEEOF
+        
+        sudo systemctl daemon-reload
+        EOF
+
+    - name: Deploy application
+      run: |
+        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        cd /tmp/cherrypick-deploy
+        chmod +x deploy.sh
+        ./deploy.sh
+        EOF
+
+    - name: Verify deployment
+      run: |
+        echo "🔍 Verifying deployment..."
+        for i in {1..12}; do
+          if curl -f -s http://${{ env.NCP_SERVER_HOST }}:8080/actuator/health | grep -q "UP"; then
+            echo "✅ Deployment verification successful!"
+            curl -s http://${{ env.NCP_SERVER_HOST }}:8080/actuator/info || echo "Info endpoint not available"
             exit 0
           fi
-          
-          # 실행 권한 부여
-          chmod +x "$NCLOUD_PATH"
-          echo "NCP CLI path: $NCLOUD_PATH"
-          
-          # NCP CLI 설정 (디렉토리 이동 후 실행)
-          echo "=== NCP CLI 설정 (정리 작업용) ==="
-          NCLOUD_DIR=$(dirname "$NCLOUD_PATH")
-          cd "$NCLOUD_DIR"
-          
-          # NCP CLI Configuration 파일 직접 생성 (Interactive 모드 회피)
-          mkdir -p ~/.ncloud
-          cat > ~/.ncloud/configure << EOF
-          [DEFAULT]
-          ncloud_access_key_id = ${{ secrets.NCP_ACCESS_KEY_ID }}
-          ncloud_secret_access_key = ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-          ncloud_api_url = https://ncloud.apigw.ntruss.com
-          EOF
-          
-          echo "✓ NCP CLI Configuration 파일 생성 완료"
-          echo "Configuration file contents:"
-          cat ~/.ncloud/configure | sed 's/ncloud_secret_access_key = .*/ncloud_secret_access_key = ***masked***/'
-          
-          # GitHub Actions IP를 ACG에서 제거 - 재시도 로직 포함
-          echo "=== ACG에서 IP 제거 시작 ==="
-          for attempt in 1 2 3; do
-            echo "ACG 규칙 제거 시도 $attempt/3..."
-            if ./ncloud server deleteAccessControlGroupInboundRule \
-              --accessControlGroupConfigurationNoList ${{ secrets.NCP_ACG_NO }} \
-              --accessControlGroupRuleList 'protocolTypeCode=TCP,ipBlock='${RUNNER_IP}'/32,portRange=22' 2>/dev/null; then
-              echo "✓ ACG 규칙 제거 성공"
-              break
-            else
-              echo "⚠ ACG 규칙 제거 실패 (시도 $attempt/3)"
-              if [ $attempt -eq 3 ]; then
-                echo "❌ ACG 규칙 제거 최종 실패 - 규칙이 존재하지 않거나 권한 문제"
-              else
-                sleep 3
-              fi
-            fi
-          done
-          
-          cd - > /dev/null  # 원래 디렉토리로 복귀
+          echo "Waiting for service... ($i/12)"
+          sleep 10
+        done
+        echo "❌ Deployment verification failed!"
+        exit 1
 
-      - name: "슬랙 알림 : 배포 결과를 슬랙 채널로 알림"
-        if: always()
-        run: |
-          STATUS="${{ job.status }}"
-          if [ "$STATUS" = "success" ]; then
-            EMOJI="✅"
-            COLOR="good"
-          else
-            EMOJI="❌"
-            COLOR="danger"
-          fi
-          
-          curl -X POST -H "Content-type: application/json" \
-          --connect-timeout 30 --max-time 60 \
-          --data "{
-            \"text\": \"$EMOJI CherryPick NCP 배포 $STATUS\",
-            \"attachments\": [{
-              \"color\": \"$COLOR\",
-              \"fields\": [
-                {\"title\": \"브랜치\", \"value\": \"${{ github.ref }}\", \"short\": true},
-                {\"title\": \"커밋\", \"value\": \"${{ github.sha }}\", \"short\": true},
-                {\"title\": \"작성자\", \"value\": \"${{ github.actor }}\", \"short\": true}
-              ]
-            }]
-          }" \
-          "${{ secrets.SLACK_WEBHOOK }}" || echo "슬랙 알림 전송 실패 - 수동 확인 필요"
+    - name: Cleanup deployment files
+      if: always()
+      run: |
+        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        rm -rf /tmp/cherrypick-deploy
+        EOF
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "🎉 Successfully deployed CherryPick to NCP!"
+          echo "📱 Application URL: http://${{ env.NCP_SERVER_HOST }}:8080"
+          echo "📊 Health Check: http://${{ env.NCP_SERVER_HOST }}:8080/actuator/health"
+        else
+          echo "❌ Deployment failed. Please check the logs."
+        fi
+
+  rollback:
+    name: Rollback (Manual Trigger)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: 
+      name: production
+
+    steps:
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Rollback to previous version
+      run: |
+        ssh -p ${{ env.NCP_SERVER_PORT }} ${{ env.NCP_SERVER_USER }}@${{ env.NCP_SERVER_HOST }} << 'EOF'
+        cd /opt/cherrypick
+        
+        # Find latest backup
+        BACKUP_FILE=$(ls -t *.backup.* 2>/dev/null | head -1)
+        
+        if [ -z "$BACKUP_FILE" ]; then
+            echo "❌ No backup file found for rollback!"
+            exit 1
+        fi
+        
+        echo "🔄 Rolling back to: $BACKUP_FILE"
+        
+        # Stop service
+        sudo systemctl stop cherrypick-app
+        
+        # Restore backup
+        sudo mv "$BACKUP_FILE" "cherrypick-0.0.1-SNAPSHOT.jar"
+        sudo chown cherrypick:cherrypick "cherrypick-0.0.1-SNAPSHOT.jar"
+        
+        # Start service
+        sudo systemctl start cherrypick-app
+        
+        echo "✅ Rollback completed!"
+        EOF
+
+    - name: Verify rollback
+      run: |
+        sleep 30
+        if curl -f http://${{ env.NCP_SERVER_HOST }}:8080/actuator/health; then
+          echo "✅ Rollback verification successful!"
+        else
+          echo "❌ Rollback verification failed!"
+          exit 1
+        fi
