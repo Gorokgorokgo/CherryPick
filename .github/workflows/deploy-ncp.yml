@@ -18,7 +18,7 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_DB: cherrypick_test
+          POSTGRES_DB: cherrypick
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password123
         options: >-
@@ -85,6 +85,13 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           JWT_SECRET: test-jwt-secret-key-must-be-at-least-64-characters-long-for-testing
+          SPRING_PROFILES_ACTIVE: test
+          # NCP 설정 (GitHub Secrets 사용)
+          NCP_OBJECT_STORAGE_ENDPOINT: ${{ secrets.NCP_OBJECT_STORAGE_ENDPOINT }}
+          NCP_OBJECT_STORAGE_BUCKET: ${{ secrets.NCP_OBJECT_STORAGE_BUCKET }}
+          NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
+          NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+          NCP_REGION: ${{ secrets.NCP_REGION }}
 
       - name: "테스트 리포트 생성 : 테스트 결과를 GitHub PR에 표시"
         uses: dorny/test-reporter@v1
@@ -222,14 +229,26 @@ jobs:
 
       - name: "슬랙 알림 : 배포 결과를 슬랙 채널로 알림"
         if: always()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          channel: "#deployments"
-          text: |
-            🚀 CherryPick NCP 배포 ${{ job.status }}
-            🌿 브랜치: ${{ github.ref }}
-            📝 커밋: ${{ github.sha }}
-            👤 작성자: ${{ github.actor }}
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="✅"
+            COLOR="good"
+          else
+            EMOJI="❌"
+            COLOR="danger"
+          fi
+          
+          curl -X POST -H "Content-type: application/json" \
+          --data "{
+            \"text\": \"$EMOJI CherryPick NCP 배포 $STATUS\",
+            \"attachments\": [{
+              \"color\": \"$COLOR\",
+              \"fields\": [
+                {\"title\": \"브랜치\", \"value\": \"${{ github.ref }}\", \"short\": true},
+                {\"title\": \"커밋\", \"value\": \"${{ github.sha }}\", \"short\": true},
+                {\"title\": \"작성자\", \"value\": \"${{ github.actor }}\", \"short\": true}
+              ]
+            }]
+          }" \
+          "${{ secrets.SLACK_WEBHOOK }}"
