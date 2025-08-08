@@ -330,7 +330,7 @@ jobs:
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        echo "${{ secrets.NCP_SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_HOST >> ~/.ssh/known_hosts
 
@@ -678,7 +678,7 @@ jobs:
         NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        echo "${{ secrets.NCP_SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_HOST >> ~/.ssh/known_hosts
 
