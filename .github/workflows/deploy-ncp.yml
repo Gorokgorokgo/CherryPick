@@ -48,6 +48,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK 17
+      id: setup-java
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -100,7 +101,7 @@ jobs:
         ./gradlew test --parallel --build-cache --configure-on-demand
       env:
         SPRING_PROFILES_ACTIVE: test
-        GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4"
+        GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4 -Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
 
     - name: Test Report
       uses: dorny/test-reporter@v1
@@ -121,6 +122,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK 17
+      id: setup-java
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -146,7 +148,7 @@ jobs:
       run: |
         ./gradlew bootJar --parallel --build-cache --configure-on-demand
       env:
-        GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4"
+        GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4 -Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
 
     - name: Create deployment artifact
       run: |
