@@ -323,6 +323,25 @@ jobs:
         name: deployment-package
         path: deploy/
 
+    - name: Show runner IP for manual security group setup
+      run: |
+        # Get current runner IP
+        RUNNER_IP=$(curl -s ifconfig.me)
+        echo "🌐 Current GitHub Actions Runner IP: $RUNNER_IP"
+        echo ""
+        echo "🔐 IMPORTANT: Add this IP to your NCP Security Group manually:"
+        echo "   IP Address: $RUNNER_IP/32"
+        echo "   Port: 22 (SSH)"
+        echo "   Protocol: TCP"
+        echo ""
+        echo "⏳ Waiting 30 seconds for you to add the IP to security group..."
+        echo "   (GitHub Actions will continue automatically)"
+        
+        # Wait for manual setup
+        sleep 30
+        
+        echo "✅ Proceeding with deployment (assuming IP was added to security group)"
+
     - name: Setup SSH connection (Key + Password)
       env:
         NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
@@ -713,6 +732,14 @@ jobs:
           echo "💡 Use workflow_dispatch to trigger manual rollback if service is down."
         fi
 
+    - name: Remind to remove runner IP from security group
+      if: always()
+      run: |
+        RUNNER_IP=$(curl -s ifconfig.me)
+        echo "🧹 REMINDER: Remove this IP from your NCP Security Group:"
+        echo "   IP Address: $RUNNER_IP/32"
+        echo "   (Manual cleanup recommended for security)"
+
   rollback:
     name: Rollback (Manual Trigger)
     runs-on: ubuntu-latest
@@ -721,6 +748,19 @@ jobs:
       name: production
 
     steps:
+    - name: Show runner IP for manual security group setup (Rollback)
+      run: |
+        RUNNER_IP=$(curl -s ifconfig.me)
+        echo "🌐 Current GitHub Actions Runner IP for rollback: $RUNNER_IP"
+        echo ""
+        echo "🔐 IMPORTANT: Add this IP to your NCP Security Group manually:"
+        echo "   IP Address: $RUNNER_IP/32"
+        echo "   Port: 22 (SSH)"
+        echo "   Protocol: TCP"
+        echo ""
+        echo "⏳ Waiting 30 seconds for you to add the IP to security group..."
+        sleep 30
+        echo "✅ Proceeding with rollback (assuming IP was added to security group)"
     - name: Setup SSH connection for rollback (Key + Password)
       env:
         NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
@@ -853,3 +893,11 @@ jobs:
         echo "🔍 Debugging rollback status:"
         curl -v --connect-timeout 10 --max-time 20 http://$NCP_SERVER_HOST:8080/actuator/health || echo "Service unreachable after rollback"
         exit 1
+
+    - name: Remind to remove runner IP after rollback
+      if: always()
+      run: |
+        RUNNER_IP=$(curl -s ifconfig.me)
+        echo "🧹 REMINDER: Remove this IP from your NCP Security Group:"
+        echo "   IP Address: $RUNNER_IP/32"
+        echo "   (Manual cleanup recommended for security)"
