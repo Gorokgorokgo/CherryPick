@@ -346,6 +346,26 @@ jobs:
           exit 1
         fi
         
+        # Debug: Check if required secrets are available
+        echo "🔍 Checking NCP API credentials..."
+        if [ -z "$NCP_ACCESS_KEY_ID" ]; then
+          echo "❌ NCP_ACCESS_KEY_ID secret is missing"
+        else
+          echo "✅ NCP_ACCESS_KEY_ID is set (${NCP_ACCESS_KEY_ID:0:8}...)"
+        fi
+        
+        if [ -z "$NCP_SECRET_ACCESS_KEY" ]; then
+          echo "❌ NCP_SECRET_ACCESS_KEY secret is missing" 
+        else
+          echo "✅ NCP_SECRET_ACCESS_KEY is set (${NCP_SECRET_ACCESS_KEY:0:8}...)"
+        fi
+        
+        if [ -z "$NCP_SECURITY_GROUP_NO" ]; then
+          echo "❌ NCP_SECURITY_GROUP_NO secret is missing"
+        else
+          echo "✅ NCP_SECURITY_GROUP_NO is set: $NCP_SECURITY_GROUP_NO"
+        fi
+
         # Dynamic security group management via NCP API
         if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ]; then
           echo "🔧 Setting up dynamic security group management..."
@@ -371,14 +391,26 @@ jobs:
             local ip="$1"
             local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
             local method="POST"
-            local url="/vpc/v2/addAccessControlGroupInboundRule"
             
             echo "🚀 Adding IP $ip/32 to security group $NCP_SECURITY_GROUP_NO..."
+            
+            # Try VPC API first (for Access Control Group)
+            local url="/vpc/v2/addAccessControlGroupInboundRule"
+            echo "🔄 Trying VPC API endpoint..."
             
             # Create signature
             signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
             
-            # API call
+            # Debug: Show what we're about to send
+            echo "📤 API Request Details:"
+            echo "  URL: https://ncloud.apigw.ntruss.com$url"
+            echo "  Method: POST"
+            echo "  Access Key: ${NCP_ACCESS_KEY_ID:0:8}..."
+            echo "  Security Group: $NCP_SECURITY_GROUP_NO"
+            echo "  IP to add: $ip/32"
+            echo "  Timestamp: $timestamp"
+            
+            # API call with better error handling
             response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
               "https://ncloud.apigw.ntruss.com$url" \
               -H "x-ncp-apigw-timestamp: $timestamp" \
@@ -402,14 +434,64 @@ jobs:
             http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
             response_body=$(echo "$response" | sed '$d')
             
+            echo "📥 API Response:"
+            echo "  HTTP Code: $http_code"
+            echo "  Response Body: $response_body"
+            
             if [ "$http_code" = "200" ]; then
-              echo "✅ Successfully added IP $ip/32 to security group"
-              echo "$response_body" | jq -r '.returnMessage // "No message"'
+              echo "✅ Successfully added IP $ip/32 to security group (VPC API)"
+              echo "$response_body" | jq -r '.returnMessage // "No message"' 2>/dev/null || echo "Response parsing failed"
               return 0
             else
-              echo "⚠️ API call failed with HTTP $http_code"
-              echo "Response: $response_body"
-              return 1
+              echo "⚠️ VPC API failed with HTTP $http_code, trying Classic API..."
+              
+              # Try Classic API (for Security Group)
+              url="/server/v2/addServerSecurityGroupInboundRule"
+              echo "🔄 Trying Classic API endpoint..."
+              
+              signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
+              
+              echo "📤 Classic API Request Details:"
+              echo "  URL: https://ncloud.apigw.ntruss.com$url"
+              
+              # Classic API call
+              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+                "https://ncloud.apigw.ntruss.com$url" \
+                -H "x-ncp-apigw-timestamp: $timestamp" \
+                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
+                -H "x-ncp-apigw-signature-v2: $signature" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"regionNo\": \"1\",
+                  \"serverSecurityGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
+                  \"serverSecurityGroupRuleList\": [
+                    {
+                      \"protocolTypeCode\": \"TCP\",
+                      \"ipBlock\": \"$ip/32\",
+                      \"portRange\": \"22\"
+                    }
+                  ]
+                }")
+              
+              http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
+              response_body=$(echo "$response" | sed '$d')
+              
+              echo "📥 Classic API Response:"
+              echo "  HTTP Code: $http_code"
+              echo "  Response Body: $response_body"
+              
+              if [ "$http_code" = "200" ]; then
+                echo "✅ Successfully added IP $ip/32 to security group (Classic API)"
+                return 0
+              else
+                echo "❌ Both VPC and Classic APIs failed"
+                echo "🔍 Troubleshooting steps:"
+                echo "  1. Verify NCP_SECURITY_GROUP_NO value in GitHub Secrets"
+                echo "  2. Check API key permissions in NCP Console"
+                echo "  3. Confirm Security Group/ACG exists"
+                echo "  4. Try manual IP addition: $ip/32 port 22"
+                return 1
+              fi
             fi
           }
           
@@ -424,7 +506,17 @@ jobs:
             sleep 10
           else
             echo "security_rule_added=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Continuing with existing security group configuration..."
+            echo "⚠️ API-based security group management failed"
+            echo ""
+            echo "🚨 MANUAL ACTION REQUIRED:"
+            echo "   Please add the following IP to your NCP Security Group/ACG:"
+            echo "   IP: $RUNNER_IP/32"
+            echo "   Protocol: TCP"
+            echo "   Port: 22"
+            echo ""
+            echo "⏰ You have 2 minutes to add this rule manually..."
+            echo "   The workflow will continue and may fail if not added."
+            sleep 120  # Give user time to manually add the rule
           fi
           
         else
