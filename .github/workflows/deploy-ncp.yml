@@ -323,6 +323,117 @@ jobs:
         name: deployment-package
         path: deploy/
 
+    - name: Setup GitHub Actions IP whitelist for NCP
+      id: setup-ip
+      env:
+        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
+        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
+      run: |
+        # Get current runner IP
+        RUNNER_IP=$(curl -s ifconfig.me)
+        echo "🌐 Current GitHub Actions Runner IP: $RUNNER_IP"
+        echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
+        
+        if [ -z "$RUNNER_IP" ]; then
+          echo "❌ Failed to get runner IP"
+          exit 1
+        fi
+        
+        # Validate IP format
+        if ! echo "$RUNNER_IP" | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; then
+          echo "❌ Invalid IP format: $RUNNER_IP"
+          exit 1
+        fi
+        
+        # Dynamic security group management via NCP API
+        if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ]; then
+          echo "🔧 Setting up dynamic security group management..."
+          
+          # Install required tools
+          sudo apt-get update -qq && sudo apt-get install -y jq curl openssl
+          
+          # Create NCP API signature
+          create_ncp_signature() {
+            local method="$1"
+            local url="$2"
+            local timestamp="$3"
+            local access_key="$4"
+            local secret_key="$5"
+            
+            message="$method $url\n$timestamp\n$access_key"
+            signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
+            echo "$signature"
+          }
+          
+          # Add current runner IP to security group
+          add_security_rule() {
+            local ip="$1"
+            local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+            local method="POST"
+            local url="/vpc/v2/addAccessControlGroupInboundRule"
+            
+            echo "🚀 Adding IP $ip/32 to security group $NCP_SECURITY_GROUP_NO..."
+            
+            # Create signature
+            signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
+            
+            # API call
+            response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+              "https://ncloud.apigw.ntruss.com$url" \
+              -H "x-ncp-apigw-timestamp: $timestamp" \
+              -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
+              -H "x-ncp-apigw-signature-v2: $signature" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"regionCode\": \"KR\",
+                \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
+                \"accessControlGroupRuleList\": [
+                  {
+                    \"protocolTypeCode\": \"TCP\",
+                    \"ipBlock\": \"$ip/32\",
+                    \"portRange\": \"22\",
+                    \"accessControlGroupRuleDescription\": \"GitHub Actions Runner - $(date +%Y%m%d_%H%M%S)\"
+                  }
+                ]
+              }")
+            
+            # Parse response
+            http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
+            response_body=$(echo "$response" | sed '$d')
+            
+            if [ "$http_code" = "200" ]; then
+              echo "✅ Successfully added IP $ip/32 to security group"
+              echo "$response_body" | jq -r '.returnMessage // "No message"'
+              return 0
+            else
+              echo "⚠️ API call failed with HTTP $http_code"
+              echo "Response: $response_body"
+              return 1
+            fi
+          }
+          
+          # Store rule info for cleanup
+          echo "$RUNNER_IP" > /tmp/added_runner_ip
+          echo "$NCP_SECURITY_GROUP_NO" > /tmp/security_group_no
+          
+          # Add the rule
+          if add_security_rule "$RUNNER_IP"; then
+            echo "security_rule_added=true" >> $GITHUB_OUTPUT
+            echo "⏳ Waiting 10 seconds for security group changes to propagate..."
+            sleep 10
+          else
+            echo "security_rule_added=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Continuing with existing security group configuration..."
+          fi
+          
+        else
+          echo "💡 NCP API credentials not configured, using pre-configured security group"
+          echo "security_rule_added=false" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "📍 Deployment will use runner IP: $RUNNER_IP"
+
     - name: Setup SSH connection (Key + Password)
       env:
         NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
@@ -358,7 +469,84 @@ jobs:
         
         # Test connection (SSH key + password required for NCP)
         echo "🧪 Testing SSH connection with key + password..."
-        sshpass -p "$NCP_SERVER_PASSWORD" ssh -o ConnectTimeout=10 -i ~/.ssh/id_rsa $NCP_SERVER_USER@$NCP_SERVER_HOST "echo '✅ SSH connection successful'"
+        echo "📍 Server info: $NCP_SERVER_USER@$NCP_SERVER_HOST:$SSH_PORT"
+        
+        # Enhanced connectivity testing with multiple fallbacks
+        echo "🔍 Multi-phase connectivity testing to $NCP_SERVER_HOST:$SSH_PORT"
+        
+        # Phase 1: Basic TCP connectivity with retries
+        echo "📡 Phase 1: Testing TCP connectivity..."
+        CONNECT_SUCCESS=false
+        for attempt in {1..5}; do
+          echo "  Attempt $attempt/5..."
+          if timeout 15 bash -c "echo >/dev/tcp/$NCP_SERVER_HOST/$SSH_PORT" 2>/dev/null; then
+            echo "✅ TCP connection successful on attempt $attempt"
+            CONNECT_SUCCESS=true
+            break
+          fi
+          echo "  ⚠️ Attempt $attempt failed, retrying in 10 seconds..."
+          sleep 10
+        done
+        
+        if [ "$CONNECT_SUCCESS" = false ]; then
+          echo "❌ All TCP connection attempts failed"
+          echo "🔍 Troubleshooting checklist:"
+          echo "  1. Check NCP Security Group for IP: $(curl -s ifconfig.me)"
+          echo "  2. Add GitHub Actions IP ranges to security group:"
+          curl -s https://api.github.com/meta | jq -r '.actions[]' | head -5 | sed 's/^/     /'
+          echo "  3. Verify server is running and SSH service is active"
+          echo "  4. Check firewall settings on server"
+          exit 1
+        fi
+        
+        # Phase 2: SSH authentication test with intelligent retries
+        echo "🔐 Phase 2: SSH authentication testing..."
+        SSH_SUCCESS=false
+        for attempt in {1..3}; do
+          echo "  SSH attempt $attempt/3..."
+          
+          # Try SSH with different timeout strategies
+          if sshpass -p "$NCP_SERVER_PASSWORD" ssh \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=10 \
+            -o ServerAliveCountMax=3 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=no \
+            -i ~/.ssh/id_rsa \
+            $NCP_SERVER_USER@$NCP_SERVER_HOST \
+            "echo 'SSH-Test-$attempt-OK' && exit 0" 2>/dev/null; then
+            echo "✅ SSH authentication successful on attempt $attempt"
+            SSH_SUCCESS=true
+            break
+          fi
+          
+          # Progressive backoff: 5s, 15s, 30s
+          wait_time=$((attempt * 10 + 5))
+          echo "  ⚠️ SSH attempt $attempt failed, waiting ${wait_time}s before retry..."
+          sleep $wait_time
+        done
+        
+        if [ "$SSH_SUCCESS" = false ]; then
+          echo "❌ All SSH connection attempts failed"
+          echo "🔍 Authentication troubleshooting:"
+          echo "  1. Verify NCP_SERVER_PASSWORD is correct"
+          echo "  2. Check NCP_SERVER_SSH_KEY contains the full private key"
+          echo "  3. Ensure username '$NCP_SERVER_USER' has sudo privileges"
+          echo "  4. Try manual connection: ssh -i key.pem $NCP_SERVER_USER@$NCP_SERVER_HOST"
+          
+          # Final diagnostic attempt
+          echo "🩺 Running final diagnostics..."
+          sshpass -p "$NCP_SERVER_PASSWORD" ssh -vv \
+            -o ConnectTimeout=10 \
+            -o BatchMode=yes \
+            -i ~/.ssh/id_rsa \
+            $NCP_SERVER_USER@$NCP_SERVER_HOST \
+            "echo diagnostic-test" 2>&1 | head -20 || true
+            
+          exit 1
+        fi
+        
+        echo "🎉 SSH connection fully validated and ready for deployment!"
 
     - name: Create production environment file on server
       env:
@@ -489,13 +677,13 @@ jobs:
         cd /tmp/cherrypick-deploy
         
         # Check JAR file exists and is valid
-        if [ ! -f "cherrypick-0.0.1-SNAPSHOT.jar" ]; then
+        if [ ! -f "CherryPick-0.0.1-SNAPSHOT.jar" ]; then
           echo "❌ JAR file not found"
           exit 1
         fi
         
         # Check JAR file size (should be > 10MB for Spring Boot app)
-        JAR_SIZE=$(stat -f%z "cherrypick-0.0.1-SNAPSHOT.jar" 2>/dev/null || stat -c%s "cherrypick-0.0.1-SNAPSHOT.jar" 2>/dev/null || echo "0")
+        JAR_SIZE=$(stat -f%z "CherryPick-0.0.1-SNAPSHOT.jar" 2>/dev/null || stat -c%s "CherryPick-0.0.1-SNAPSHOT.jar" 2>/dev/null || echo "0")
         if [ "$JAR_SIZE" -lt 10485760 ]; then
           echo "❌ JAR file too small: ${JAR_SIZE} bytes"
           exit 1
@@ -689,6 +877,101 @@ jobs:
           echo "💡 Use workflow_dispatch to trigger manual rollback if service is down."
         fi
 
+    - name: Cleanup GitHub Actions IP from NCP Security Group
+      if: always()
+      env:
+        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
+        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
+      run: |
+        # Only cleanup if we added a security rule
+        if [ "${{ steps.setup-ip.outputs.security_rule_added }}" = "true" ]; then
+          echo "🧹 Cleaning up dynamically added security group rule..."
+          
+          RUNNER_IP="${{ steps.setup-ip.outputs.runner_ip }}"
+          
+          if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ] && [ -n "$RUNNER_IP" ]; then
+            # Install required tools if not already available
+            sudo apt-get update -qq && sudo apt-get install -y jq curl openssl 2>/dev/null || true
+            
+            # Create NCP API signature function
+            create_ncp_signature() {
+              local method="$1"
+              local url="$2"
+              local timestamp="$3"
+              local access_key="$4"
+              local secret_key="$5"
+              
+              message="$method $url\n$timestamp\n$access_key"
+              signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
+              echo "$signature"
+            }
+            
+            # Remove security rule
+            remove_security_rule() {
+              local ip="$1"
+              local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+              local method="POST"
+              local url="/vpc/v2/removeAccessControlGroupInboundRule"
+              
+              echo "🗑️ Removing IP $ip/32 from security group $NCP_SECURITY_GROUP_NO..."
+              
+              # Create signature
+              signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
+              
+              # API call to remove rule
+              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+                "https://ncloud.apigw.ntruss.com$url" \
+                -H "x-ncp-apigw-timestamp: $timestamp" \
+                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
+                -H "x-ncp-apigw-signature-v2: $signature" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"regionCode\": \"KR\",
+                  \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
+                  \"accessControlGroupRuleList\": [
+                    {
+                      \"protocolTypeCode\": \"TCP\",
+                      \"ipBlock\": \"$ip/32\",
+                      \"portRange\": \"22\"
+                    }
+                  ]
+                }")
+              
+              # Parse response
+              http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
+              response_body=$(echo "$response" | sed '$d')
+              
+              if [ "$http_code" = "200" ]; then
+                echo "✅ Successfully removed IP $ip/32 from security group"
+                echo "$response_body" | jq -r '.returnMessage // "No message"'
+                return 0
+              else
+                echo "⚠️ Failed to remove IP rule (HTTP $http_code)"
+                echo "Response: $response_body"
+                echo "💡 Rule may need manual cleanup in NCP console"
+                return 1
+              fi
+            }
+            
+            # Attempt to remove the rule
+            if remove_security_rule "$RUNNER_IP"; then
+              echo "🎯 Security group cleanup completed successfully"
+            else
+              echo "⚠️ Security group cleanup failed - rule may persist"
+              echo "💡 Consider manual cleanup of IP $RUNNER_IP/32 from security group $NCP_SECURITY_GROUP_NO"
+            fi
+            
+          else
+            echo "⚠️ Missing credentials for security group cleanup"
+          fi
+        else
+          echo "💡 No dynamic security rule was added, skipping cleanup"
+        fi
+        
+        echo "🧹 Cleanup process completed"
+
+
   rollback:
     name: Rollback (Manual Trigger)
     runs-on: ubuntu-latest
@@ -697,6 +980,95 @@ jobs:
       name: production
 
     steps:
+    - name: Setup GitHub Actions IP for Rollback
+      id: setup-rollback-ip
+      env:
+        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
+        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
+      run: |
+        # Get current runner IP
+        RUNNER_IP=$(curl -s ifconfig.me)
+        echo "🌐 Current GitHub Actions Runner IP for rollback: $RUNNER_IP"
+        echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
+        
+        if [ -z "$RUNNER_IP" ]; then
+          echo "❌ Failed to get runner IP"
+          exit 1
+        fi
+        
+        # Dynamic security group management for rollback
+        if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ]; then
+          echo "🔧 Setting up dynamic security group for rollback..."
+          
+          sudo apt-get update -qq && sudo apt-get install -y jq curl openssl
+          
+          # Create NCP API signature function
+          create_ncp_signature() {
+            local method="$1"
+            local url="$2"
+            local timestamp="$3"
+            local access_key="$4"
+            local secret_key="$5"
+            
+            message="$method $url\n$timestamp\n$access_key"
+            signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
+            echo "$signature"
+          }
+          
+          # Add current runner IP for rollback
+          add_rollback_rule() {
+            local ip="$1"
+            local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+            local method="POST"
+            local url="/vpc/v2/addAccessControlGroupInboundRule"
+            
+            echo "🚀 Adding rollback IP $ip/32 to security group..."
+            
+            signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
+            
+            response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+              "https://ncloud.apigw.ntruss.com$url" \
+              -H "x-ncp-apigw-timestamp: $timestamp" \
+              -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
+              -H "x-ncp-apigw-signature-v2: $signature" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"regionCode\": \"KR\",
+                \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
+                \"accessControlGroupRuleList\": [
+                  {
+                    \"protocolTypeCode\": \"TCP\",
+                    \"ipBlock\": \"$ip/32\",
+                    \"portRange\": \"22\",
+                    \"accessControlGroupRuleDescription\": \"GitHub Actions Rollback - $(date +%Y%m%d_%H%M%S)\"
+                  }
+                ]
+              }")
+            
+            http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
+            response_body=$(echo "$response" | sed '$d')
+            
+            if [ "$http_code" = "200" ]; then
+              echo "✅ Successfully added rollback IP to security group"
+              return 0
+            else
+              echo "⚠️ Failed to add rollback IP (continuing anyway)"
+              return 1
+            fi
+          }
+          
+          if add_rollback_rule "$RUNNER_IP"; then
+            echo "security_rule_added=true" >> $GITHUB_OUTPUT
+            sleep 5
+          else
+            echo "security_rule_added=false" >> $GITHUB_OUTPUT
+          fi
+          
+        else
+          echo "💡 Using existing security group configuration for rollback"
+          echo "security_rule_added=false" >> $GITHUB_OUTPUT
+        fi
     - name: Setup SSH connection for rollback (Key + Password)
       env:
         NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
@@ -829,3 +1201,86 @@ jobs:
         echo "🔍 Debugging rollback status:"
         curl -v --connect-timeout 10 --max-time 20 http://$NCP_SERVER_HOST:8080/actuator/health || echo "Service unreachable after rollback"
         exit 1
+
+    - name: Cleanup Rollback IP from NCP Security Group
+      if: always()
+      env:
+        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
+        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
+        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
+      run: |
+        # Only cleanup if we added a security rule for rollback
+        if [ "${{ steps.setup-rollback-ip.outputs.security_rule_added }}" = "true" ]; then
+          echo "🧹 Cleaning up rollback security group rule..."
+          
+          RUNNER_IP="${{ steps.setup-rollback-ip.outputs.runner_ip }}"
+          
+          if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ] && [ -n "$RUNNER_IP" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y jq curl openssl 2>/dev/null || true
+            
+            # Create NCP API signature function
+            create_ncp_signature() {
+              local method="$1"
+              local url="$2"
+              local timestamp="$3"
+              local access_key="$4"
+              local secret_key="$5"
+              
+              message="$method $url\n$timestamp\n$access_key"
+              signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
+              echo "$signature"
+            }
+            
+            # Remove rollback security rule
+            remove_rollback_rule() {
+              local ip="$1"
+              local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+              local method="POST"
+              local url="/vpc/v2/removeAccessControlGroupInboundRule"
+              
+              echo "🗑️ Removing rollback IP $ip/32 from security group..."
+              
+              signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
+              
+              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+                "https://ncloud.apigw.ntruss.com$url" \
+                -H "x-ncp-apigw-timestamp: $timestamp" \
+                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
+                -H "x-ncp-apigw-signature-v2: $signature" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"regionCode\": \"KR\",
+                  \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
+                  \"accessControlGroupRuleList\": [
+                    {
+                      \"protocolTypeCode\": \"TCP\",
+                      \"ipBlock\": \"$ip/32\",
+                      \"portRange\": \"22\"
+                    }
+                  ]
+                }")
+              
+              http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
+              response_body=$(echo "$response" | sed '$d')
+              
+              if [ "$http_code" = "200" ]; then
+                echo "✅ Successfully removed rollback IP from security group"
+                return 0
+              else
+                echo "⚠️ Failed to remove rollback IP rule"
+                echo "💡 Manual cleanup may be required for IP $ip/32"
+                return 1
+              fi
+            }
+            
+            remove_rollback_rule "$RUNNER_IP"
+            
+          else
+            echo "⚠️ Missing credentials for rollback cleanup"
+          fi
+        else
+          echo "💡 No rollback security rule was added, skipping cleanup"
+        fi
+        
+        echo "🧹 Rollback cleanup completed"
+
