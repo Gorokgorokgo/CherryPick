@@ -358,7 +358,31 @@ jobs:
         
         # Test connection (SSH key + password required for NCP)
         echo "🧪 Testing SSH connection with key + password..."
-        sshpass -p "$NCP_SERVER_PASSWORD" ssh -o ConnectTimeout=10 -i ~/.ssh/id_rsa $NCP_SERVER_USER@$NCP_SERVER_HOST "echo '✅ SSH connection successful'"
+        echo "📍 Server info: $NCP_SERVER_USER@$NCP_SERVER_HOST:$SSH_PORT"
+        
+        # Test basic connectivity first
+        echo "🔍 Testing basic connectivity to $NCP_SERVER_HOST:$SSH_PORT"
+        timeout 30 bash -c "echo >/dev/tcp/$NCP_SERVER_HOST/$SSH_PORT" && echo "✅ Port $SSH_PORT is reachable" || {
+          echo "❌ Cannot reach $NCP_SERVER_HOST:$SSH_PORT"
+          echo "🔍 Possible issues:"
+          echo "  - Server is down or unreachable"
+          echo "  - Port $SSH_PORT is blocked by firewall"
+          echo "  - Security group doesn't allow SSH from GitHub Actions IPs"
+          echo "  - Wrong IP address or port number"
+          exit 1
+        }
+        
+        # Try SSH connection with extended timeout
+        echo "🔐 Attempting SSH connection..."
+        sshpass -p "$NCP_SERVER_PASSWORD" ssh -o ConnectTimeout=30 -o ServerAliveInterval=30 -i ~/.ssh/id_rsa $NCP_SERVER_USER@$NCP_SERVER_HOST "echo '✅ SSH connection successful'" || {
+          echo "❌ SSH connection failed even though port is reachable"
+          echo "🔍 Please check:"
+          echo "  - NCP Security Group allows SSH (port $SSH_PORT) from 0.0.0.0/0"
+          echo "  - SSH service is running on the server"
+          echo "  - Username '$NCP_SERVER_USER' is correct"
+          echo "  - SSH key and password are both correct"
+          exit 1
+        }
 
     - name: Create production environment file on server
       env:
