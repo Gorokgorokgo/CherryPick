@@ -443,12 +443,12 @@ jobs:
             echo "🚀 Adding IP $ip/32 to security group $NCP_SECURITY_GROUP_NO..."
             echo "🔄 Will try multiple NCP API endpoints..."
             
-            # Array of possible API endpoints
+            # Correct NCP API endpoints based on official documentation
             local endpoints=(
-              "/vserver/v2/addAccessControlGroupRule"
-              "/vpc/v2/addAccessControlGroupRule" 
-              "/server/v2/addAccessControlGroupRule"
-              "/ncloud/v1/addAccessControlGroupRule"
+              "/vserver/v2/addAccessControlGroupInboundRule"
+              "/vserver/v2/addAccessControlGroupRule" 
+              "/vpc/v2/addAccessControlGroupInboundRule"
+              "/server/v2/addServerSecurityGroupInboundRule"
             )
             
             for url in "${endpoints[@]}"; do
@@ -457,14 +457,25 @@ jobs:
               # Create signature
               signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
               
-              # API call 
-              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-                "https://ncloud.apigw.ntruss.com$url" \
-                -H "x-ncp-apigw-timestamp: $timestamp" \
-                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
-                -H "x-ncp-apigw-signature-v2: $signature" \
-                -H "Content-Type: application/json" \
-                -d "{
+              # Create appropriate payload based on endpoint
+              local payload
+              if [[ "$url" == *"server"* ]]; then
+                # Classic Server API payload
+                payload="{
+                  \"regionCode\": \"KR\",
+                  \"serverInstanceNo\": \"$NCP_SECURITY_GROUP_NO\",
+                  \"serverSecurityGroupRuleList\": [
+                    {
+                      \"protocolTypeCode\": \"TCP\",
+                      \"ipBlock\": \"$ip/32\",
+                      \"portRange\": \"22\",
+                      \"serverSecurityGroupRuleTypeCode\": \"INBND\"
+                    }
+                  ]
+                }"
+              else
+                # VPC API payload  
+                payload="{
                   \"regionCode\": \"KR\",
                   \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
                   \"accessControlGroupRuleList\": [
@@ -476,7 +487,19 @@ jobs:
                       \"accessControlGroupRuleDescription\": \"GitHub Actions Runner - $(date +%Y%m%d_%H%M%S)\"
                     }
                   ]
-                }")
+                }"
+              fi
+              
+              echo "Using payload for $url: $payload"
+              
+              # API call 
+              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
+                "https://ncloud.apigw.ntruss.com$url" \
+                -H "x-ncp-apigw-timestamp: $timestamp" \
+                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
+                -H "x-ncp-apigw-signature-v2: $signature" \
+                -H "Content-Type: application/json" \
+                -d "$payload")
               
               # Parse response
               http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
@@ -1058,7 +1081,7 @@ jobs:
               local ip="$1"
               local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
               local method="POST"
-              local url="/vpc/v2/removeAccessControlGroupInboundRule"
+              local url="/vserver/v2/removeAccessControlGroupInboundRule"
               
               echo "🗑️ Removing IP $ip/32 from security group $NCP_SECURITY_GROUP_NO..."
               
