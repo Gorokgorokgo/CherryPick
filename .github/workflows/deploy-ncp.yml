@@ -60,10 +60,9 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Create test environment
+    - name: Create test environment file
       run: |
         cat > .env.test << EOF
-        SPRING_PROFILES_ACTIVE=test
         NCP_DB_HOST=localhost
         NCP_DB_PORT=5432
         NCP_DB_NAME=cherrypick_test
@@ -72,8 +71,9 @@ jobs:
         REDIS_HOST=localhost
         REDIS_PORT=6379
         REDIS_PASSWORD=
-        JWT_SECRET=test-jwt-secret-key-must-be-at-least-64-characters-long-for-security
+        JWT_SECRET=test-jwt-secret-key-must-be-at-least-64-characters-long-for-security-purposes
         JWT_EXPIRATION=86400000
+        SPRING_PROFILES_ACTIVE=test
         NCP_OBJECT_STORAGE_ENDPOINT=https://kr.object.ncloudstorage.com
         NCP_OBJECT_STORAGE_BUCKET=cherrypick-test
         NCP_ACCESS_KEY_ID=test
@@ -86,29 +86,73 @@ jobs:
         PROMOTION_END_DATE=2025-12-31
         EOF
 
+    - name: Wait for services to be ready
+      run: |
+        echo "⏳ Waiting for PostgreSQL to be ready..."
+        until pg_isready -h localhost -p 5432 -U postgres; do
+          echo "PostgreSQL is unavailable - sleeping"
+          sleep 2
+        done
+        echo "✅ PostgreSQL is ready!"
+        
+        echo "⏳ Waiting for Redis to be ready..."
+        until redis-cli -h localhost -p 6379 ping | grep -q PONG; do
+          echo "Redis is unavailable - sleeping"
+          sleep 2
+        done
+        echo "✅ Redis is ready!"
+
     - name: Run tests
       env:
         SPRING_PROFILES_ACTIVE: test
       run: |
-        ./gradlew test --parallel --build-cache --no-daemon
+        echo "🧪 Running tests with optimized settings..."
+        ./gradlew test \
+          --parallel \
+          --max-workers=4 \
+          --build-cache \
+          --no-daemon \
+          --stacktrace \
+          -Dspring.profiles.active=test \
+          -Dspring.jpa.hibernate.ddl-auto=create-drop \
+          -Dlogging.level.org.hibernate.SQL=ERROR
 
     - name: Build application
       run: |
-        ./gradlew bootJar --parallel --build-cache --no-daemon
+        echo "🔨 Building application with optimized settings..."
+        ./gradlew bootJar \
+          --parallel \
+          --max-workers=4 \
+          --build-cache \
+          --no-daemon \
+          --stacktrace
 
-    - name: Verify build
+    - name: Verify JAR file exists
       run: |
-        if [ ! -f "build/libs/${{ env.JAR_NAME }}" ]; then
-          echo "❌ JAR file not found"
+        echo "🔍 Checking JAR file..."
+        if [ -f "build/libs/${{ env.JAR_NAME }}" ]; then
+          echo "✅ JAR file exists: $(ls -lh build/libs/${{ env.JAR_NAME }})"
+          file build/libs/${{ env.JAR_NAME }}
+        else
+          echo "❌ JAR file not found!"
+          echo "Available files in build/libs/:"
+          ls -la build/libs/ || echo "build/libs/ directory doesn't exist"
           exit 1
         fi
-        echo "✅ Build completed: $(ls -lh build/libs/${{ env.JAR_NAME }})"
 
-    - name: Upload build artifact
+    - name: Create deployment package
+      run: |
+        echo "📦 Creating deployment package..."
+        mkdir -p deploy
+        cp build/libs/${{ env.JAR_NAME }} deploy/
+        echo "✅ Deployment package ready"
+
+    - name: Upload deployment artifact
       uses: actions/upload-artifact@v4
       with:
-        name: jar-artifact
-        path: build/libs/${{ env.JAR_NAME }}
+        name: deployment-package
+        path: |
+          deploy/
         retention-days: 1
 
   deploy:
@@ -117,34 +161,30 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     steps:
-    - name: Download build artifact
+    - name: Download deployment artifact
       uses: actions/download-artifact@v4
       with:
-        name: jar-artifact
+        name: deployment-package
+        path: deploy/
 
-    - name: Setup SSH
+    - name: Deploy to NCP server
       run: |
-        sudo apt-get install -y sshpass
-        mkdir -p ~/.ssh
-        echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-
-    - name: Deploy to server
-      run: |
-        # Upload JAR file
+        # Install sshpass
+        sudo apt-get update -qq && sudo apt-get install -y sshpass
+        
+        # Deploy to server
         sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no \
-          ${{ env.JAR_NAME }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }}:/tmp/
+          deploy/${{ env.JAR_NAME }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }}:/tmp/
 
-        # Execute deployment
+        # Execute deployment script on server
         sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
           ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} << 'EOF'
         
-        # Deployment script
         APP_NAME="cherrypick"
         JAR_FILE="${{ env.JAR_NAME }}"
         SERVICE_NAME="cherrypick-app"
         
-        echo "🚀 Deploying $APP_NAME..."
+        echo "🚀 Starting deployment..."
         
         # Stop service
         sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
@@ -164,30 +204,27 @@ jobs:
         sudo systemctl start $SERVICE_NAME
         sudo systemctl enable $SERVICE_NAME
         
-        # Wait for startup
-        echo "⏳ Waiting for application startup..."
-        sleep 15
+        # Health check with timeout
+        echo "⏳ Waiting for application..."
+        sleep 20
         
-        # Health check
-        if curl -f http://localhost:8080/actuator/health >/dev/null 2>&1; then
-          echo "✅ Deployment successful!"
-        else
-          echo "❌ Health check failed - attempting rollback..."
-          sudo systemctl stop $SERVICE_NAME
-          BACKUP=$(ls -t /opt/$APP_NAME/$JAR_FILE.backup.* 2>/dev/null | head -1)
-          if [ -n "$BACKUP" ]; then
-            sudo cp "$BACKUP" "/opt/$APP_NAME/$JAR_FILE"
-            sudo systemctl start $SERVICE_NAME
-            echo "🔄 Rolled back to previous version"
+        for i in {1..10}; do
+          if curl -f --connect-timeout 3 http://localhost:8080/actuator/health >/dev/null 2>&1; then
+            echo "✅ Deployment successful!"
+            exit 0
           fi
-          exit 1
+          echo "Waiting... ($i/10)"
+          sleep 3
+        done
+        
+        # If we get here, health check failed
+        echo "❌ Health check failed - rolling back..."
+        sudo systemctl stop $SERVICE_NAME
+        BACKUP=$(ls -t /opt/$APP_NAME/$JAR_FILE.backup.* 2>/dev/null | head -1)
+        if [ -n "$BACKUP" ]; then
+          sudo cp "$BACKUP" "/opt/$APP_NAME/$JAR_FILE"
+          sudo systemctl start $SERVICE_NAME
+          echo "🔄 Rollback completed"
         fi
+        exit 1
         EOF
-
-    - name: Verify deployment
-      run: |
-        # Final health check
-        sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
-          ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} \
-          "curl -f http://localhost:8080/actuator/health"
-        echo "🎉 Deployment verified successfully!"
