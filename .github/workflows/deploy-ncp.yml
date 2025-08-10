@@ -372,10 +372,10 @@ jobs:
           echo "✅ NCP_SECURITY_GROUP_NO is set: '$NCP_SECURITY_GROUP_NO'"
         fi
 
-        # Force dynamic security group management - try multiple approaches
+        # Force dynamic security group management
         echo "🔧 FORCING dynamic security group management..."
         
-        if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ] && [ ${#NCP_ACCESS_KEY_ID} -gt 5 ]; then
+        if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ] && [ "${#NCP_ACCESS_KEY_ID}" -gt 5 ]; then
           echo "🔧 Setting up dynamic security group management..."
           
           # Install required tools
@@ -463,7 +463,6 @@ jobs:
           echo "$RUNNER_IP" > /tmp/added_runner_ip
           echo "$NCP_SECURITY_GROUP_NO" > /tmp/security_group_no
           
-          # Add the rule
           # Try to add the security rule
           if add_security_rule "$RUNNER_IP"; then
             echo "security_rule_added=true" >> $GITHUB_OUTPUT
@@ -497,19 +496,17 @@ jobs:
           echo "🔧 Adding GitHub Actions IP ranges to allow deployment..."
           
           # List of GitHub Actions IP ranges that should be pre-configured
-          cat << EOF
-📋 Please ensure these IP ranges are added to NCP Security Group $NCP_SECURITY_GROUP_NO:
-   
-   4.148.0.0/16     (TCP 22)
-   4.149.0.0/18     (TCP 22)  
-   4.149.64.0/19    (TCP 22)
-   4.149.96.0/19    (TCP 22)
-   4.149.128.0/17   (TCP 22)
-   20.171.0.0/16    (TCP 22)
-   172.184.0.0/16   (TCP 22)
-   
-💡 Add these ranges once and all future deployments will work automatically.
-EOF
+          echo "Please ensure these IP ranges are added to NCP Security Group $NCP_SECURITY_GROUP_NO:"
+          echo ""
+          echo "   4.148.0.0/16     (TCP 22)"
+          echo "   4.149.0.0/18     (TCP 22)"  
+          echo "   4.149.64.0/19    (TCP 22)"
+          echo "   4.149.96.0/19    (TCP 22)"
+          echo "   4.149.128.0/17   (TCP 22)"
+          echo "   20.171.0.0/16    (TCP 22)"
+          echo "   172.184.0.0/16   (TCP 22)"
+          echo ""
+          echo "Add these ranges once and all future deployments will work automatically."
           echo "security_rule_added=false" >> $GITHUB_OUTPUT
         fi
         
