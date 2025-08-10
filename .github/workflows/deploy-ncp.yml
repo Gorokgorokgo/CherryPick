@@ -421,7 +421,7 @@ jobs:
           # Install required tools
           sudo apt-get update -qq && sudo apt-get install -y jq curl openssl
           
-          # Create NCP API signature
+          # Create NCP API signature (corrected version)
           create_ncp_signature() {
             local method="$1"
             local url="$2"
@@ -429,25 +429,35 @@ jobs:
             local access_key="$4"
             local secret_key="$5"
             
-            message="$method $url\n$timestamp\n$access_key"
-            signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
+            # NCP API signature format: METHOD SPACE URI NEWLINE TIMESTAMP NEWLINE ACCESS_KEY
+            local message="${method} ${url}\n${timestamp}\n${access_key}"
+            local signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
+            
+            echo "🔐 Signature details:"
+            echo "  - Method: '$method'"
+            echo "  - URL: '$url'"  
+            echo "  - Timestamp: '$timestamp'"
+            echo "  - Access Key: '${access_key:0:10}...'"
+            echo "  - Message: '$message'"
+            echo "  - Signature: '$signature'"
+            
             echo "$signature"
           }
           
           # Add current runner IP to security group - try all possible endpoints
           add_security_rule() {
             local ip="$1"
+            # NCP API timestamp in ISO 8601 format
             local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
             local method="POST"
             
             echo "🚀 Adding IP $ip/32 to security group $NCP_SECURITY_GROUP_NO..."
             echo "🔄 Will try multiple NCP API endpoints..."
             
-            # Correct NCP API endpoints based on official documentation
+            # NCP API endpoints - VPC first, then Classic fallback
             local endpoints=(
               "/vserver/v2/addAccessControlGroupInboundRule"
-              "/vserver/v2/addAccessControlGroupRule" 
-              "/vpc/v2/addAccessControlGroupInboundRule"
+              "/vserver/v2/addAccessControlGroupRule"
               "/server/v2/addServerSecurityGroupInboundRule"
             )
             
@@ -457,13 +467,13 @@ jobs:
               # Create signature
               signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
               
-              # Create appropriate payload based on endpoint
+              # Create appropriate payload based on endpoint type
               local payload
-              if [[ "$url" == *"server"* ]]; then
-                # Classic Server API payload
+              if [[ "$url" == *"ServerSecurityGroup"* ]]; then
+                # Classic Server API payload (only for serverSecurityGroup endpoints)
                 payload="{
                   \"regionCode\": \"KR\",
-                  \"serverInstanceNo\": \"$NCP_SECURITY_GROUP_NO\",
+                  \"serverSecurityGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
                   \"serverSecurityGroupRuleList\": [
                     {
                       \"protocolTypeCode\": \"TCP\",
@@ -474,7 +484,7 @@ jobs:
                   ]
                 }"
               else
-                # VPC API payload  
+                # VPC Access Control Group API payload (for all ACG endpoints)
                 payload="{
                   \"regionCode\": \"KR\",
                   \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
@@ -492,14 +502,21 @@ jobs:
               
               echo "Using payload for $url: $payload"
               
-              # API call 
+              # API call with proper NCP headers
+              echo "📤 Making API call to: https://ncloud.apigw.ntruss.com$url"
+              echo "📤 Headers:"
+              echo "  - x-ncp-apigw-timestamp: $timestamp"
+              echo "  - x-ncp-iam-access-key: ${NCP_ACCESS_KEY_ID:0:10}..."
+              echo "  - x-ncp-apigw-signature-v2: $signature"
+              
               response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
                 "https://ncloud.apigw.ntruss.com$url" \
                 -H "x-ncp-apigw-timestamp: $timestamp" \
                 -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
                 -H "x-ncp-apigw-signature-v2: $signature" \
-                -H "Content-Type: application/json" \
-                -d "$payload")
+                -H "Content-Type: application/json; charset=utf-8" \
+                -H "Accept: application/json" \
+                --data-raw "$payload")
               
               # Parse response
               http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
