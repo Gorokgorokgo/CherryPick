@@ -1,4 +1,4 @@
-name: Deploy to NCP (Naver Cloud Platform)
+name: Deploy to NCP (Self-hosted)
 
 on:
   push:
@@ -14,15 +14,13 @@ permissions:
   pull-requests: write
 
 env:
-  # 애플리케이션 설정
   APP_NAME: cherrypick
   JAR_FILE: CherryPick-0.0.1-SNAPSHOT.jar
-  DOCKER_IMAGE: cherrypick-app
 
 jobs:
   test:
     name: Run Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # 테스트는 GitHub-hosted runner 사용 (Docker services 필요)
     
     services:
       postgres:
@@ -61,18 +59,6 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-          .gradle/caches
-          .gradle/wrapper
-        key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          gradle-${{ runner.os }}-
-
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
@@ -102,1277 +88,235 @@ jobs:
         PROMOTION_END_DATE=2025-12-31
         EOF
 
-    - name: Run tests with parallel execution
-      run: |
-        ./gradlew test --parallel --build-cache --configure-on-demand
+    - name: Run tests
+      run: ./gradlew test --parallel --build-cache
       env:
         SPRING_PROFILES_ACTIVE: test
-        GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4 -Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
+        JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
-      if: success() || failure()
+      if: always()
       with:
         name: test-results
         path: build/test-results/test/*.xml
-        retention-days: 30
+        retention-days: 7
 
-    - name: Test Summary
-      if: success() || failure()
-      run: |
-        if [ -d "build/test-results/test" ]; then
-          echo "📊 Test Results Summary:"
-          find build/test-results/test -name "*.xml" | wc -l | xargs echo "Test files found:"
-          if grep -r "failures=" build/test-results/test/*.xml | grep -v 'failures="0"' > /dev/null 2>&1; then
-            echo "❌ Some tests failed"
-            grep -r "failures=" build/test-results/test/*.xml | grep -v 'failures="0"'
-          else
-            echo "✅ All tests passed"
-          fi
-        else
-          echo "⚠️ No test results found"
-        fi
-
-  build:
-    name: Build Application
-    runs-on: ubuntu-latest
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: self-hosted  # 🎯 Self-hosted runner 사용!
     needs: test
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main'
+    environment: production
 
     steps:
+    - name: Cleanup workspace
+      run: |
+        # 이전 빌드 결과 정리
+        rm -rf $GITHUB_WORKSPACE/* || true
+        rm -rf $GITHUB_WORKSPACE/.[!.]* || true
+
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Set up JDK 17
-      id: setup-java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
-
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-          .gradle/caches
-          .gradle/wrapper
-        key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          gradle-${{ runner.os }}-
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build application with optimization
+    - name: Build application
       run: |
-        echo "🚀 Starting build process..."
+        echo "🚀 Starting build on self-hosted runner..."
         echo "Java version: $(java -version 2>&1 | head -1)"
-        echo "Gradle version: $(./gradlew --version | grep Gradle)"
-        ./gradlew clean bootJar --parallel --build-cache --configure-on-demand --info
+        echo "JAVA_HOME: $JAVA_HOME"
+        echo "Hostname: $(hostname)"
+        echo "User: $(whoami)"
+        
+        # Gradle 빌드
+        ./gradlew clean bootJar --parallel --no-daemon --info
       env:
-        GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.workers.max=4 -Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        GRADLE_OPTS: "-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64"
 
-    - name: Verify build output
+    - name: Verify build
       run: |
-        echo "🔍 Checking build output..."
-        ls -la build/ || echo "build directory not found"
-        ls -la build/libs/ || echo "build/libs directory not found"
-        if [ -f "build/libs/${{ env.JAR_FILE }}" ]; then
-          echo "✅ JAR file found: $(ls -lh build/libs/${{ env.JAR_FILE }})"
-        else
-          echo "❌ JAR file not found: ${{ env.JAR_FILE }}"
-          echo "Available files in build/libs/:"
-          ls -la build/libs/ || echo "No files found"
+        if [ ! -f "build/libs/${{ env.JAR_FILE }}" ]; then
+          echo "❌ Build failed: JAR not found"
+          ls -la build/libs/ || echo "build/libs directory not found"
           exit 1
         fi
+        echo "✅ Build success: $(ls -lh build/libs/${{ env.JAR_FILE }})"
 
-    - name: Create deployment artifact
+    - name: Create production environment
       run: |
-        mkdir -p deploy
-        cp build/libs/${{ env.JAR_FILE }} deploy/
-        cp docker-compose.prod.yml deploy/ || echo "docker-compose.prod.yml not found, skipping"
-        cp -r scripts deploy/ || echo "scripts directory not found, skipping"
-        
-        # Create deployment script
-        cat > deploy/deploy.sh << 'EOF'
-        #!/bin/bash
-        set -e
-        
-        APP_NAME="cherrypick"
-        JAR_FILE="CherryPick-0.0.1-SNAPSHOT.jar"
-        SERVICE_NAME="cherrypick-app"
-        
-        echo "🚀 Starting deployment of $APP_NAME..."
-        
-        # Stop existing service
-        sudo systemctl stop $SERVICE_NAME || echo "Service was not running"
-        
-        # Create comprehensive backup
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        if [ -f "/opt/$APP_NAME/$JAR_FILE" ]; then
-            echo "📦 Creating backup: $JAR_FILE.backup.$TIMESTAMP"
-            sudo cp "/opt/$APP_NAME/$JAR_FILE" "/opt/$APP_NAME/$JAR_FILE.backup.$TIMESTAMP"
-            
-            # Verify backup was created successfully
-            if [ ! -f "/opt/$APP_NAME/$JAR_FILE.backup.$TIMESTAMP" ]; then
-                echo "❌ Backup creation failed!"
-                exit 1
-            fi
-            
-            # Keep only last 5 backups to save space
-            sudo find "/opt/$APP_NAME" -name "$JAR_FILE.backup.*" -type f | sort -r | tail -n +6 | sudo xargs rm -f
-            echo "✅ Backup created and old backups cleaned"
-        fi
-        
-        # Backup environment file
-        if [ -f "/opt/$APP_NAME/.env.prod" ]; then
-            sudo cp "/opt/$APP_NAME/.env.prod" "/opt/$APP_NAME/.env.prod.backup.$TIMESTAMP"
-            echo "✅ Environment file backed up"
-        fi
-        
-        # Deploy new version
-        sudo mkdir -p /opt/$APP_NAME
-        sudo cp $JAR_FILE /opt/$APP_NAME/
-        sudo chown cherrypick:cherrypick /opt/$APP_NAME/$JAR_FILE
-        sudo chmod 755 /opt/$APP_NAME/$JAR_FILE
-        
-        # Start service
-        sudo systemctl start $SERVICE_NAME
-        sudo systemctl enable $SERVICE_NAME
-        
-        # Health check with exponential backoff
-        echo "⏳ Waiting for application to start..."
-        for i in {1..20}; do
-            if curl -f --connect-timeout 3 --max-time 10 http://localhost:8080/actuator/health > /dev/null 2>&1; then
-                echo "✅ Application is healthy!"
-                break
-            fi
-            # Exponential backoff: 2, 4, 6, 8, 10, then 10s intervals
-            wait_time=$((i <= 5 ? i * 2 : 10))
-            echo "Waiting ${wait_time}s... ($i/20)"
-            sleep $wait_time
-        done
-        
-        if ! curl -f --connect-timeout 5 --max-time 15 http://localhost:8080/actuator/health > /dev/null 2>&1; then
-            echo "❌ Health check failed! Initiating automatic rollback..."
-            
-            # Stop failed service
-            sudo systemctl stop $SERVICE_NAME
-            
-            # Find and restore latest backup
-            LATEST_BACKUP=$(ls -t /opt/$APP_NAME/$JAR_FILE.backup.* 2>/dev/null | head -1)
-            if [ -n "$LATEST_BACKUP" ]; then
-                echo "🔄 Rolling back to: $(basename $LATEST_BACKUP)"
-                sudo cp "$LATEST_BACKUP" "/opt/$APP_NAME/$JAR_FILE"
-                sudo chown cherrypick:cherrypick "/opt/$APP_NAME/$JAR_FILE"
-                
-                # Restore environment file if exists
-                ENV_BACKUP="${LATEST_BACKUP//$JAR_FILE/.env.prod}"
-                if [ -f "$ENV_BACKUP" ]; then
-                    sudo cp "$ENV_BACKUP" "/opt/$APP_NAME/.env.prod"
-                    sudo chown cherrypick:cherrypick "/opt/$APP_NAME/.env.prod"
-                    sudo chmod 600 "/opt/$APP_NAME/.env.prod"
-                fi
-                
-                # Start service with old version
-                sudo systemctl start $SERVICE_NAME
-                sleep 15
-                
-                # Verify rollback worked
-                if curl -f --connect-timeout 5 --max-time 10 http://localhost:8080/actuator/health > /dev/null 2>&1; then
-                    echo "✅ Automatic rollback successful!"
-                    echo "⚠️  Deployment failed but service restored to previous version"
-                    exit 2  # Exit with different code to indicate rollback occurred
-                else
-                    echo "❌ Automatic rollback also failed!"
-                    exit 1
-                fi
-            else
-                echo "❌ No backup found for rollback!"
-                exit 1
-            fi
-        fi
-        
-        echo "🎉 Deployment completed successfully!"
-        EOF
-        
-        chmod +x deploy/deploy.sh
-
-    - name: Upload deployment artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: deployment-package
-        path: deploy/
-        retention-days: 30
-
-  deploy:
-    name: Deploy to NCP Server
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    environment: 
-      name: production
-
-    steps:
-    - name: Download deployment artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: deployment-package
-        path: deploy/
-
-    - name: Setup GitHub Actions IP whitelist for NCP
-      id: setup-ip
-      env:
-        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
-        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
-      run: |
-        # Get current runner IP
-        RUNNER_IP=$(curl -s ifconfig.me)
-        echo "🌐 Current GitHub Actions Runner IP: $RUNNER_IP"
-        echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
-        
-        if [ -z "$RUNNER_IP" ]; then
-          echo "❌ Failed to get runner IP"
-          exit 1
-        fi
-        
-        # Validate IP format
-        if ! echo "$RUNNER_IP" | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; then
-          echo "❌ Invalid IP format: $RUNNER_IP"
-          exit 1
-        fi
-        
-        # Debug: Check if required secrets are available
-        echo "🔍 Checking NCP API credentials..."
-        if [ -z "$NCP_ACCESS_KEY_ID" ]; then
-          echo "❌ NCP_ACCESS_KEY_ID secret is missing"
-        else
-          echo "✅ NCP_ACCESS_KEY_ID is set (${NCP_ACCESS_KEY_ID:0:8}...)"
-        fi
-        
-        if [ -z "$NCP_SECRET_ACCESS_KEY" ]; then
-          echo "❌ NCP_SECRET_ACCESS_KEY secret is missing" 
-        else
-          echo "✅ NCP_SECRET_ACCESS_KEY is set (${NCP_SECRET_ACCESS_KEY:0:8}...)"
-        fi
-        
-        if [ -z "$NCP_SECURITY_GROUP_NO" ]; then
-          echo "❌ NCP_SECURITY_GROUP_NO secret is missing"
-        else
-          echo "✅ NCP_SECURITY_GROUP_NO is set: $NCP_SECURITY_GROUP_NO"
-        fi
-
-        # Dynamic security group management via NCP API
-        if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ]; then
-          echo "🔧 Setting up dynamic security group management..."
-          
-          # Install required tools
-          sudo apt-get update -qq && sudo apt-get install -y jq curl openssl
-          
-          # Create NCP API signature
-          create_ncp_signature() {
-            local method="$1"
-            local url="$2"
-            local timestamp="$3"
-            local access_key="$4"
-            local secret_key="$5"
-            
-            message="$method $url\n$timestamp\n$access_key"
-            signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
-            echo "$signature"
-          }
-          
-          # Add current runner IP to security group
-          add_security_rule() {
-            local ip="$1"
-            local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-            local method="POST"
-            
-            echo "🚀 Adding IP $ip/32 to security group $NCP_SECURITY_GROUP_NO..."
-            
-            # Try VPC API first (for Access Control Group)
-            local url="/vpc/v2/addAccessControlGroupInboundRule"
-            echo "🔄 Trying VPC API endpoint..."
-            
-            # Create signature
-            signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
-            
-            # Debug: Show what we're about to send
-            echo "📤 API Request Details:"
-            echo "  URL: https://ncloud.apigw.ntruss.com$url"
-            echo "  Method: POST"
-            echo "  Access Key: ${NCP_ACCESS_KEY_ID:0:8}..."
-            echo "  Security Group: $NCP_SECURITY_GROUP_NO"
-            echo "  IP to add: $ip/32"
-            echo "  Timestamp: $timestamp"
-            
-            # API call with better error handling
-            response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-              "https://ncloud.apigw.ntruss.com$url" \
-              -H "x-ncp-apigw-timestamp: $timestamp" \
-              -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
-              -H "x-ncp-apigw-signature-v2: $signature" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"regionCode\": \"KR\",
-                \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
-                \"accessControlGroupRuleList\": [
-                  {
-                    \"protocolTypeCode\": \"TCP\",
-                    \"ipBlock\": \"$ip/32\",
-                    \"portRange\": \"22\",
-                    \"accessControlGroupRuleDescription\": \"GitHub Actions Runner - $(date +%Y%m%d_%H%M%S)\"
-                  }
-                ]
-              }")
-            
-            # Parse response
-            http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
-            response_body=$(echo "$response" | sed '$d')
-            
-            echo "📥 API Response:"
-            echo "  HTTP Code: $http_code"
-            echo "  Response Body: $response_body"
-            
-            if [ "$http_code" = "200" ]; then
-              echo "✅ Successfully added IP $ip/32 to security group (VPC API)"
-              echo "$response_body" | jq -r '.returnMessage // "No message"' 2>/dev/null || echo "Response parsing failed"
-              return 0
-            else
-              echo "⚠️ VPC API failed with HTTP $http_code, trying Classic API..."
-              
-              # Try Classic API (for Security Group)
-              url="/server/v2/addServerSecurityGroupInboundRule"
-              echo "🔄 Trying Classic API endpoint..."
-              
-              signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
-              
-              echo "📤 Classic API Request Details:"
-              echo "  URL: https://ncloud.apigw.ntruss.com$url"
-              
-              # Classic API call
-              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-                "https://ncloud.apigw.ntruss.com$url" \
-                -H "x-ncp-apigw-timestamp: $timestamp" \
-                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
-                -H "x-ncp-apigw-signature-v2: $signature" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \"regionNo\": \"1\",
-                  \"serverSecurityGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
-                  \"serverSecurityGroupRuleList\": [
-                    {
-                      \"protocolTypeCode\": \"TCP\",
-                      \"ipBlock\": \"$ip/32\",
-                      \"portRange\": \"22\"
-                    }
-                  ]
-                }")
-              
-              http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
-              response_body=$(echo "$response" | sed '$d')
-              
-              echo "📥 Classic API Response:"
-              echo "  HTTP Code: $http_code"
-              echo "  Response Body: $response_body"
-              
-              if [ "$http_code" = "200" ]; then
-                echo "✅ Successfully added IP $ip/32 to security group (Classic API)"
-                return 0
-              else
-                echo "❌ Both VPC and Classic APIs failed"
-                echo "🔍 Troubleshooting steps:"
-                echo "  1. Verify NCP_SECURITY_GROUP_NO value in GitHub Secrets"
-                echo "  2. Check API key permissions in NCP Console"
-                echo "  3. Confirm Security Group/ACG exists"
-                echo "  4. Try manual IP addition: $ip/32 port 22"
-                return 1
-              fi
-            fi
-          }
-          
-          # Store rule info for cleanup
-          echo "$RUNNER_IP" > /tmp/added_runner_ip
-          echo "$NCP_SECURITY_GROUP_NO" > /tmp/security_group_no
-          
-          # Add the rule
-          if add_security_rule "$RUNNER_IP"; then
-            echo "security_rule_added=true" >> $GITHUB_OUTPUT
-            echo "⏳ Waiting 10 seconds for security group changes to propagate..."
-            sleep 10
-          else
-            echo "security_rule_added=false" >> $GITHUB_OUTPUT
-            echo "⚠️ API-based security group management failed"
-            echo ""
-            echo "🚨 MANUAL ACTION REQUIRED:"
-            echo "   Please add the following IP to your NCP Security Group/ACG:"
-            echo "   IP: $RUNNER_IP/32"
-            echo "   Protocol: TCP"
-            echo "   Port: 22"
-            echo ""
-            echo "⏰ You have 2 minutes to add this rule manually..."
-            echo "   The workflow will continue and may fail if not added."
-            sleep 120  # Give user time to manually add the rule
-          fi
-          
-        else
-          echo "💡 NCP API credentials not configured, using pre-configured security group"
-          echo "security_rule_added=false" >> $GITHUB_OUTPUT
-        fi
-        
-        echo "📍 Deployment will use runner IP: $RUNNER_IP"
-
-    - name: Setup SSH connection (Key + Password)
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-        NCP_SERVER_PASSWORD: ${{ secrets.NCP_SERVER_PASSWORD }}
-      run: |
-        # Install sshpass for password authentication
-        sudo apt-get update && sudo apt-get install -y sshpass
-        
-        # Setup SSH key
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        echo "${{ secrets.NCP_SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        
-        # Set default port if not specified
-        SSH_PORT=${NCP_SERVER_PORT:-22}
-        echo "🔗 Connecting to $NCP_SERVER_HOST:$SSH_PORT with SSH key + password authentication"
-        
-        # Create SSH config for this host (NCP requires both key and password)
-        cat >> ~/.ssh/config << EOF
-        Host $NCP_SERVER_HOST
-          StrictHostKeyChecking no
-          UserKnownHostsFile /dev/null
-          Port $SSH_PORT
-          IdentityFile ~/.ssh/id_rsa
-          PasswordAuthentication yes
-          PreferredAuthentications publickey,password
-        EOF
-        
-        chmod 600 ~/.ssh/config
-        
-        # Test connection (SSH key + password required for NCP)
-        echo "🧪 Testing SSH connection with key + password..."
-        echo "📍 Server info: $NCP_SERVER_USER@$NCP_SERVER_HOST:$SSH_PORT"
-        
-        # Enhanced connectivity testing with multiple fallbacks
-        echo "🔍 Multi-phase connectivity testing to $NCP_SERVER_HOST:$SSH_PORT"
-        
-        # Phase 1: Basic TCP connectivity with retries
-        echo "📡 Phase 1: Testing TCP connectivity..."
-        CONNECT_SUCCESS=false
-        for attempt in {1..5}; do
-          echo "  Attempt $attempt/5..."
-          if timeout 15 bash -c "echo >/dev/tcp/$NCP_SERVER_HOST/$SSH_PORT" 2>/dev/null; then
-            echo "✅ TCP connection successful on attempt $attempt"
-            CONNECT_SUCCESS=true
-            break
-          fi
-          echo "  ⚠️ Attempt $attempt failed, retrying in 10 seconds..."
-          sleep 10
-        done
-        
-        if [ "$CONNECT_SUCCESS" = false ]; then
-          echo "❌ All TCP connection attempts failed"
-          echo "🔍 Troubleshooting checklist:"
-          echo "  1. Check NCP Security Group for IP: $(curl -s ifconfig.me)"
-          echo "  2. Add GitHub Actions IP ranges to security group:"
-          curl -s https://api.github.com/meta | jq -r '.actions[]' | head -5 | sed 's/^/     /'
-          echo "  3. Verify server is running and SSH service is active"
-          echo "  4. Check firewall settings on server"
-          exit 1
-        fi
-        
-        # Phase 2: SSH authentication test with intelligent retries
-        echo "🔐 Phase 2: SSH authentication testing..."
-        SSH_SUCCESS=false
-        for attempt in {1..3}; do
-          echo "  SSH attempt $attempt/3..."
-          
-          # Try SSH with different timeout strategies
-          if sshpass -p "$NCP_SERVER_PASSWORD" ssh \
-            -o ConnectTimeout=30 \
-            -o ServerAliveInterval=10 \
-            -o ServerAliveCountMax=3 \
-            -o BatchMode=yes \
-            -o StrictHostKeyChecking=no \
-            -i ~/.ssh/id_rsa \
-            $NCP_SERVER_USER@$NCP_SERVER_HOST \
-            "echo 'SSH-Test-$attempt-OK' && exit 0" 2>/dev/null; then
-            echo "✅ SSH authentication successful on attempt $attempt"
-            SSH_SUCCESS=true
-            break
-          fi
-          
-          # Progressive backoff: 5s, 15s, 30s
-          wait_time=$((attempt * 10 + 5))
-          echo "  ⚠️ SSH attempt $attempt failed, waiting ${wait_time}s before retry..."
-          sleep $wait_time
-        done
-        
-        if [ "$SSH_SUCCESS" = false ]; then
-          echo "❌ All SSH connection attempts failed"
-          echo "🔍 Authentication troubleshooting:"
-          echo "  1. Verify NCP_SERVER_PASSWORD is correct"
-          echo "  2. Check NCP_SERVER_SSH_KEY contains the full private key"
-          echo "  3. Ensure username '$NCP_SERVER_USER' has sudo privileges"
-          echo "  4. Try manual connection: ssh -i key.pem $NCP_SERVER_USER@$NCP_SERVER_HOST"
-          
-          # Final diagnostic attempt
-          echo "🩺 Running final diagnostics..."
-          sshpass -p "$NCP_SERVER_PASSWORD" ssh -vv \
-            -o ConnectTimeout=10 \
-            -o BatchMode=yes \
-            -i ~/.ssh/id_rsa \
-            $NCP_SERVER_USER@$NCP_SERVER_HOST \
-            "echo diagnostic-test" 2>&1 | head -20 || true
-            
-          exit 1
-        fi
-        
-        echo "🎉 SSH connection fully validated and ready for deployment!"
-
-    - name: Create production environment file on server
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        echo "🔧 Creating production environment..."
         sudo mkdir -p /opt/cherrypick
-        sudo tee /opt/cherrypick/.env.prod > /dev/null << 'ENVEOF'
-        # ========================================
-        # CherryPick NCP 운영 환경 변수
-        # ========================================
-
-        # 데이터베이스 설정 (NCP Cloud DB PostgreSQL)
+        
+        # 환경 파일 생성 (self-hosted runner에서 직접)
+        sudo tee /opt/cherrypick/.env.prod > /dev/null << 'EOF'
+        # Database
         DB_HOST=${{ secrets.NCP_DB_HOST }}
         DB_PORT=${{ secrets.NCP_DB_PORT }}
         DB_NAME=${{ secrets.NCP_DB_NAME }}
         DB_USERNAME=${{ secrets.NCP_DB_USERNAME }}
         DB_PASSWORD=${{ secrets.NCP_DB_PASSWORD }}
 
-        # Redis 설정 (NCP Cloud Redis)
+        # Redis
         REDIS_HOST=${{ secrets.NCP_REDIS_HOST }}
         REDIS_PORT=${{ secrets.NCP_REDIS_PORT }}
         REDIS_PASSWORD=${{ secrets.NCP_REDIS_PASSWORD }}
 
-        # JWT 토큰 설정 (운영용)
+        # JWT
         JWT_SECRET=${{ secrets.JWT_SECRET }}
         JWT_EXPIRATION=${{ secrets.JWT_EXPIRATION }}
 
-        # NCP Object Storage 설정 (S3 호환)
+        # NCP Object Storage
         AWS_REGION=${{ secrets.NCP_REGION }}
         AWS_ACCESS_KEY_ID=${{ secrets.NCP_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY=${{ secrets.NCP_SECRET_ACCESS_KEY }}
         AWS_S3_BUCKET=${{ secrets.NCP_OBJECT_STORAGE_BUCKET }}
 
-        # 애플리케이션 설정
+        # Application
         SPRING_PROFILES_ACTIVE=prod
         SERVER_PORT=8080
-
-        # 로깅 설정 (운영용 - 최적화됨)
         LOGGING_LEVEL_ROOT=INFO
-        LOGGING_LEVEL_CHERRYPICK=INFO
-        LOGGING_LEVEL_SQL=WARN
 
-        # ========================================
-        # 비즈니스 설정 (수수료 등)
-        # ========================================
-
-        # 기본 수수료율
+        # Business
         COMMISSION_RATE=${{ secrets.COMMISSION_RATE }}
-
-        # 신규 사용자 무료 기간 (일 단위)
         NEW_USER_FREE_DAYS=${{ secrets.NEW_USER_FREE_DAYS }}
-
-        # 프로모션 설정
         PROMOTION_ENABLED=${{ secrets.PROMOTION_ENABLED }}
         PROMOTION_RATE=${{ secrets.PROMOTION_RATE }}
         PROMOTION_END_DATE=${{ secrets.PROMOTION_END_DATE }}
-        ENVEOF
-        sudo chown cherrypick:cherrypick /opt/cherrypick/.env.prod
+        EOF
+        
+        sudo chown ubuntu:ubuntu /opt/cherrypick/.env.prod
         sudo chmod 600 /opt/cherrypick/.env.prod
-        EOF
+        echo "✅ Environment file created"
 
-    - name: Pre-deployment validation
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
+    - name: Deploy application
       run: |
-        echo "🔍 Pre-deployment validation started..."
+        echo "🚀 Starting deployment..."
         
-        # Test SSH connectivity
-        ssh -p ${NCP_SERVER_PORT:-22} -o ConnectTimeout=10 -o BatchMode=yes $NCP_SERVER_USER@$NCP_SERVER_HOST "echo 'SSH connection successful'"
-        
-        # Check server resources
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-        echo "💾 Checking system resources:"
-        
-        # Check disk space (minimum 1GB free)
-        AVAILABLE_SPACE=$(df /opt 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
-        if [ "$AVAILABLE_SPACE" -lt 1048576 ]; then
-          echo "❌ Insufficient disk space: ${AVAILABLE_SPACE}KB available"
-          exit 1
+        # 백업 생성
+        if [ -f "/opt/cherrypick/${{ env.JAR_FILE }}" ]; then
+          echo "📦 Creating backup..."
+          sudo cp "/opt/cherrypick/${{ env.JAR_FILE }}" \
+            "/opt/cherrypick/${{ env.JAR_FILE }}.backup.$(date +%Y%m%d_%H%M%S)"
+          # 오래된 백업 정리 (최근 5개만 보관)
+          sudo find /opt/cherrypick -name "*.backup.*" -type f | sort -r | tail -n +6 | sudo xargs rm -f || true
+          echo "✅ Backup created"
         fi
-        echo "✅ Disk space: ${AVAILABLE_SPACE}KB available"
-        
-        # Check memory (minimum 512MB free)
-        AVAILABLE_MEM=$(free | awk 'NR==2{printf "%.0f", $7/1024}')
-        if [ "$AVAILABLE_MEM" -lt 512 ]; then
-          echo "❌ Insufficient memory: ${AVAILABLE_MEM}MB available"
-          exit 1
-        fi
-        echo "✅ Memory: ${AVAILABLE_MEM}MB available"
-        
-        # Check if Java 17 is available
-        if ! java -version 2>&1 | grep -q "openjdk version \"17"; then
-          echo "❌ Java 17 not found"
-          exit 1
-        fi
-        echo "✅ Java 17 available"
-        
-        # Check if cherrypick user exists
-        if ! id cherrypick >/dev/null 2>&1; then
-          echo "❌ User 'cherrypick' not found"
-          exit 1
-        fi
-        echo "✅ User 'cherrypick' exists"
-        
-        echo "✅ Pre-deployment validation passed"
-        EOF
 
-    - name: Copy deployment files to server
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        # Create deployment directory
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST "mkdir -p /tmp/cherrypick-deploy"
-        
-        # Copy files with verification
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" scp -i ~/.ssh/id_rsa -P ${NCP_SERVER_PORT:-22} -r deploy/* $NCP_SERVER_USER@$NCP_SERVER_HOST:/tmp/cherrypick-deploy/
-        
-        # Verify copied files
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-        echo "🔍 Verifying deployment files..."
-        cd /tmp/cherrypick-deploy
-        
-        # Check JAR file exists and is valid
-        if [ ! -f "CherryPick-0.0.1-SNAPSHOT.jar" ]; then
-          echo "❌ JAR file not found"
-          exit 1
-        fi
-        
-        # Check JAR file size (should be > 10MB for Spring Boot app)
-        JAR_SIZE=$(stat -f%z "CherryPick-0.0.1-SNAPSHOT.jar" 2>/dev/null || stat -c%s "CherryPick-0.0.1-SNAPSHOT.jar" 2>/dev/null || echo "0")
-        if [ "$JAR_SIZE" -lt 10485760 ]; then
-          echo "❌ JAR file too small: ${JAR_SIZE} bytes"
-          exit 1
-        fi
-        echo "✅ JAR file valid: ${JAR_SIZE} bytes"
-        
-        # Check deployment script
-        if [ ! -x "deploy.sh" ]; then
-          echo "❌ Deployment script not executable"
-          exit 1
-        fi
-        echo "✅ Deployment script ready"
-        
-        echo "✅ File verification passed"
-        EOF
+        # 서비스 중지
+        echo "🛑 Stopping service..."
+        sudo systemctl stop cherrypick-app || echo "Service was not running"
 
-    - name: Create systemd service file
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
+        # 새 버전 배포
+        echo "📦 Deploying new version..."
+        sudo cp "build/libs/${{ env.JAR_FILE }}" "/opt/cherrypick/"
+        sudo chown ubuntu:ubuntu "/opt/cherrypick/${{ env.JAR_FILE }}"
+        sudo chmod 755 "/opt/cherrypick/${{ env.JAR_FILE }}"
+
+        # systemd 서비스 파일 생성/업데이트
         sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
         [Unit]
         Description=CherryPick Auction Service
         After=network.target
-        
+
         [Service]
         Type=simple
-        User=cherrypick
-        Group=cherrypick
+        User=ubuntu
+        Group=ubuntu
         WorkingDirectory=/opt/cherrypick
         ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod CherryPick-0.0.1-SNAPSHOT.jar
         SuccessExitStatus=143
         TimeoutStopSec=10
         Restart=on-failure
         RestartSec=5
-        
+
         # Environment
         Environment="SPRING_PROFILES_ACTIVE=prod"
         EnvironmentFile=/opt/cherrypick/.env.prod
-        
+
         # Security
         NoNewPrivileges=true
-        PrivateTmp=true
         ProtectSystem=strict
         ProtectHome=true
         ReadWritePaths=/opt/cherrypick
-        
+
         # Logging
         StandardOutput=journal
         StandardError=journal
         SyslogIdentifier=cherrypick-app
-        
+
         [Install]
         WantedBy=multi-user.target
         SERVICEEOF
-        
+
+        # systemd 설정 새로고침 및 서비스 시작
         sudo systemctl daemon-reload
-        EOF
-
-    - name: Deploy application
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-        cd /tmp/cherrypick-deploy
-        chmod +x deploy.sh
-        ./deploy.sh
-        EOF
-
-    - name: Post-deployment service validation  
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        echo "🔍 Post-deployment validation started..."
-        
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-        echo "🔧 Checking system service status..."
-        
-        # Check if systemd service is active
-        if ! systemctl is-active --quiet cherrypick-app; then
-          echo "❌ Service is not active"
-          systemctl status cherrypick-app
-          exit 1
-        fi
-        echo "✅ Service is active"
-        
-        # Check if service is enabled
-        if ! systemctl is-enabled --quiet cherrypick-app; then
-          echo "⚠️  Service is not enabled (will not start on boot)"
-        else
-          echo "✅ Service is enabled"
-        fi
-        
-        # Check service logs for errors
-        if journalctl -u cherrypick-app --since "2 minutes ago" | grep -i "error\|exception\|failed" > /tmp/service_errors.log; then
-          echo "⚠️  Found errors in service logs:"
-          cat /tmp/service_errors.log
-        else
-          echo "✅ No critical errors in recent logs"
-        fi
-        
-        # Check if application port is listening
-        if ! ss -tulpn | grep -q ":8080"; then
-          echo "❌ Application not listening on port 8080"
-          exit 1
-        fi
-        echo "✅ Application listening on port 8080"
-        
-        echo "✅ Service validation completed"
-        EOF
-
-    - name: Verify deployment
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-      run: |
-        echo "🔍 Verifying deployment..."
-        for i in {1..15}; do
-          if curl -f -s --connect-timeout 5 --max-time 10 http://$NCP_SERVER_HOST:8080/actuator/health | grep -q "UP"; then
-            echo "✅ Deployment verification successful!"
-            echo "📊 Application Info:"
-            curl -s --connect-timeout 3 --max-time 5 http://$NCP_SERVER_HOST:8080/actuator/info || echo "Info endpoint not available"
-            echo "🏥 Health Status:"
-            curl -s --connect-timeout 3 --max-time 5 http://$NCP_SERVER_HOST:8080/actuator/health | jq . || echo "Health details unavailable"
-            exit 0
-          fi
-          # Exponential backoff: 3, 6, 9, 12, 15s max
-          wait_time=$((i <= 5 ? i * 3 : 15))
-          echo "Waiting ${wait_time}s for service... ($i/15)"
-          sleep $wait_time
-        done
-        echo "❌ Deployment verification failed!"
-        echo "🔍 Debugging information:"
-        curl -v --connect-timeout 10 --max-time 20 http://$NCP_SERVER_HOST:8080/actuator/health || echo "Service unreachable"
-        exit 1
-
-    - name: Cleanup deployment files
-      if: always()
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-        rm -rf /tmp/cherrypick-deploy
-        EOF
-
-    - name: Handle deployment outcome
-      if: always()
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        if [ "${{ job.status }}" == "success" ]; then
-          echo "🎉 Successfully deployed CherryPick to NCP!"
-          echo "📱 Application URL: http://$NCP_SERVER_HOST:8080"
-          echo "🏥 Health Check: http://$NCP_SERVER_HOST:8080/actuator/health"
-          
-          # Log successful deployment
-          sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-          echo "$(date): Successful deployment from GitHub Actions" | sudo tee -a /opt/cherrypick/deployment.log
-          EOF
-          
-        else
-          echo "❌ Deployment failed. Checking rollback status..."
-          
-          # Check if automatic rollback occurred
-          sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-          if systemctl is-active --quiet cherrypick-app; then
-            if curl -f --connect-timeout 3 --max-time 5 http://localhost:8080/actuator/health >/dev/null 2>&1; then
-              echo "✅ Service is running - automatic rollback likely succeeded"
-              echo "$(date): Deployment failed, automatic rollback successful" | sudo tee -a /opt/cherrypick/deployment.log
-            else
-              echo "❌ Service not responding - rollback may have failed"
-              echo "$(date): Deployment and rollback both failed" | sudo tee -a /opt/cherrypick/deployment.log
-            fi
-          else
-            echo "❌ Service not running - deployment completely failed"
-            echo "$(date): Complete deployment failure" | sudo tee -a /opt/cherrypick/deployment.log
-          fi
-          EOF
-          
-          echo "🔍 Please check the logs and consider manual rollback if needed."
-          echo "💡 Use workflow_dispatch to trigger manual rollback if service is down."
-        fi
-
-    - name: Cleanup GitHub Actions IP from NCP Security Group
-      if: always()
-      env:
-        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
-        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
-      run: |
-        # Only cleanup if we added a security rule
-        if [ "${{ steps.setup-ip.outputs.security_rule_added }}" = "true" ]; then
-          echo "🧹 Cleaning up dynamically added security group rule..."
-          
-          RUNNER_IP="${{ steps.setup-ip.outputs.runner_ip }}"
-          
-          if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ] && [ -n "$RUNNER_IP" ]; then
-            # Install required tools if not already available
-            sudo apt-get update -qq && sudo apt-get install -y jq curl openssl 2>/dev/null || true
-            
-            # Create NCP API signature function
-            create_ncp_signature() {
-              local method="$1"
-              local url="$2"
-              local timestamp="$3"
-              local access_key="$4"
-              local secret_key="$5"
-              
-              message="$method $url\n$timestamp\n$access_key"
-              signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
-              echo "$signature"
-            }
-            
-            # Remove security rule
-            remove_security_rule() {
-              local ip="$1"
-              local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-              local method="POST"
-              local url="/vpc/v2/removeAccessControlGroupInboundRule"
-              
-              echo "🗑️ Removing IP $ip/32 from security group $NCP_SECURITY_GROUP_NO..."
-              
-              # Create signature
-              signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
-              
-              # API call to remove rule
-              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-                "https://ncloud.apigw.ntruss.com$url" \
-                -H "x-ncp-apigw-timestamp: $timestamp" \
-                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
-                -H "x-ncp-apigw-signature-v2: $signature" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \"regionCode\": \"KR\",
-                  \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
-                  \"accessControlGroupRuleList\": [
-                    {
-                      \"protocolTypeCode\": \"TCP\",
-                      \"ipBlock\": \"$ip/32\",
-                      \"portRange\": \"22\"
-                    }
-                  ]
-                }")
-              
-              # Parse response
-              http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
-              response_body=$(echo "$response" | sed '$d')
-              
-              if [ "$http_code" = "200" ]; then
-                echo "✅ Successfully removed IP $ip/32 from security group"
-                echo "$response_body" | jq -r '.returnMessage // "No message"'
-                return 0
-              else
-                echo "⚠️ Failed to remove IP rule (HTTP $http_code)"
-                echo "Response: $response_body"
-                echo "💡 Rule may need manual cleanup in NCP console"
-                return 1
-              fi
-            }
-            
-            # Attempt to remove the rule
-            if remove_security_rule "$RUNNER_IP"; then
-              echo "🎯 Security group cleanup completed successfully"
-            else
-              echo "⚠️ Security group cleanup failed - rule may persist"
-              echo "💡 Consider manual cleanup of IP $RUNNER_IP/32 from security group $NCP_SECURITY_GROUP_NO"
-            fi
-            
-          else
-            echo "⚠️ Missing credentials for security group cleanup"
-          fi
-        else
-          echo "💡 No dynamic security rule was added, skipping cleanup"
-        fi
-        
-        echo "🧹 Cleanup process completed"
-
-
-  rollback:
-    name: Rollback (Manual Trigger)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    environment: 
-      name: production
-
-    steps:
-    - name: Setup GitHub Actions IP for Rollback
-      id: setup-rollback-ip
-      env:
-        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
-        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
-      run: |
-        # Get current runner IP
-        RUNNER_IP=$(curl -s ifconfig.me)
-        echo "🌐 Current GitHub Actions Runner IP for rollback: $RUNNER_IP"
-        echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
-        
-        if [ -z "$RUNNER_IP" ]; then
-          echo "❌ Failed to get runner IP"
-          exit 1
-        fi
-        
-        # Dynamic security group management for rollback
-        if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ]; then
-          echo "🔧 Setting up dynamic security group for rollback..."
-          
-          sudo apt-get update -qq && sudo apt-get install -y jq curl openssl
-          
-          # Create NCP API signature function
-          create_ncp_signature() {
-            local method="$1"
-            local url="$2"
-            local timestamp="$3"
-            local access_key="$4"
-            local secret_key="$5"
-            
-            message="$method $url\n$timestamp\n$access_key"
-            signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
-            echo "$signature"
-          }
-          
-          # Add current runner IP for rollback
-          add_rollback_rule() {
-            local ip="$1"
-            local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-            local method="POST"
-            local url="/vpc/v2/addAccessControlGroupInboundRule"
-            
-            echo "🚀 Adding rollback IP $ip/32 to security group..."
-            
-            signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
-            
-            response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-              "https://ncloud.apigw.ntruss.com$url" \
-              -H "x-ncp-apigw-timestamp: $timestamp" \
-              -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
-              -H "x-ncp-apigw-signature-v2: $signature" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"regionCode\": \"KR\",
-                \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
-                \"accessControlGroupRuleList\": [
-                  {
-                    \"protocolTypeCode\": \"TCP\",
-                    \"ipBlock\": \"$ip/32\",
-                    \"portRange\": \"22\",
-                    \"accessControlGroupRuleDescription\": \"GitHub Actions Rollback - $(date +%Y%m%d_%H%M%S)\"
-                  }
-                ]
-              }")
-            
-            http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
-            response_body=$(echo "$response" | sed '$d')
-            
-            if [ "$http_code" = "200" ]; then
-              echo "✅ Successfully added rollback IP to security group"
-              return 0
-            else
-              echo "⚠️ Failed to add rollback IP (continuing anyway)"
-              return 1
-            fi
-          }
-          
-          if add_rollback_rule "$RUNNER_IP"; then
-            echo "security_rule_added=true" >> $GITHUB_OUTPUT
-            sleep 5
-          else
-            echo "security_rule_added=false" >> $GITHUB_OUTPUT
-          fi
-          
-        else
-          echo "💡 Using existing security group configuration for rollback"
-          echo "security_rule_added=false" >> $GITHUB_OUTPUT
-        fi
-    - name: Setup SSH connection for rollback (Key + Password)
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-        NCP_SERVER_PASSWORD: ${{ secrets.NCP_SERVER_PASSWORD }}
-      run: |
-        # Install sshpass for password authentication
-        sudo apt-get update && sudo apt-get install -y sshpass
-        
-        # Setup SSH key
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        echo "${{ secrets.NCP_SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        
-        # Set default port if not specified
-        SSH_PORT=${NCP_SERVER_PORT:-22}
-        echo "🔗 Connecting to $NCP_SERVER_HOST:$SSH_PORT for rollback with SSH key + password authentication"
-        
-        # Create SSH config for this host (NCP requires both key and password)
-        cat >> ~/.ssh/config << EOF
-        Host $NCP_SERVER_HOST
-          StrictHostKeyChecking no
-          UserKnownHostsFile /dev/null
-          Port $SSH_PORT
-          IdentityFile ~/.ssh/id_rsa
-          PasswordAuthentication yes
-          PreferredAuthentications publickey,password
-        EOF
-        
-        chmod 600 ~/.ssh/config
-        
-        # Test connection (SSH key + password required for NCP)
-        echo "🧪 Testing SSH connection for rollback with key + password..."
-        sshpass -p "$NCP_SERVER_PASSWORD" ssh -o ConnectTimeout=10 -i ~/.ssh/id_rsa $NCP_SERVER_USER@$NCP_SERVER_HOST "echo '✅ SSH connection successful for rollback'"
-
-    - name: Enhanced rollback to previous version
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
-        NCP_SERVER_USER: ${{ secrets.NCP_SERVER_USER }}
-        NCP_SERVER_PORT: ${{ secrets.NCP_SERVER_PORT }}
-      run: |
-        sshpass -p "${{ secrets.NCP_SERVER_PASSWORD }}" ssh -i ~/.ssh/id_rsa -p ${NCP_SERVER_PORT:-22} $NCP_SERVER_USER@$NCP_SERVER_HOST << 'EOF'
-        cd /opt/cherrypick
-        
-        echo "🔍 Listing available backups..."
-        ls -la *.backup.* 2>/dev/null || echo "No backups found"
-        
-        # Find latest backup
-        BACKUP_FILE=$(ls -t *.backup.* 2>/dev/null | head -1)
-        ENV_BACKUP="${BACKUP_FILE//CherryPick-0.0.1-SNAPSHOT.jar/.env.prod}"
-        
-        if [ -z "$BACKUP_FILE" ]; then
-            echo "❌ No backup file found for rollback!"
-            exit 1
-        fi
-        
-        echo "🔄 Rolling back to: $BACKUP_FILE"
-        echo "📦 Current application size: $(du -h CherryPick-0.0.1-SNAPSHOT.jar 2>/dev/null || echo 'N/A')"
-        echo "📦 Backup application size: $(du -h $BACKUP_FILE)"
-        
-        # Create pre-rollback snapshot
-        ROLLBACK_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        if [ -f "CherryPick-0.0.1-SNAPSHOT.jar" ]; then
-            sudo cp "CherryPick-0.0.1-SNAPSHOT.jar" "CherryPick-0.0.1-SNAPSHOT.jar.pre-rollback.$ROLLBACK_TIMESTAMP"
-            echo "📸 Created pre-rollback snapshot"
-        fi
-        
-        # Stop service gracefully
-        echo "🛑 Stopping service..."
-        sudo systemctl stop cherrypick-app || echo "Service was not running"
-        
-        # Wait for service to fully stop
-        for i in {1..10}; do
-            if ! systemctl is-active --quiet cherrypick-app; then
-                break
-            fi
-            echo "Waiting for service to stop... ($i/10)"
-            sleep 2
-        done
-        
-        # Restore application backup
-        sudo cp "$BACKUP_FILE" "CherryPick-0.0.1-SNAPSHOT.jar"
-        sudo chown cherrypick:cherrypick "CherryPick-0.0.1-SNAPSHOT.jar"
-        sudo chmod 755 "CherryPick-0.0.1-SNAPSHOT.jar"
-        
-        # Restore environment backup if exists
-        if [ -f "$ENV_BACKUP" ]; then
-            sudo cp "$ENV_BACKUP" ".env.prod"
-            sudo chown cherrypick:cherrypick ".env.prod"
-            sudo chmod 600 ".env.prod"
-            echo "✅ Environment file restored"
-        fi
-        
-        # Start service
-        echo "🚀 Starting service..."
-        sudo systemctl start cherrypick-app
         sudo systemctl enable cherrypick-app
-        
-        # Log rollback
-        echo "$(date): Manual rollback executed via GitHub Actions to $BACKUP_FILE" | sudo tee -a /opt/cherrypick/deployment.log
-        
-        echo "✅ Rollback process completed!"
-        EOF
+        sudo systemctl start cherrypick-app
 
-    - name: Verify rollback success
-      env:
-        NCP_SERVER_HOST: ${{ secrets.NCP_SERVER_HOST }}
+        echo "✅ Service started"
+
+    - name: Health check and rollback
       run: |
-        echo "🔍 Verifying rollback..."
+        echo "⏳ Health check..."
         
-        # Give service more time to fully start
-        for i in {1..20}; do
-          if curl -f -s --connect-timeout 5 --max-time 10 http://$NCP_SERVER_HOST:8080/actuator/health | grep -q "UP"; then
-            echo "✅ Rollback verification successful!"
-            echo "📊 Application Info:"
-            curl -s --connect-timeout 3 --max-time 5 http://$NCP_SERVER_HOST:8080/actuator/info || echo "Info endpoint not available"
-            echo "🏥 Health Status:"
-            curl -s --connect-timeout 3 --max-time 5 http://$NCP_SERVER_HOST:8080/actuator/health | jq . || echo "Health details unavailable"
-            exit 0
+        # 헬스체크 (30회 시도, 총 5분)
+        for i in {1..30}; do
+          if curl -f --connect-timeout 3 --max-time 10 http://localhost:8080/actuator/health >/dev/null 2>&1; then
+            echo "✅ Deployment successful!"
+            echo "📊 Service status:"
+            sudo systemctl status cherrypick-app --no-pager -l
+            echo ""
+            echo "🏥 Health check result:"
+            curl -s http://localhost:8080/actuator/health | jq . 2>/dev/null || echo "Health endpoint OK"
+            break
           fi
-          # Progressive wait: 5, 10, 15, 20, 25, 30s max
-          wait_time=$((i <= 6 ? i * 5 : 30))
-          echo "Waiting ${wait_time}s for rollback verification... ($i/20)"
-          sleep $wait_time
-        done
-        
-        echo "❌ Rollback verification failed!"
-        echo "🔍 Debugging rollback status:"
-        curl -v --connect-timeout 10 --max-time 20 http://$NCP_SERVER_HOST:8080/actuator/health || echo "Service unreachable after rollback"
-        exit 1
-
-    - name: Cleanup Rollback IP from NCP Security Group
-      if: always()
-      env:
-        NCP_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY_ID }}
-        NCP_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_ACCESS_KEY }}
-        NCP_SECURITY_GROUP_NO: ${{ secrets.NCP_SECURITY_GROUP_NO }}
-      run: |
-        # Only cleanup if we added a security rule for rollback
-        if [ "${{ steps.setup-rollback-ip.outputs.security_rule_added }}" = "true" ]; then
-          echo "🧹 Cleaning up rollback security group rule..."
           
-          RUNNER_IP="${{ steps.setup-rollback-ip.outputs.runner_ip }}"
-          
-          if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ] && [ -n "$RUNNER_IP" ]; then
-            sudo apt-get update -qq && sudo apt-get install -y jq curl openssl 2>/dev/null || true
+          if [ $i -eq 30 ]; then
+            echo "❌ Health check failed!"
+            echo "🔄 Attempting automatic rollback..."
             
-            # Create NCP API signature function
-            create_ncp_signature() {
-              local method="$1"
-              local url="$2"
-              local timestamp="$3"
-              local access_key="$4"
-              local secret_key="$5"
+            # 자동 롤백
+            sudo systemctl stop cherrypick-app
+            LATEST_BACKUP=$(ls -t /opt/cherrypick/*.backup.* 2>/dev/null | head -1)
+            if [ -n "$LATEST_BACKUP" ]; then
+              echo "🔄 Rolling back to: $(basename $LATEST_BACKUP)"
+              sudo cp "$LATEST_BACKUP" "/opt/cherrypick/${{ env.JAR_FILE }}"
+              sudo systemctl start cherrypick-app
+              sleep 15
               
-              message="$method $url\n$timestamp\n$access_key"
-              signature=$(echo -en "$message" | openssl dgst -sha256 -hmac "$secret_key" -binary | base64)
-              echo "$signature"
-            }
-            
-            # Remove rollback security rule
-            remove_rollback_rule() {
-              local ip="$1"
-              local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-              local method="POST"
-              local url="/vpc/v2/removeAccessControlGroupInboundRule"
-              
-              echo "🗑️ Removing rollback IP $ip/32 from security group..."
-              
-              signature=$(create_ncp_signature "$method" "$url" "$timestamp" "$NCP_ACCESS_KEY_ID" "$NCP_SECRET_ACCESS_KEY")
-              
-              response=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-                "https://ncloud.apigw.ntruss.com$url" \
-                -H "x-ncp-apigw-timestamp: $timestamp" \
-                -H "x-ncp-iam-access-key: $NCP_ACCESS_KEY_ID" \
-                -H "x-ncp-apigw-signature-v2: $signature" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \"regionCode\": \"KR\",
-                  \"accessControlGroupNo\": \"$NCP_SECURITY_GROUP_NO\",
-                  \"accessControlGroupRuleList\": [
-                    {
-                      \"protocolTypeCode\": \"TCP\",
-                      \"ipBlock\": \"$ip/32\",
-                      \"portRange\": \"22\"
-                    }
-                  ]
-                }")
-              
-              http_code=$(echo "$response" | tail -n1 | cut -d: -f2)
-              response_body=$(echo "$response" | sed '$d')
-              
-              if [ "$http_code" = "200" ]; then
-                echo "✅ Successfully removed rollback IP from security group"
-                return 0
-              else
-                echo "⚠️ Failed to remove rollback IP rule"
-                echo "💡 Manual cleanup may be required for IP $ip/32"
-                return 1
+              if curl -f --connect-timeout 3 http://localhost:8080/actuator/health >/dev/null 2>&1; then
+                echo "✅ Rollback successful!"
+                echo "⚠️ Deployment failed but service restored to previous version"
+                exit 2  # Exit with code 2 to indicate rollback occurred
               fi
-            }
+            fi
             
-            remove_rollback_rule "$RUNNER_IP"
-            
-          else
-            echo "⚠️ Missing credentials for rollback cleanup"
+            echo "❌ Rollback failed!"
+            echo "📋 Service logs:"
+            sudo journalctl -u cherrypick-app --no-pager -l -n 20
+            exit 1
           fi
-        else
-          echo "💡 No rollback security rule was added, skipping cleanup"
-        fi
-        
-        echo "🧹 Rollback cleanup completed"
+          
+          echo "Waiting... ($i/30)"
+          sleep 10
+        done
 
+    - name: Final verification
+      run: |
+        echo "🔍 Final deployment verification..."
+        echo "📊 System status:"
+        systemctl is-active cherrypick-app
+        echo "🏥 Application health:"
+        curl -s http://localhost:8080/actuator/health | jq . 2>/dev/null || echo "Health check passed"
+        echo "🎉 Deployment completed successfully!"
+
+    - name: Cleanup build artifacts
+      if: always()
+      run: |
+        # 빌드 결과물 정리 (디스크 공간 절약)
+        rm -rf build/ 2>/dev/null || true
+        rm -rf .gradle/ 2>/dev/null || true
+        echo "🧹 Build artifacts cleaned up"
