@@ -2,17 +2,8 @@ name: Deploy to NCP Server
 
 on:
   push:
-    branches: [dev, plz/naver]
+    branches: [main, dev]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target Environment'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-        - staging
-        - production
 
 env:
   JAR_NAME: CherryPick-0.0.1-SNAPSHOT.jar
@@ -51,7 +42,6 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK 17
-      id: setup-java
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -64,18 +54,16 @@ jobs:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-          .gradle/caches
-          .gradle/wrapper
         key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          gradle-${{ runner.os }}-
+        restore-keys: gradle-${{ runner.os }}-
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Create test environment file
+    - name: Create test environment
       run: |
         cat > .env.test << EOF
+        SPRING_PROFILES_ACTIVE=test
         NCP_DB_HOST=localhost
         NCP_DB_PORT=5432
         NCP_DB_NAME=cherrypick_test
@@ -84,9 +72,8 @@ jobs:
         REDIS_HOST=localhost
         REDIS_PORT=6379
         REDIS_PASSWORD=
-        JWT_SECRET=test-jwt-secret-key-must-be-at-least-64-characters-long-for-security-purposes
+        JWT_SECRET=test-jwt-secret-key-must-be-at-least-64-characters-long-for-security
         JWT_EXPIRATION=86400000
-        SPRING_PROFILES_ACTIVE=test
         NCP_OBJECT_STORAGE_ENDPOINT=https://kr.object.ncloudstorage.com
         NCP_OBJECT_STORAGE_BUCKET=cherrypick-test
         NCP_ACCESS_KEY_ID=test
@@ -99,416 +86,108 @@ jobs:
         PROMOTION_END_DATE=2025-12-31
         EOF
 
-    - name: Wait for services to be ready
-      run: |
-        echo "⏳ Waiting for PostgreSQL to be ready..."
-        until pg_isready -h localhost -p 5432 -U postgres; do
-          echo "PostgreSQL is unavailable - sleeping"
-          sleep 2
-        done
-        echo "✅ PostgreSQL is ready!"
-        
-        echo "⏳ Waiting for Redis to be ready..."
-        until redis-cli -h localhost -p 6379 ping | grep -q PONG; do
-          echo "Redis is unavailable - sleeping"
-          sleep 2
-        done
-        echo "✅ Redis is ready!"
-
     - name: Run tests
       env:
         SPRING_PROFILES_ACTIVE: test
       run: |
-        echo "🧪 Running tests with optimized settings..."
-        ./gradlew test \
-          --parallel \
-          --max-workers=4 \
-          --build-cache \
-          --no-daemon \
-          --stacktrace \
-          -Dspring.profiles.active=test \
-          -Dspring.jpa.hibernate.ddl-auto=create-drop \
-          -Dlogging.level.org.hibernate.SQL=ERROR
+        ./gradlew test --parallel --build-cache --no-daemon
 
     - name: Build application
       run: |
-        echo "🔨 Building application with optimized settings..."
-        ./gradlew bootJar \
-          --parallel \
-          --max-workers=4 \
-          --build-cache \
-          --no-daemon \
-          --stacktrace
+        ./gradlew bootJar --parallel --build-cache --no-daemon
 
-    - name: Verify JAR file exists
+    - name: Verify build
       run: |
-        echo "🔍 Checking JAR file..."
-        if [ -f "build/libs/${{ env.JAR_NAME }}" ]; then
-          echo "✅ JAR file exists: $(ls -lh build/libs/${{ env.JAR_NAME }})"
-          file build/libs/${{ env.JAR_NAME }}
-        else
-          echo "❌ JAR file not found!"
-          echo "Available files in build/libs/:"
-          ls -la build/libs/ || echo "build/libs/ directory doesn't exist"
+        if [ ! -f "build/libs/${{ env.JAR_NAME }}" ]; then
+          echo "❌ JAR file not found"
           exit 1
         fi
+        echo "✅ Build completed: $(ls -lh build/libs/${{ env.JAR_NAME }})"
 
-    - name: Create deployment package
-      run: |
-        echo "📦 Creating deployment package..."
-        mkdir -p deploy
-        cp build/libs/${{ env.JAR_NAME }} deploy/
-        echo "✅ Deployment package ready"
-
-    - name: Upload deployment artifact
+    - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: deployment-package
-        path: |
-          deploy/
+        name: jar-artifact
+        path: build/libs/${{ env.JAR_NAME }}
         retention-days: 1
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/plz/naver'
+    if: github.ref == 'refs/heads/main'
     
     steps:
-    - name: Checkout code (for scripts)
-      uses: actions/checkout@v4
-
-    - name: Download deployment artifact
+    - name: Download build artifact
       uses: actions/download-artifact@v4
       with:
-        name: deployment-package
-        path: deploy/
+        name: jar-artifact
 
-    - name: Setup automated SSH connection
-      id: setup-ssh
+    - name: Setup SSH
       run: |
-        echo "==========================================="
-        echo "🚀 자동화된 SSH 연결 설정"
-        echo "==========================================="
-        
-        # 현재 Runner IP 확인
-        RUNNER_IP=$(curl -s ifconfig.me)
-        echo "🌐 현재 GitHub Actions Runner IP: $RUNNER_IP"
-        echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
-        
-        if [ -z "$RUNNER_IP" ]; then
-          echo "❌ Runner IP를 가져올 수 없습니다"
-          exit 1
-        fi
-        
-        echo "📋 NCP 보안 그룹 설정 가이드:"
-        echo "   보안 그룹 ID: ${{ secrets.NCP_SECURITY_GROUP_NO }}"
-        echo "   추가할 IP 범위 (GitHub Actions):"
-        echo "     - 4.148.0.0/16"
-        echo "     - 4.149.0.0/18" 
-        echo "     - 4.149.64.0/19"
-        echo "     - 4.149.96.0/19"
-        echo "     - 4.149.128.0/17"
-        echo "     - 13.64.0.0/11"
-        echo "     - 20.42.0.0/15"
-        echo "     - 현재 IP: $RUNNER_IP/32"
-        echo ""
-        echo "💡 위 IP 범위들을 TCP/22 포트로 NCP 보안 그룹에 미리 등록하면"
-        echo "    GitHub Actions에서 자동으로 SSH 연결이 가능합니다."
-        
-        # SSH 설정 최적화
-        echo "🔧 SSH 연결 최적화 설정..."
-        sudo apt-get update -qq && sudo apt-get install -y sshpass openssh-client
-        
-        # SSH 설정 생성
+        sudo apt-get install -y sshpass
         mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        
-        cat > ~/.ssh/config << EOF
-        Host ncp-server
-            HostName ${{ secrets.NCP_SERVER_HOST }}
-            Port ${{ secrets.NCP_SERVER_PORT }}
-            User ${{ secrets.NCP_SERVER_USER }}
-            IdentitiesOnly yes
-            StrictHostKeyChecking no
-            UserKnownHostsFile=/dev/null
-            ConnectTimeout 30
-            ServerAliveInterval 60
-            ServerAliveCountMax 3
-            TCPKeepAlive yes
-        EOF
-        
-        echo "✅ SSH 설정 완료"
-
-    - name: Setup SSH key
-      run: |
-        echo "🔐 SSH 키 설정..."
         echo "${{ secrets.NCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        echo "✅ SSH 키 설정 완료"
 
-    - name: Test SSH connection with multiple methods
-      id: test-ssh
+    - name: Deploy to server
       run: |
-        echo "🔍 SSH 연결 테스트 (다중 방법)..."
-        
-        SSH_SUCCESS=false
-        
-        # 방법 1: SSH key only
-        echo "📡 방법 1: SSH 키만 사용..."
-        if timeout 30 ssh -o BatchMode=yes -o ConnectTimeout=10 ncp-server "echo 'SSH key connection successful'"; then
-          echo "✅ SSH 키 연결 성공!"
-          SSH_SUCCESS=true
-        else
-          echo "⚠️ SSH 키 연결 실패"
-        fi
-        
-        # 방법 2: SSH key + password (if key failed)
-        if [ "$SSH_SUCCESS" = "false" ]; then
-          echo "📡 방법 2: SSH 키 + 비밀번호..."
-          if timeout 30 sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o ConnectTimeout=10 ncp-server "echo 'SSH key+password connection successful'"; then
-            echo "✅ SSH 키+비밀번호 연결 성공!"
-            SSH_SUCCESS=true
-          else
-            echo "⚠️ SSH 키+비밀번호 연결 실패"
-          fi
-        fi
-        
-        # 방법 3: Password only (if both above failed)
-        if [ "$SSH_SUCCESS" = "false" ]; then
-          echo "📡 방법 3: 비밀번호만 사용..."
-          if timeout 30 sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o PasswordAuthentication=yes -o PubkeyAuthentication=no -o ConnectTimeout=10 ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} "echo 'Password-only connection successful'"; then
-            echo "✅ 비밀번호 연결 성공!"
-            SSH_SUCCESS=true
-          else
-            echo "⚠️ 비밀번호 연결 실패"
-          fi
-        fi
-        
-        if [ "$SSH_SUCCESS" = "false" ]; then
-          echo "❌ 모든 SSH 연결 방법 실패"
-          echo "🔧 문제 해결 가이드:"
-          echo "   1. NCP 보안 그룹에 GitHub Actions IP 범위 추가 확인"
-          echo "   2. SSH 서비스 상태 확인: systemctl status sshd"
-          echo "   3. 방화벽 설정 확인: ufw status"
-          echo "   4. SSH 키 권한 확인: chmod 600 ~/.ssh/authorized_keys"
-          exit 1
-        fi
-        
-        echo "ssh_success=true" >> $GITHUB_OUTPUT
+        # Upload JAR file
+        sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no \
+          ${{ env.JAR_NAME }} ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }}:/tmp/
 
-    - name: Create deployment script
-      run: |
-        cat > deploy/deploy.sh << 'EOF'
-        #!/bin/bash
-        set -e
+        # Execute deployment
+        sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} << 'EOF'
         
+        # Deployment script
         APP_NAME="cherrypick"
-        JAR_FILE="CherryPick-0.0.1-SNAPSHOT.jar"
+        JAR_FILE="${{ env.JAR_NAME }}"
         SERVICE_NAME="cherrypick-app"
         
-        echo "🚀 Starting deployment of $APP_NAME..."
+        echo "🚀 Deploying $APP_NAME..."
         
-        # Stop existing service
-        sudo systemctl stop $SERVICE_NAME || echo "Service was not running"
+        # Stop service
+        sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
         
-        # Create comprehensive backup
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        # Backup current version
         if [ -f "/opt/$APP_NAME/$JAR_FILE" ]; then
-            echo "📦 Creating backup: $JAR_FILE.backup.$TIMESTAMP"
-            sudo cp "/opt/$APP_NAME/$JAR_FILE" "/opt/$APP_NAME/$JAR_FILE.backup.$TIMESTAMP"
-            
-            # Verify backup was created successfully
-            if [ ! -f "/opt/$APP_NAME/$JAR_FILE.backup.$TIMESTAMP" ]; then
-                echo "❌ Backup creation failed!"
-                exit 1
-            fi
-            
-            # Keep only last 5 backups to save space
-            sudo find "/opt/$APP_NAME" -name "$JAR_FILE.backup.*" -type f | sort -r | tail -n +6 | sudo xargs rm -f
-            echo "✅ Backup created and old backups cleaned"
-        fi
-        
-        # Backup environment file
-        if [ -f "/opt/$APP_NAME/.env.prod" ]; then
-            sudo cp "/opt/$APP_NAME/.env.prod" "/opt/$APP_NAME/.env.prod.backup.$TIMESTAMP"
-            echo "✅ Environment file backed up"
+          sudo cp "/opt/$APP_NAME/$JAR_FILE" "/opt/$APP_NAME/$JAR_FILE.backup.$(date +%Y%m%d_%H%M%S)"
         fi
         
         # Deploy new version
         sudo mkdir -p /opt/$APP_NAME
-        sudo cp $JAR_FILE /opt/$APP_NAME/
-        sudo chown cherrypick:cherrypick /opt/$APP_NAME/$JAR_FILE
-        sudo chmod 755 /opt/$APP_NAME/$JAR_FILE
+        sudo mv "/tmp/$JAR_FILE" "/opt/$APP_NAME/"
+        sudo chown cherrypick:cherrypick "/opt/$APP_NAME/$JAR_FILE"
+        sudo chmod 755 "/opt/$APP_NAME/$JAR_FILE"
         
         # Start service
         sudo systemctl start $SERVICE_NAME
         sudo systemctl enable $SERVICE_NAME
         
-        # Health check with exponential backoff
-        echo "⏳ Waiting for application to start..."
-        for i in {1..20}; do
-            if curl -f --connect-timeout 3 --max-time 10 http://localhost:8080/actuator/health > /dev/null 2>&1; then
-                echo "✅ Application is healthy!"
-                break
-            fi
-            # Exponential backoff: 2, 4, 6, 8, 10, then 10s intervals
-            wait_time=$((i <= 5 ? i * 2 : 10))
-            echo "Waiting ${wait_time}s... ($i/20)"
-            sleep $wait_time
-        done
+        # Wait for startup
+        echo "⏳ Waiting for application startup..."
+        sleep 15
         
-        if ! curl -f --connect-timeout 5 --max-time 15 http://localhost:8080/actuator/health > /dev/null 2>&1; then
-            echo "❌ Health check failed! Initiating automatic rollback..."
-            
-            # Stop failed service
-            sudo systemctl stop $SERVICE_NAME
-            
-            # Find and restore latest backup
-            LATEST_BACKUP=$(ls -t /opt/$APP_NAME/$JAR_FILE.backup.* 2>/dev/null | head -1)
-            if [ -n "$LATEST_BACKUP" ]; then
-                echo "🔄 Rolling back to: $(basename $LATEST_BACKUP)"
-                sudo cp "$LATEST_BACKUP" "/opt/$APP_NAME/$JAR_FILE"
-                sudo chown cherrypick:cherrypick "/opt/$APP_NAME/$JAR_FILE"
-                
-                # Restore environment file if exists
-                ENV_BACKUP="${LATEST_BACKUP//$JAR_FILE/.env.prod}"
-                if [ -f "$ENV_BACKUP" ]; then
-                    sudo cp "$ENV_BACKUP" "/opt/$APP_NAME/.env.prod"
-                    sudo chown cherrypick:cherrypick "/opt/$APP_NAME/.env.prod"
-                    sudo chmod 600 "/opt/$APP_NAME/.env.prod"
-                fi
-                
-                # Start service with old version
-                sudo systemctl start $SERVICE_NAME
-                sleep 15
-                
-                # Verify rollback worked
-                if curl -f --connect-timeout 5 --max-time 10 http://localhost:8080/actuator/health > /dev/null 2>&1; then
-                    echo "✅ Automatic rollback successful!"
-                    echo "⚠️  Deployment failed but service restored to previous version"
-                    exit 2  # Exit with different code to indicate rollback occurred
-                else
-                    echo "❌ Automatic rollback also failed!"
-                    exit 1
-                fi
-            else
-                echo "❌ No backup found for rollback!"
-                exit 1
-            fi
-        fi
-        
-        echo "🎉 Deployment completed successfully!"
-        EOF
-        
-        chmod +x deploy/deploy.sh
-
-    - name: Deploy to NCP server
-      id: deploy
-      run: |
-        echo "🚀 Starting deployment to NCP server..."
-        
-        # 파일 전송 시도 (다중 방법)
-        TRANSFER_SUCCESS=false
-        
-        # 방법 1: SCP with SSH key
-        echo "📁 방법 1: SCP + SSH 키로 파일 전송..."
-        if timeout 60 scp -o ConnectTimeout=10 -r deploy/ ncp-server:/tmp/; then
-          echo "✅ SCP 파일 전송 성공!"
-          TRANSFER_SUCCESS=true
+        # Health check
+        if curl -f http://localhost:8080/actuator/health >/dev/null 2>&1; then
+          echo "✅ Deployment successful!"
         else
-          echo "⚠️ SCP 파일 전송 실패"
-        fi
-        
-        # 방법 2: SCP with password (if key failed)
-        if [ "$TRANSFER_SUCCESS" = "false" ]; then
-          echo "📁 방법 2: SCP + 비밀번호로 파일 전송..."
-          if timeout 60 sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" scp -o ConnectTimeout=10 -r deploy/ ncp-server:/tmp/; then
-            echo "✅ SCP 비밀번호 파일 전송 성공!"
-            TRANSFER_SUCCESS=true
-          else
-            echo "⚠️ SCP 비밀번호 파일 전송 실패"
+          echo "❌ Health check failed - attempting rollback..."
+          sudo systemctl stop $SERVICE_NAME
+          BACKUP=$(ls -t /opt/$APP_NAME/$JAR_FILE.backup.* 2>/dev/null | head -1)
+          if [ -n "$BACKUP" ]; then
+            sudo cp "$BACKUP" "/opt/$APP_NAME/$JAR_FILE"
+            sudo systemctl start $SERVICE_NAME
+            echo "🔄 Rolled back to previous version"
           fi
-        fi
-        
-        if [ "$TRANSFER_SUCCESS" = "false" ]; then
-          echo "❌ 파일 전송 실패"
           exit 1
         fi
-        
-        # 배포 스크립트 실행
-        echo "⚙️ 배포 스크립트 실행..."
-        if sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o ConnectTimeout=30 ncp-server << 'DEPLOY_EOF'
-        set -e
-        cd /tmp/deploy
-        chmod +x deploy.sh
-        ./deploy.sh
-        DEPLOY_EOF
-        then
-          echo "✅ 배포 완료!"
-          echo "deployment_status=success" >> $GITHUB_OUTPUT
-        else
-          DEPLOY_EXIT_CODE=$?
-          if [ $DEPLOY_EXIT_CODE -eq 2 ]; then
-            echo "⚠️ 배포 실패했지만 자동 롤백 성공"
-            echo "deployment_status=rolled_back" >> $GITHUB_OUTPUT
-          else
-            echo "❌ 배포 실패!"
-            echo "deployment_status=failed" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-        fi
-
-    - name: Cleanup temporary files
-      if: always()
-      run: |
-        echo "🧹 Cleaning up temporary files..."
-        if sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o ConnectTimeout=10 ncp-server "rm -rf /tmp/deploy" 2>/dev/null; then
-          echo "✅ Remote temporary files cleaned"
-        else
-          echo "⚠️ Could not clean remote temporary files (server might be unreachable)"
-        fi
+        EOF
 
     - name: Verify deployment
-      id: verify
-      if: steps.deploy.outputs.deployment_status == 'success'
       run: |
-        echo "🔍 Verifying deployment..."
-        
-        # Get server's public health check (if available)
-        if curl -f --connect-timeout 10 --max-time 20 "http://${{ secrets.NCP_SERVER_HOST }}:8080/actuator/health" > /dev/null 2>&1; then
-          echo "✅ External health check passed!"
-        else
-          echo "⚠️ External health check not available (this is normal if server is behind firewall)"
-        fi
-        
-        # Verify via SSH
-        if sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o ConnectTimeout=10 ncp-server "curl -f http://localhost:8080/actuator/health" > /dev/null 2>&1; then
-          echo "✅ Internal health check passed!"
-          echo "verification_status=success" >> $GITHUB_OUTPUT
-        else
-          echo "❌ Internal health check failed!"
-          echo "verification_status=failed" >> $GITHUB_OUTPUT
-          exit 1
-        fi
-
-    - name: Deployment summary
-      if: always()
-      run: |
-        echo "=========================================="
-        echo "📊 DEPLOYMENT SUMMARY"
-        echo "=========================================="
-        echo "🌐 Runner IP: ${{ steps.setup-ssh.outputs.runner_ip }}"
-        echo "🔗 SSH 연결: ${{ steps.test-ssh.outputs.ssh_success == 'true' && '✅ 성공' || '❌ 실패' }}"
-        echo "📦 배포 상태: ${{ steps.deploy.outputs.deployment_status }}"
-        echo "✅ 검증 상태: ${{ steps.verify.outputs.verification_status }}"
-        echo ""
-        
-        if [ "${{ steps.deploy.outputs.deployment_status }}" = "success" ]; then
-          echo "🎉 배포가 성공적으로 완료되었습니다!"
-        elif [ "${{ steps.deploy.outputs.deployment_status }}" = "rolled_back" ]; then
-          echo "⚠️ 배포 실패 후 자동 롤백되었습니다. 로그를 확인해주세요."
-        else
-          echo "❌ 배포에 실패했습니다. 수동 확인이 필요합니다."
-        fi
-        
-        echo "=========================================="
+        # Final health check
+        sshpass -p "${{ secrets.NCP_SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.NCP_SERVER_USER }}@${{ secrets.NCP_SERVER_HOST }} \
+          "curl -f http://localhost:8080/actuator/health"
+        echo "🎉 Deployment verified successfully!"
