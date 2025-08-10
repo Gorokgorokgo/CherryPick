@@ -2,8 +2,16 @@ name: Deploy to NCP (Self-hosted)
 
 on:
   push:
+    branches: [ main, develop ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
 
 env:
   APP_NAME: cherrypick
@@ -12,7 +20,7 @@ env:
 jobs:
   test:
     name: Run Tests
-    runs-on: ubuntu-latest  # 테스트는 GitHub-hosted runner 사용
+    runs-on: ubuntu-latest  # 테스트는 GitHub-hosted runner 사용 (Docker services 필요)
     
     services:
       postgres:
@@ -21,34 +29,84 @@ jobs:
           POSTGRES_DB: cherrypick_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: test_password
-        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
         ports:
           - 5432:5432
+      
       redis:
         image: redis:7-alpine
-        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
         ports:
           - 6379:6379
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Set up JDK 17
+      id: setup-java
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
-    - name: Test
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Create test environment file
       run: |
-        chmod +x gradlew
-        ./gradlew test --parallel
+        cat > .env.test << EOF
+        NCP_DB_HOST=localhost
+        NCP_DB_PORT=5432
+        NCP_DB_NAME=cherrypick_test
+        NCP_DB_USERNAME=postgres
+        NCP_DB_PASSWORD=test_password
+        REDIS_HOST=localhost
+        REDIS_PORT=6379
+        REDIS_PASSWORD=
+        JWT_SECRET=test-jwt-secret-key-must-be-at-least-64-characters-long-for-security-purposes
+        JWT_EXPIRATION=86400000
+        SPRING_PROFILES_ACTIVE=test
+        NCP_OBJECT_STORAGE_ENDPOINT=https://kr.object.ncloudstorage.com
+        NCP_OBJECT_STORAGE_BUCKET=cherrypick-test
+        NCP_ACCESS_KEY_ID=test
+        NCP_SECRET_ACCESS_KEY=test
+        NCP_REGION=kr-standard
+        COMMISSION_RATE=0.03
+        NEW_USER_FREE_DAYS=30
+        PROMOTION_ENABLED=false
+        PROMOTION_RATE=0.00
+        PROMOTION_END_DATE=2025-12-31
+        EOF
+
+    - name: Run tests
+      run: ./gradlew test --parallel --build-cache
       env:
         SPRING_PROFILES_ACTIVE: test
+        JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: build/test-results/test/*.xml
+        retention-days: 7
 
   build-and-deploy:
     name: Build and Deploy
-    runs-on: self-hosted  # NCP 서버에서 직접 실행
+    runs-on: self-hosted  # 🎯 Self-hosted runner 사용!
     needs: test
+    if: github.ref == 'refs/heads/main'
     environment: production
 
     steps:
@@ -61,41 +119,41 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      id: setup-java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
 
     - name: Build application
       run: |
-        chmod +x gradlew
-        # Java 환경 확인
+        echo "🚀 Starting build on self-hosted runner..."
         echo "Java version: $(java -version 2>&1 | head -1)"
         echo "JAVA_HOME: $JAVA_HOME"
-        echo "Which java: $(which java)"
+        echo "Java which: $(which java)"
+        echo "Hostname: $(hostname)"
+        echo "User: $(whoami)"
         
-        # Gradle 빌드 (JAVA_HOME 명시적 설정)
-        ./gradlew clean bootJar --parallel --no-daemon --info
+        # 환경 확인
+        source ~/.bashrc
+        
+        # Gradle 빌드
+        ./gradlew clean bootJar --parallel --no-daemon
       env:
-        JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
-        GRADLE_OPTS: "-Dorg.gradle.java.home=${{ steps.setup-java.outputs.java-home }}"
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
     - name: Verify build
       run: |
         if [ ! -f "build/libs/${{ env.JAR_FILE }}" ]; then
-          echo "❌ Build failed"
+          echo "❌ Build failed: JAR not found"
+          ls -la build/libs/ || echo "build/libs directory not found"
           exit 1
         fi
         echo "✅ Build success: $(ls -lh build/libs/${{ env.JAR_FILE }})"
 
-    - name: Deploy application
+    - name: Create production environment
       run: |
-        echo "🚀 Starting deployment..."
+        echo "🔧 Creating production environment..."
+        sudo mkdir -p /opt/cherrypick
         
         # 환경 파일 생성 (self-hosted runner에서 직접)
-        sudo mkdir -p /opt/cherrypick
         sudo tee /opt/cherrypick/.env.prod > /dev/null << 'EOF'
         # Database
         DB_HOST=${{ secrets.NCP_DB_HOST }}
@@ -122,6 +180,7 @@ jobs:
         # Application
         SPRING_PROFILES_ACTIVE=prod
         SERVER_PORT=8080
+        LOGGING_LEVEL_ROOT=INFO
 
         # Business
         COMMISSION_RATE=${{ secrets.COMMISSION_RATE }}
@@ -131,16 +190,22 @@ jobs:
         PROMOTION_END_DATE=${{ secrets.PROMOTION_END_DATE }}
         EOF
         
-        sudo chown cherrypick:cherrypick /opt/cherrypick/.env.prod
+        sudo chown ubuntu:ubuntu /opt/cherrypick/.env.prod
         sudo chmod 600 /opt/cherrypick/.env.prod
+        echo "✅ Environment file created"
 
+    - name: Deploy application
+      run: |
+        echo "🚀 Starting deployment..."
+        
         # 백업 생성
         if [ -f "/opt/cherrypick/${{ env.JAR_FILE }}" ]; then
           echo "📦 Creating backup..."
           sudo cp "/opt/cherrypick/${{ env.JAR_FILE }}" \
             "/opt/cherrypick/${{ env.JAR_FILE }}.backup.$(date +%Y%m%d_%H%M%S)"
           # 오래된 백업 정리 (최근 5개만 보관)
-          sudo find /opt/cherrypick -name "*.backup.*" -type f | sort -r | tail -n +6 | sudo xargs rm -f
+          sudo find /opt/cherrypick -name "*.backup.*" -type f | sort -r | tail -n +6 | sudo xargs rm -f || true
+          echo "✅ Backup created"
         fi
 
         # 서비스 중지
@@ -150,7 +215,7 @@ jobs:
         # 새 버전 배포
         echo "📦 Deploying new version..."
         sudo cp "build/libs/${{ env.JAR_FILE }}" "/opt/cherrypick/"
-        sudo chown cherrypick:cherrypick "/opt/cherrypick/${{ env.JAR_FILE }}"
+        sudo chown ubuntu:ubuntu "/opt/cherrypick/${{ env.JAR_FILE }}"
         sudo chmod 755 "/opt/cherrypick/${{ env.JAR_FILE }}"
 
         # systemd 서비스 파일 생성/업데이트
@@ -161,8 +226,8 @@ jobs:
 
         [Service]
         Type=simple
-        User=cherrypick
-        Group=cherrypick
+        User=ubuntu
+        Group=ubuntu
         WorkingDirectory=/opt/cherrypick
         ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod CherryPick-0.0.1-SNAPSHOT.jar
         SuccessExitStatus=143
@@ -194,7 +259,12 @@ jobs:
         sudo systemctl enable cherrypick-app
         sudo systemctl start cherrypick-app
 
+        echo "✅ Service started"
+
+    - name: Health check and rollback
+      run: |
         echo "⏳ Health check..."
+        
         # 헬스체크 (30회 시도, 총 5분)
         for i in {1..30}; do
           if curl -f --connect-timeout 3 --max-time 10 http://localhost:8080/actuator/health >/dev/null 2>&1; then
@@ -203,7 +273,7 @@ jobs:
             sudo systemctl status cherrypick-app --no-pager -l
             echo ""
             echo "🏥 Health check result:"
-            curl -s http://localhost:8080/actuator/health | jq . || echo "Health endpoint OK"
+            curl -s http://localhost:8080/actuator/health | jq . 2>/dev/null || echo "Health endpoint OK"
             break
           fi
           
@@ -222,6 +292,7 @@ jobs:
               
               if curl -f --connect-timeout 3 http://localhost:8080/actuator/health >/dev/null 2>&1; then
                 echo "✅ Rollback successful!"
+                echo "⚠️ Deployment failed but service restored to previous version"
                 exit 2  # Exit with code 2 to indicate rollback occurred
               fi
             fi
@@ -241,16 +312,14 @@ jobs:
         echo "🔍 Final deployment verification..."
         echo "📊 System status:"
         systemctl is-active cherrypick-app
-        echo ""
         echo "🏥 Application health:"
-        curl -s http://localhost:8080/actuator/health | jq . || echo "Health check passed"
-        echo ""
+        curl -s http://localhost:8080/actuator/health | jq . 2>/dev/null || echo "Health check passed"
         echo "🎉 Deployment completed successfully!"
 
     - name: Cleanup build artifacts
       if: always()
       run: |
         # 빌드 결과물 정리 (디스크 공간 절약)
-        rm -rf build/ || true
-        rm -rf .gradle/ || true
+        rm -rf build/ 2>/dev/null || true
+        rm -rf .gradle/ 2>/dev/null || true
         echo "🧹 Build artifacts cleaned up"
