@@ -36,6 +36,9 @@ out/
 ### VS Code ###
 .vscode/
 
+### Local Gradle Configuration ###
+gradle.properties
+
 ### 환경변수 및 설정 파일 ###
 .env
 .env.local
