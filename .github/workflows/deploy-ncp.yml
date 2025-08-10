@@ -326,7 +326,14 @@ jobs:
     - name: Setup GitHub Actions IP whitelist for NCP
       id: setup-ip
       run: |
+        echo "=========================================="
         echo "🚀 DYNAMIC IP MANAGEMENT START"
+        echo "=========================================="
+        echo "Step: Setup GitHub Actions IP whitelist for NCP"
+        echo "Job ID: setup-ip"
+        echo "Runner OS: $(uname -a)"
+        echo "Current user: $(whoami)"
+        echo "Current directory: $(pwd)"
         # Get current runner IP
         RUNNER_IP=$(curl -s ifconfig.me)
         echo "🌐 Current GitHub Actions Runner IP: $RUNNER_IP"
@@ -343,16 +350,38 @@ jobs:
           exit 1
         fi
         
-        # Load secrets explicitly 
+        echo "=========================================="
+        echo "🔍 LOADING AND CHECKING SECRETS"
+        echo "=========================================="
+        
+        # Load secrets explicitly with detailed debugging
+        echo "Loading secrets from GitHub..."
         NCP_ACCESS_KEY_ID="${{ secrets.NCP_ACCESS_KEY_ID }}"
         NCP_SECRET_ACCESS_KEY="${{ secrets.NCP_SECRET_ACCESS_KEY }}"
         NCP_SECURITY_GROUP_NO="${{ secrets.NCP_SECURITY_GROUP_NO }}"
         
+        echo "Raw secret loading results:"
+        echo "- NCP_ACCESS_KEY_ID raw: '${NCP_ACCESS_KEY_ID}'"
+        echo "- NCP_SECRET_ACCESS_KEY raw: '${NCP_SECRET_ACCESS_KEY}'"  
+        echo "- NCP_SECURITY_GROUP_NO raw: '${NCP_SECURITY_GROUP_NO}'"
+        
         # Debug: Check if required secrets are available
-        echo "🔍 Checking NCP API credentials..."
-        echo "NCP_ACCESS_KEY_ID length: ${#NCP_ACCESS_KEY_ID}"
-        echo "NCP_SECRET_ACCESS_KEY length: ${#NCP_SECRET_ACCESS_KEY}"
-        echo "NCP_SECURITY_GROUP_NO value: '$NCP_SECURITY_GROUP_NO'"
+        echo ""
+        echo "🔍 DETAILED SECRET VALIDATION:"
+        echo "NCP_ACCESS_KEY_ID:"
+        echo "  - Length: ${#NCP_ACCESS_KEY_ID}"
+        echo "  - Is empty: $([ -z "$NCP_ACCESS_KEY_ID" ] && echo 'YES' || echo 'NO')"
+        echo "  - First 10 chars: '${NCP_ACCESS_KEY_ID:0:10}'"
+        
+        echo "NCP_SECRET_ACCESS_KEY:"
+        echo "  - Length: ${#NCP_SECRET_ACCESS_KEY}"
+        echo "  - Is empty: $([ -z "$NCP_SECRET_ACCESS_KEY" ] && echo 'YES' || echo 'NO')"
+        echo "  - First 10 chars: '${NCP_SECRET_ACCESS_KEY:0:10}'"
+        
+        echo "NCP_SECURITY_GROUP_NO:"
+        echo "  - Length: ${#NCP_SECURITY_GROUP_NO}"
+        echo "  - Is empty: $([ -z "$NCP_SECURITY_GROUP_NO" ] && echo 'YES' || echo 'NO')"
+        echo "  - Full value: '$NCP_SECURITY_GROUP_NO'"
         
         if [ -z "$NCP_ACCESS_KEY_ID" ]; then
           echo "❌ NCP_ACCESS_KEY_ID secret is missing or empty"
@@ -372,10 +401,21 @@ jobs:
           echo "✅ NCP_SECURITY_GROUP_NO is set: '$NCP_SECURITY_GROUP_NO'"
         fi
 
+        echo "=========================================="
+        echo "🔧 DECISION LOGIC ANALYSIS"
+        echo "=========================================="
+        
+        echo "Checking conditions for dynamic security group management:"
+        echo "1. NCP_ACCESS_KEY_ID not empty: $([ -n "$NCP_ACCESS_KEY_ID" ] && echo 'PASS' || echo 'FAIL')"
+        echo "2. NCP_SECURITY_GROUP_NO not empty: $([ -n "$NCP_SECURITY_GROUP_NO" ] && echo 'PASS' || echo 'FAIL')"
+        echo "3. NCP_ACCESS_KEY_ID length > 5: $([ "${#NCP_ACCESS_KEY_ID}" -gt 5 ] && echo 'PASS' || echo 'FAIL') (actual: ${#NCP_ACCESS_KEY_ID})"
+        
         # Force dynamic security group management
-        echo "🔧 FORCING dynamic security group management..."
+        echo ""
+        echo "🔧 DECISION: FORCING dynamic security group management..."
         
         if [ -n "$NCP_ACCESS_KEY_ID" ] && [ -n "$NCP_SECURITY_GROUP_NO" ] && [ "${#NCP_ACCESS_KEY_ID}" -gt 5 ]; then
+          echo "✅ All conditions met - proceeding with API-based management"
           echo "🔧 Setting up dynamic security group management..."
           
           # Install required tools
@@ -463,12 +503,29 @@ jobs:
           echo "$RUNNER_IP" > /tmp/added_runner_ip
           echo "$NCP_SECURITY_GROUP_NO" > /tmp/security_group_no
           
+          echo "=========================================="
+          echo "🚀 ATTEMPTING API CALL"
+          echo "=========================================="
+          echo "Target IP: $RUNNER_IP/32"
+          echo "Security Group: $NCP_SECURITY_GROUP_NO"
+          echo "Access Key: ${NCP_ACCESS_KEY_ID:0:10}..."
+          echo ""
+          
           # Try to add the security rule
+          echo "Calling add_security_rule function..."
           if add_security_rule "$RUNNER_IP"; then
+            echo ""
+            echo "=========================================="
+            echo "✅ API SUCCESS"
+            echo "=========================================="
             echo "security_rule_added=true" >> $GITHUB_OUTPUT
             echo "⏳ Waiting 10 seconds for security group changes to propagate..."
             sleep 10
           else
+            echo ""
+            echo "=========================================="
+            echo "❌ API FAILURE"
+            echo "=========================================="
             echo "security_rule_added=false" >> $GITHUB_OUTPUT
             echo "❌ All API endpoints failed!"
             echo ""
@@ -492,8 +549,18 @@ jobs:
           fi
           
         else
-          echo "💡 NCP API credentials not configured"
-          echo "🔧 Adding GitHub Actions IP ranges to allow deployment..."
+          echo ""
+          echo "=========================================="
+          echo "❌ CONDITIONS NOT MET"
+          echo "=========================================="
+          echo "💡 NCP API credentials not configured or invalid"
+          echo ""
+          echo "Failed conditions analysis:"
+          echo "- NCP_ACCESS_KEY_ID empty: $([ -z "$NCP_ACCESS_KEY_ID" ] && echo 'YES' || echo 'NO')"
+          echo "- NCP_SECURITY_GROUP_NO empty: $([ -z "$NCP_SECURITY_GROUP_NO" ] && echo 'YES' || echo 'NO')"
+          echo "- NCP_ACCESS_KEY_ID too short: $([ "${#NCP_ACCESS_KEY_ID}" -le 5 ] && echo 'YES' || echo 'NO')"
+          echo ""
+          echo "🔧 Showing required GitHub Actions IP ranges..."
           
           # List of GitHub Actions IP ranges that should be pre-configured
           echo "Please ensure these IP ranges are added to NCP Security Group $NCP_SECURITY_GROUP_NO:"
