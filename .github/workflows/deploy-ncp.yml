@@ -81,6 +81,9 @@ jobs:
         NCP_ACCESS_KEY_ID=test
         NCP_SECRET_ACCESS_KEY=test
         NCP_REGION=kr-standard
+        SERVER_PORT=8080
+        LOGGING_LEVEL_ROOT=INFO
+        LOGGING_LEVEL_CHERRYPICK=DEBUG
         COMMISSION_RATE=0.03
         NEW_USER_FREE_DAYS=30
         PROMOTION_ENABLED=false
@@ -148,78 +151,38 @@ jobs:
         fi
         echo "✅ Build success: $(ls -lh build/libs/${{ env.JAR_FILE }})"
 
-    - name: Create production environment
+    - name: Prepare deployment directories
       run: |
-        echo "🔧 Creating production environment..."
-        sudo mkdir -p /opt/cherrypick
-        
-        # 환경 파일 생성 (self-hosted runner에서 직접)
-        sudo tee /opt/cherrypick/.env.prod > /dev/null << 'EOF'
-        # Database
-        DB_HOST=${{ secrets.NCP_DB_HOST }}
-        DB_PORT=${{ secrets.NCP_DB_PORT }}
-        DB_NAME=${{ secrets.NCP_DB_NAME }}
-        DB_USERNAME=${{ secrets.NCP_DB_USERNAME }}
-        DB_PASSWORD=${{ secrets.NCP_DB_PASSWORD }}
-
-        # Redis
-        REDIS_HOST=${{ secrets.NCP_REDIS_HOST }}
-        REDIS_PORT=${{ secrets.NCP_REDIS_PORT }}
-        REDIS_PASSWORD=${{ secrets.NCP_REDIS_PASSWORD }}
-
-        # JWT
-        JWT_SECRET=${{ secrets.JWT_SECRET }}
-        JWT_EXPIRATION=${{ secrets.JWT_EXPIRATION }}
-
-        # NCP Object Storage
-        AWS_REGION=${{ secrets.NCP_REGION }}
-        AWS_ACCESS_KEY_ID=${{ secrets.NCP_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY=${{ secrets.NCP_SECRET_ACCESS_KEY }}
-        AWS_S3_BUCKET=${{ secrets.NCP_OBJECT_STORAGE_BUCKET }}
-
-        # Application
-        SPRING_PROFILES_ACTIVE=prod
-        SERVER_PORT=8080
-        LOGGING_LEVEL_ROOT=INFO
-
-        # Business
-        COMMISSION_RATE=${{ secrets.COMMISSION_RATE }}
-        NEW_USER_FREE_DAYS=${{ secrets.NEW_USER_FREE_DAYS }}
-        PROMOTION_ENABLED=${{ secrets.PROMOTION_ENABLED }}
-        PROMOTION_RATE=${{ secrets.PROMOTION_RATE }}
-        PROMOTION_END_DATE=${{ secrets.PROMOTION_END_DATE }}
-        EOF
-        
-        sudo chown ubuntu:ubuntu /opt/cherrypick/.env.prod
-        sudo chmod 600 /opt/cherrypick/.env.prod
-        echo "✅ Environment file created"
+        echo "🔧 Preparing deployment directories..."
+        # 현재 워크스페이스 사용
+        echo "✅ Directories ready (using existing .env file)"
 
     - name: Deploy application
       run: |
         echo "🚀 Starting deployment..."
         
         # 백업 생성
-        if [ -f "/opt/cherrypick/${{ env.JAR_FILE }}" ]; then
+        if [ -f "${{ env.JAR_FILE }}" ]; then
           echo "📦 Creating backup..."
-          sudo cp "/opt/cherrypick/${{ env.JAR_FILE }}" \
-            "/opt/cherrypick/${{ env.JAR_FILE }}.backup.$(date +%Y%m%d_%H%M%S)"
+          cp "${{ env.JAR_FILE }}" "${{ env.JAR_FILE }}.backup.$(date +%Y%m%d_%H%M%S)" || true
           # 오래된 백업 정리 (최근 5개만 보관)
-          sudo find /opt/cherrypick -name "*.backup.*" -type f | sort -r | tail -n +6 | sudo xargs rm -f || true
+          find . -name "*.backup.*" -type f | sort -r | tail -n +6 | xargs rm -f || true
           echo "✅ Backup created"
         fi
 
-        # 서비스 중지
+        # 서비스 중지 (sudo 필요)
         echo "🛑 Stopping service..."
         sudo systemctl stop cherrypick-app || echo "Service was not running"
 
         # 새 버전 배포
         echo "📦 Deploying new version..."
-        sudo cp "build/libs/${{ env.JAR_FILE }}" "/opt/cherrypick/"
-        sudo chown ubuntu:ubuntu "/opt/cherrypick/${{ env.JAR_FILE }}"
-        sudo chmod 755 "/opt/cherrypick/${{ env.JAR_FILE }}"
+        cp "build/libs/${{ env.JAR_FILE }}" .
+        chmod 755 "${{ env.JAR_FILE }}"
 
-        # systemd 서비스 파일 생성/업데이트
-        sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
+        # systemd 서비스 파일이 없으면 생성 (한 번만)
+        if [ ! -f "/etc/systemd/system/cherrypick-app.service" ]; then
+          echo "📝 Creating systemd service file..."
+          sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
         [Unit]
         Description=CherryPick Auction Service
         After=network.target
@@ -228,7 +191,7 @@ jobs:
         Type=simple
         User=ubuntu
         Group=ubuntu
-        WorkingDirectory=/opt/cherrypick
+        WorkingDirectory=/home/ubuntu/CherryPick
         ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod CherryPick-0.0.1-SNAPSHOT.jar
         SuccessExitStatus=143
         TimeoutStopSec=10
@@ -237,13 +200,13 @@ jobs:
 
         # Environment
         Environment="SPRING_PROFILES_ACTIVE=prod"
-        EnvironmentFile=/opt/cherrypick/.env.prod
+        EnvironmentFile=/home/ubuntu/CherryPick/.env
 
         # Security
         NoNewPrivileges=true
         ProtectSystem=strict
         ProtectHome=true
-        ReadWritePaths=/opt/cherrypick
+        ReadWritePaths=/home/ubuntu/CherryPick
 
         # Logging
         StandardOutput=journal
@@ -254,11 +217,12 @@ jobs:
         WantedBy=multi-user.target
         SERVICEEOF
 
-        # systemd 설정 새로고침 및 서비스 시작
-        sudo systemctl daemon-reload
+          sudo systemctl daemon-reload
+        fi
+
+        # 서비스 시작
         sudo systemctl enable cherrypick-app
         sudo systemctl start cherrypick-app
-
         echo "✅ Service started"
 
     - name: Health check and rollback
@@ -283,10 +247,10 @@ jobs:
             
             # 자동 롤백
             sudo systemctl stop cherrypick-app
-            LATEST_BACKUP=$(ls -t /opt/cherrypick/*.backup.* 2>/dev/null | head -1)
+            LATEST_BACKUP=$(ls -t *.backup.* 2>/dev/null | head -1)
             if [ -n "$LATEST_BACKUP" ]; then
               echo "🔄 Rolling back to: $(basename $LATEST_BACKUP)"
-              sudo cp "$LATEST_BACKUP" "/opt/cherrypick/${{ env.JAR_FILE }}"
+              cp "$LATEST_BACKUP" "${{ env.JAR_FILE }}"
               sudo systemctl start cherrypick-app
               sleep 15
               
