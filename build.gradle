@@ -37,6 +37,9 @@ dependencies {
     // 실시간 통신 (입찰 알림 등 WebSocket)
     implementation 'org.springframework.boot:spring-boot-starter-websocket' // STOMP, SockJS 등
 
+    // Actuator (헬스체크, 메트릭스, 모니터링)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator' // Health check, metrics
+
     // Redis 연동 (세션, 캐시, Pub/Sub 등)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis' // RedisTemplate 기반
     implementation 'redis.clients:jedis' // Redis 클라이언트 (Jedis 사용 시 필요)
