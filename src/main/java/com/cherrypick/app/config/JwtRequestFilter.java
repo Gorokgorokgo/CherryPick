@@ -32,8 +32,11 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         String requestPath = request.getRequestURI();
         System.out.println("JwtRequestFilter - Path: " + requestPath); // 디버깅용
         if (requestPath.startsWith("/api/auth/") || 
+            requestPath.startsWith("/api/hello/") ||
             requestPath.startsWith("/swagger-ui/") || 
             requestPath.startsWith("/v3/api-docs/") ||
+            requestPath.startsWith("/actuator/") ||
+            requestPath.equals("/test") ||
             requestPath.equals("/swagger-ui.html")) {
             System.out.println("JwtRequestFilter - SKIPPING auth for: " + requestPath); // 디버깅용
             chain.doFilter(request, response);
