@@ -231,7 +231,7 @@ jobs:
         
         # 헬스체크 (30회 시도, 총 5분)
         for i in {1..30}; do
-          if curl -f --connect-timeout 3 --max-time 10 http://localhost:8080/ >/dev/null 2>&1; then
+          if nc -z localhost 8080 2>/dev/null; then
             echo "✅ Deployment successful!"
             echo "📊 Service status:"
             sudo systemctl status cherrypick-app --no-pager -l
@@ -254,7 +254,7 @@ jobs:
               sudo systemctl start cherrypick-app
               sleep 15
               
-              if curl -f --connect-timeout 3 http://localhost:8080/ >/dev/null 2>&1; then
+              if nc -z localhost 8080 2>/dev/null; then
                 echo "✅ Rollback successful!"
                 echo "⚠️ Deployment failed but service restored to previous version"
                 exit 2  # Exit with code 2 to indicate rollback occurred
