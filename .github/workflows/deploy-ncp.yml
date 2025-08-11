@@ -277,7 +277,7 @@ jobs:
         echo "📊 System status:"
         systemctl is-active cherrypick-app
         echo "🏥 Application health:"
-        curl -s http://localhost:8080/
+        curl -s http://localhost:8080/test
         echo "🎉 Deployment completed successfully!"
 
     - name: Cleanup build artifacts
