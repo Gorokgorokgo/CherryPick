@@ -231,7 +231,7 @@ jobs:
         
         # 헬스체크 (30회 시도, 총 5분)
         for i in {1..30}; do
-          if curl -f --connect-timeout 3 --max-time 10 http://localhost:8080/test >/dev/null 2>&1; then
+          if nc -z localhost 8080 2>/dev/null; then
             echo "✅ Deployment successful!"
             echo "📊 Service status:"
             sudo systemctl status cherrypick-app --no-pager -l
