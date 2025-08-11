@@ -1,289 +1,87 @@
-name: Deploy to NCP (Self-hosted)
+spring:
+  application:
+    name: cherrypick
 
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB
+      max-request-size: 10MB
+      file-size-threshold: 1MB
 
-permissions:
-  contents: read
-  actions: read
-  checks: write
-  pull-requests: write
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:cherrypick}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password123}
 
-env:
-  APP_NAME: cherrypick
-  JAR_FILE: CherryPick-0.0.1-SNAPSHOT.jar
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
 
-jobs:
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest  # 테스트는 GitHub-hosted runner 사용 (Docker services 필요)
-    
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: cherrypick_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: test_password
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+server:
+  port: 8080
 
-    - name: Set up JDK 17
-      id: setup-java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
+# Actuator 설정 (헬스체크용)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+springdoc:
+  swagger-ui:
+    tags-sorter: alpha
 
-    - name: Create test environment file
-      run: |
-        cat > .env.test << EOF
-        NCP_DB_HOST=localhost
-        NCP_DB_PORT=5432
-        NCP_DB_NAME=cherrypick_test
-        NCP_DB_USERNAME=postgres
-        NCP_DB_PASSWORD=test_password
-        REDIS_HOST=localhost
-        REDIS_PORT=6379
-        REDIS_PASSWORD=
-        JWT_SECRET=test-jwt-secret-key-must-be-at-least-64-characters-long-for-security-purposes
-        JWT_EXPIRATION=86400000
-        SPRING_PROFILES_ACTIVE=test
-        NCP_OBJECT_STORAGE_ENDPOINT=https://kr.object.ncloudstorage.com
-        NCP_OBJECT_STORAGE_BUCKET=cherrypick-test
-        NCP_ACCESS_KEY_ID=test
-        NCP_SECRET_ACCESS_KEY=test
-        NCP_REGION=kr-standard
-        SERVER_PORT=8080
-        LOGGING_LEVEL_ROOT=INFO
-        LOGGING_LEVEL_CHERRYPICK=DEBUG
-        COMMISSION_RATE=0.03
-        NEW_USER_FREE_DAYS=30
-        PROMOTION_ENABLED=false
-        PROMOTION_RATE=0.00
-        PROMOTION_END_DATE=2025-12-31
-        EOF
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
 
-    - name: Run tests
-      run: ./gradlew test --parallel --build-cache
-      env:
-        SPRING_PROFILES_ACTIVE: test
-        JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
+# AWS Configuration (기존 설정 보관)
+# aws:
+#   s3:
+#     bucket: ${AWS_S3_BUCKET:cherrypick-images}
+#     region: ${AWS_REGION:ap-northeast-2}
+#   credentials:
+#     access-key: ${AWS_ACCESS_KEY_ID}
+#     secret-key: ${AWS_SECRET_ACCESS_KEY}
 
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: build/test-results/test/*.xml
-        retention-days: 7
+# Naver Cloud Platform Object Storage Configuration
+ncp:
+  object-storage:
+    endpoint: ${NCP_OBJECT_STORAGE_ENDPOINT:https://kr.object.ncloudstorage.com}
+    bucket: ${NCP_OBJECT_STORAGE_BUCKET:cherrypick-images}
+    region: ${NCP_REGION:kr-standard}
+  credentials:
+    access-key: ${NCP_ACCESS_KEY_ID}
+    secret-key: ${NCP_SECRET_ACCESS_KEY}
 
-  build-and-deploy:
-    name: Build and Deploy
-    runs-on: self-hosted  # 🎯 Self-hosted runner 사용!
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    environment: production
+# 비즈니스 설정
+business:
+  commission:
+    rate: ${COMMISSION_RATE:0.03}  # 기본 3% (0.00 = 0%, 0.01 = 1%)
+    new-user-free-days: ${NEW_USER_FREE_DAYS:30}  # 신규 사용자 무료 기간 (일)
+    promotion:
+      enabled: ${PROMOTION_ENABLED:false}  # 프로모션 활성화
+      rate: ${PROMOTION_RATE:0.00}  # 프로모션 수수료율
+      end-date: ${PROMOTION_END_DATE:2024-12-31}  # 프로모션 종료일
 
-    steps:
-    - name: Cleanup workspace
-      run: |
-        # 이전 빌드 결과 정리
-        rm -rf $GITHUB_WORKSPACE/* || true
-        rm -rf $GITHUB_WORKSPACE/.[!.]* || true
-
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Build application
-      run: |
-        echo "🚀 Starting build on self-hosted runner..."
-        echo "Java version: $(java -version 2>&1 | head -1)"
-        echo "JAVA_HOME: $JAVA_HOME"
-        echo "Java which: $(which java)"
-        echo "Hostname: $(hostname)"
-        echo "User: $(whoami)"
-        
-        # 환경 확인
-        source ~/.bashrc
-        
-        # Gradle 빌드
-        ./gradlew clean bootJar --parallel --no-daemon
-      env:
-        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-
-    - name: Verify build
-      run: |
-        if [ ! -f "build/libs/${{ env.JAR_FILE }}" ]; then
-          echo "❌ Build failed: JAR not found"
-          ls -la build/libs/ || echo "build/libs directory not found"
-          exit 1
-        fi
-        echo "✅ Build success: $(ls -lh build/libs/${{ env.JAR_FILE }})"
-
-    - name: Prepare deployment directories
-      run: |
-        echo "🔧 Preparing deployment directories..."
-        # 현재 워크스페이스 사용
-        echo "✅ Directories ready (using existing .env file)"
-
-    - name: Deploy application
-      run: |
-        echo "🚀 Starting deployment..."
-        
-        # 백업 생성
-        if [ -f "${{ env.JAR_FILE }}" ]; then
-          echo "📦 Creating backup..."
-          cp "${{ env.JAR_FILE }}" "${{ env.JAR_FILE }}.backup.$(date +%Y%m%d_%H%M%S)" || true
-          # 오래된 백업 정리 (최근 5개만 보관)
-          find . -name "*.backup.*" -type f | sort -r | tail -n +6 | xargs rm -f || true
-          echo "✅ Backup created"
-        fi
-
-        # 서비스 중지 (sudo 필요)
-        echo "🛑 Stopping service..."
-        sudo systemctl stop cherrypick-app || echo "Service was not running"
-
-        # 새 버전 배포
-        echo "📦 Deploying new version..."
-        cp "build/libs/${{ env.JAR_FILE }}" .
-        chmod 755 "${{ env.JAR_FILE }}"
-
-        # systemd 서비스 파일이 없으면 생성 (한 번만)
-        if [ ! -f "/etc/systemd/system/cherrypick-app.service" ]; then
-          echo "📝 Creating systemd service file..."
-          sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
-        [Unit]
-        Description=CherryPick Auction Service
-        After=network.target
-
-        [Service]
-        Type=simple
-        User=ubuntu
-        Group=ubuntu
-        WorkingDirectory=/home/ubuntu/CherryPick
-        ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod CherryPick-0.0.1-SNAPSHOT.jar
-        SuccessExitStatus=143
-        TimeoutStopSec=10
-        Restart=on-failure
-        RestartSec=5
-
-        # Environment
-        Environment="SPRING_PROFILES_ACTIVE=prod"
-        EnvironmentFile=/home/ubuntu/CherryPick/.env
-
-        # Security
-        NoNewPrivileges=true
-        ProtectSystem=strict
-        ProtectHome=true
-        ReadWritePaths=/home/ubuntu/CherryPick
-
-        # Logging
-        StandardOutput=journal
-        StandardError=journal
-        SyslogIdentifier=cherrypick-app
-
-        [Install]
-        WantedBy=multi-user.target
-        SERVICEEOF
-
-          sudo systemctl daemon-reload
-        fi
-
-        # 서비스 시작
-        sudo systemctl enable cherrypick-app
-        sudo systemctl start cherrypick-app
-        echo "✅ Service started"
-
-    - name: Health check and rollback
-      run: |
-        echo "⏳ Health check..."
-        
-        # 헬스체크 (30회 시도, 총 5분)
-        for i in {1..30}; do
-          if curl -f --connect-timeout 3 --max-time 10 http://localhost:8080/actuator/health >/dev/null 2>&1; then
-            echo "✅ Deployment successful!"
-            echo "📊 Service status:"
-            sudo systemctl status cherrypick-app --no-pager -l
-            echo ""
-            echo "🏥 Health check result:"
-            curl -s http://localhost:8080/actuator/health | jq . 2>/dev/null || echo "Health endpoint OK"
-            break
-          fi
-          
-          if [ $i -eq 30 ]; then
-            echo "❌ Health check failed!"
-            echo "🔄 Attempting automatic rollback..."
-            
-            # 자동 롤백
-            sudo systemctl stop cherrypick-app
-            LATEST_BACKUP=$(ls -t *.backup.* 2>/dev/null | head -1)
-            if [ -n "$LATEST_BACKUP" ]; then
-              echo "🔄 Rolling back to: $(basename $LATEST_BACKUP)"
-              cp "$LATEST_BACKUP" "${{ env.JAR_FILE }}"
-              sudo systemctl start cherrypick-app
-              sleep 15
-              
-              if curl -f --connect-timeout 3 http://localhost:8080/actuator/health >/dev/null 2>&1; then
-                echo "✅ Rollback successful!"
-                echo "⚠️ Deployment failed but service restored to previous version"
-                exit 2  # Exit with code 2 to indicate rollback occurred
-              fi
-            fi
-            
-            echo "❌ Rollback failed!"
-            echo "📋 Service logs:"
-            sudo journalctl -u cherrypick-app --no-pager -l -n 20
-            exit 1
-          fi
-          
-          echo "Waiting... ($i/30)"
-          sleep 10
-        done
-
-    - name: Final verification
-      run: |
-        echo "🔍 Final deployment verification..."
-        echo "📊 System status:"
-        systemctl is-active cherrypick-app
-        echo "🏥 Application health:"
-        curl -s http://localhost:8080/actuator/health | jq . 2>/dev/null || echo "Health check passed"
-        echo "🎉 Deployment completed successfully!"
-
-    - name: Cleanup build artifacts
-      if: always()
-      run: |
-        # 빌드 결과물 정리 (디스크 공간 절약)
-        rm -rf build/ 2>/dev/null || true
-        rm -rf .gradle/ 2>/dev/null || true
-        echo "🧹 Build artifacts cleaned up"
+logging:
+  level:
+    com.cherrypick: DEBUG
+    org.springframework.web: DEBUG
