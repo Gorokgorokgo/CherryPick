@@ -10,6 +10,12 @@ import com.cherrypick.app.domain.connection.repository.ConnectionServiceReposito
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.user.service.LevelPermissionService;
+import com.cherrypick.app.domain.connection.dto.request.PayConnectionFeeRequest;
+import com.cherrypick.app.domain.connection.dto.response.ConnectionFeeResponse;
+import com.cherrypick.app.domain.connection.dto.response.PaymentResult;
+import com.cherrypick.app.domain.point.service.PointService;
+import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.notification.service.FcmService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +33,10 @@ public class ConnectionServiceImpl {
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
     private final LevelPermissionService levelPermissionService;
+    private final ConnectionFeeCalculator connectionFeeCalculator;
+    private final PointService pointService;
+    private final ChatService chatService;
+    private final FcmService fcmService;
     
     /**
      * 연결 서비스 생성 (스케줄러용 - 간소화된 파라미터)
@@ -85,17 +95,19 @@ public class ConnectionServiceImpl {
         // 판매자 레벨별 할인율 조회
         double discountRate = levelPermissionService.getConnectionFeeDiscount(sellerId);
         
-        // 수수료 계산 (기본 3% + 레벨별 할인 적용)
-        BigDecimal baseFeeRate = BigDecimal.valueOf(0.03); // 기본 3%
-        BigDecimal baseFee = finalPrice.multiply(baseFeeRate);
-        BigDecimal discount = baseFee.multiply(BigDecimal.valueOf(discountRate));
-        BigDecimal connectionFee = baseFee.subtract(discount);
+        // 수수료 계산 (현재 무료, 추후 점진적 인상)
+        ConnectionFeeResponse feeInfo = connectionFeeCalculator.calculateConnectionFee(seller, finalPrice);
+        BigDecimal connectionFee = feeInfo.getFinalFee();
         
         // 연결 서비스 생성
         ConnectionService connectionService = ConnectionService.createConnection(
                 auction, seller, buyer, finalPrice, connectionFee);
         
         ConnectionService savedConnection = connectionServiceRepository.save(connectionService);
+        
+        // 판매자에게 연결 서비스 결제 요청 알림 발송
+        fcmService.sendConnectionPaymentRequestNotification(
+                seller, savedConnection.getId(), auction.getTitle());
         
         return ConnectionResponse.from(savedConnection);
     }
@@ -137,11 +149,12 @@ public class ConnectionServiceImpl {
         // 연결 서비스 활성화
         connection.activateConnection();
         
-        // TODO: 채팅방 생성 (별도 서비스)
-        // chatService.createChatRoom(connection.getSeller(), connection.getBuyer(), connection.getAuction());
+        // 채팅방 활성화
+        chatService.activateChatRoom(connection);
         
-        // TODO: 양측 알림 발송
-        // notificationService.sendConnectionActivatedNotification(connection);
+        // 구매자에게 채팅 활성화 알림 발송
+        fcmService.sendChatActivationNotification(
+                connection.getBuyer(), connectionId, connection.getAuction().getTitle());
         
         connectionServiceRepository.save(connection);
         
@@ -212,5 +225,142 @@ public class ConnectionServiceImpl {
         connectionServiceRepository.save(connection);
         
         return ConnectionResponse.from(connection);
+    }
+    
+    /**
+     * 연결 서비스 수수료 정보 조회
+     * 
+     * @param connectionId 연결 서비스 ID
+     * @param sellerId 판매자 ID (권한 확인용)
+     * @return 수수료 계산 정보
+     */
+    public ConnectionFeeResponse getConnectionFeeInfo(Long connectionId, Long sellerId) {
+        ConnectionService connection = connectionServiceRepository.findById(connectionId)
+                .orElseThrow(() -> new IllegalArgumentException("연결 서비스를 찾을 수 없습니다."));
+        
+        // 판매자 권한 확인
+        if (!connection.getSeller().getId().equals(sellerId)) {
+            throw new IllegalArgumentException("수수료 정보 조회 권한이 없습니다.");
+        }
+        
+        // 현재 수수료 정보 계산
+        ConnectionFeeResponse feeInfo = connectionFeeCalculator.calculateConnectionFee(
+                connection.getSeller(), connection.getFinalPrice());
+        
+        return ConnectionFeeResponse.builder()
+                .connectionId(connectionId)
+                .finalPrice(feeInfo.getFinalPrice())
+                .baseFeeRate(feeInfo.getBaseFeeRate())
+                .baseFee(feeInfo.getBaseFee())
+                .discountRate(feeInfo.getDiscountRate())
+                .discountAmount(feeInfo.getDiscountAmount())
+                .finalFee(feeInfo.getFinalFee())
+                .sellerLevel(feeInfo.getSellerLevel())
+                .isFreePromotion(feeInfo.getIsFreePromotion())
+                .build();
+    }
+    
+    /**
+     * 연결 서비스 수수료 결제 처리 (신규)
+     * 
+     * @param request 결제 요청 정보
+     * @param sellerId 판매자 ID
+     * @return 결제 결과
+     */
+    @Transactional
+    public PaymentResult payConnectionFee(PayConnectionFeeRequest request, Long sellerId) {
+        ConnectionService connection = connectionServiceRepository.findById(request.getConnectionId())
+                .orElseThrow(() -> new IllegalArgumentException("연결 서비스를 찾을 수 없습니다."));
+        
+        // 판매자 권한 확인
+        if (!connection.getSeller().getId().equals(sellerId)) {
+            return PaymentResult.builder()
+                    .connectionId(request.getConnectionId())
+                    .success(false)
+                    .message("결제 권한이 없습니다.")
+                    .errorCode("UNAUTHORIZED")
+                    .build();
+        }
+        
+        // 연결 서비스 상태 확인
+        if (connection.getStatus() != ConnectionStatus.PENDING) {
+            return PaymentResult.builder()
+                    .connectionId(request.getConnectionId())
+                    .success(false)
+                    .message("이미 처리된 연결 서비스입니다.")
+                    .errorCode("ALREADY_PROCESSED")
+                    .build();
+        }
+        
+        // 수수료 계산 및 검증
+        ConnectionFeeResponse feeInfo = connectionFeeCalculator.calculateConnectionFee(
+                connection.getSeller(), connection.getFinalPrice());
+        
+        // 프론트엔드 계산과 서버 계산 일치 확인
+        if (!feeInfo.getFinalFee().equals(BigDecimal.valueOf(request.getExpectedFee()))) {
+            return PaymentResult.builder()
+                    .connectionId(request.getConnectionId())
+                    .success(false)
+                    .message("수수료 계산이 일치하지 않습니다. 새로고침 후 다시 시도해주세요.")
+                    .errorCode("FEE_MISMATCH")
+                    .build();
+        }
+        
+        try {
+            // 현재 무료 기간이므로 실제 결제 없이 바로 활성화
+            if (feeInfo.getIsFreePromotion()) {
+                // 무료 기간 - 즉시 활성화
+                connection.activateConnection();
+                
+                // 채팅방 활성화
+                chatService.activateChatRoom(connection);
+                
+                // 구매자에게 채팅 활성화 알림 발송
+                fcmService.sendChatActivationNotification(
+                        connection.getBuyer(), connection.getId(), connection.getAuction().getTitle());
+                
+                connectionServiceRepository.save(connection);
+                
+                return PaymentResult.builder()
+                        .connectionId(request.getConnectionId())
+                        .success(true)
+                        .status(ConnectionStatus.ACTIVE)
+                        .chatRoomActivated(true)
+                        .connectedAt(connection.getConnectedAt())
+                        .message("연결 서비스가 활성화되었습니다. (무료 프로모션)")
+                        .build();
+            } else {
+                // 유료 기간 - 포인트 결제 처리
+                // pointService.deductPoints(sellerId, feeInfo.getFinalFee().longValue(), "연결 서비스 수수료");
+                
+                connection.activateConnection();
+                
+                // 채팅방 활성화
+                chatService.activateChatRoom(connection);
+                
+                // 구매자에게 채팅 활성화 알림 발송
+                fcmService.sendChatActivationNotification(
+                        connection.getBuyer(), connection.getId(), connection.getAuction().getTitle());
+                
+                connectionServiceRepository.save(connection);
+                
+                return PaymentResult.builder()
+                        .connectionId(request.getConnectionId())
+                        .success(true)
+                        .status(ConnectionStatus.ACTIVE)
+                        .chatRoomActivated(true)
+                        .connectedAt(connection.getConnectedAt())
+                        .message("연결 서비스 결제가 완료되었습니다.")
+                        .build();
+            }
+            
+        } catch (Exception e) {
+            return PaymentResult.builder()
+                    .connectionId(request.getConnectionId())
+                    .success(false)
+                    .message("결제 처리 중 오류가 발생했습니다: " + e.getMessage())
+                    .errorCode("PAYMENT_ERROR")
+                    .build();
+        }
     }
 }
