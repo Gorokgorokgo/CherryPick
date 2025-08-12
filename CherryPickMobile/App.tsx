@@ -11,7 +11,7 @@ import {
  * CherryPick Mobile App
  * 중고물품 경매 앱
  */
-function App() {
+function App(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
