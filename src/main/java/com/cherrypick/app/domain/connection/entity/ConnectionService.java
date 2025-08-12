@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "connection_services")
 @Getter
-@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor

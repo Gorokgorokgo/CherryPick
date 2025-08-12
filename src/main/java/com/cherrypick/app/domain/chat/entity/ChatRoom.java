@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "chat_rooms")
 @Getter
-@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -75,23 +74,49 @@ public class ChatRoom extends BaseEntity {
     /**
      * 채팅방 활성화 (수수료 결제 완료 시)
      */
-    public void activateChatRoom() {
-        this.status = ChatRoomStatus.ACTIVE;
-        this.activatedAt = LocalDateTime.now();
+    public ChatRoom activateChatRoom() {
+        return ChatRoom.builder()
+                .id(this.id)
+                .auction(this.auction)
+                .seller(this.seller)
+                .buyer(this.buyer)
+                .connectionService(this.connectionService)
+                .status(ChatRoomStatus.ACTIVE)
+                .lastMessageAt(this.lastMessageAt)
+                .activatedAt(LocalDateTime.now())
+                .build();
     }
     
     /**
      * 채팅방 종료 (거래 완료 시)
      */
-    public void closeChatRoom() {
-        this.status = ChatRoomStatus.CLOSED;
+    public ChatRoom closeChatRoom() {
+        return ChatRoom.builder()
+                .id(this.id)
+                .auction(this.auction)
+                .seller(this.seller)
+                .buyer(this.buyer)
+                .connectionService(this.connectionService)
+                .status(ChatRoomStatus.CLOSED)
+                .lastMessageAt(this.lastMessageAt)
+                .activatedAt(this.activatedAt)
+                .build();
     }
     
     /**
      * 마지막 메시지 시간 업데이트
      */
-    public void updateLastMessageTime() {
-        this.lastMessageAt = LocalDateTime.now();
+    public ChatRoom updateLastMessageTime() {
+        return ChatRoom.builder()
+                .id(this.id)
+                .auction(this.auction)
+                .seller(this.seller)
+                .buyer(this.buyer)
+                .connectionService(this.connectionService)
+                .status(this.status)
+                .lastMessageAt(LocalDateTime.now())
+                .activatedAt(this.activatedAt)
+                .build();
     }
     
     /**
