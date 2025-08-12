@@ -1,6 +1,9 @@
 package com.cherrypick.app.domain.connection.controller;
 
 import com.cherrypick.app.domain.connection.dto.response.ConnectionResponse;
+import com.cherrypick.app.domain.connection.dto.request.PayConnectionFeeRequest;
+import com.cherrypick.app.domain.connection.dto.response.ConnectionFeeResponse;
+import com.cherrypick.app.domain.connection.dto.response.PaymentResult;
 import com.cherrypick.app.domain.connection.service.ConnectionServiceImpl;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +19,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 @Tag(name = "9단계 - 연결 서비스", description = """
     판매자-구매자 연결 및 수수료 관리 API
@@ -39,6 +43,141 @@ import org.springframework.web.bind.annotation.*;
 public class ConnectionController {
     
     private final ConnectionServiceImpl connectionService;
+    
+    @Operation(
+        summary = "연결 서비스 수수료 정보 조회",
+        description = """
+            연결 서비스의 수수료 정보를 조회합니다.
+            
+            **수수료 정책:**
+            - 기본 수수료율: 현재 0% (무료 프로모션)
+            - 추후 점진적 인상 예정: 1% → 2% → 3%
+            
+            **판매자 레벨별 할인:**
+            - 레벨 1: 0% 할인
+            - 레벨 2: 5% 할인  
+            - 레벨 3: 10% 할인
+            - ...
+            - 레벨 10: 50% 할인
+            
+            **결제 전 확인사항:**
+            - 할인 적용된 최종 수수료 확인
+            - 판매자 레벨 및 혜택 확인
+            - 무료 프로모션 여부 확인
+            """
+    )
+    @ApiResponses(value = {
+        @ApiResponse(
+            responseCode = "200", 
+            description = "수수료 정보 조회 성공",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ConnectionFeeResponse.class),
+                examples = @ExampleObject(
+                    name = "수수료 정보 응답",
+                    value = """
+                    {
+                      "connectionId": 1,
+                      "finalPrice": 70000,
+                      "baseFeeRate": 0.0,
+                      "baseFee": 0,
+                      "discountRate": 10,
+                      "discountAmount": 0,
+                      "finalFee": 0,
+                      "sellerLevel": 3,
+                      "isFreePromotion": true
+                    }
+                    """
+                )
+            )
+        ),
+        @ApiResponse(responseCode = "401", description = "인증 실패"),
+        @ApiResponse(responseCode = "403", description = "권한 없음 - 판매자만 조회 가능"),
+        @ApiResponse(responseCode = "404", description = "연결 서비스를 찾을 수 없음")
+    })
+    @GetMapping("/{connectionId}/fee")
+    public ResponseEntity<ConnectionFeeResponse> getConnectionFeeInfo(
+            @Parameter(description = "연결 서비스 ID", example = "1") @PathVariable Long connectionId,
+            @Parameter(description = "판매자 ID", example = "1") @RequestHeader("User-Id") Long sellerId) {
+        
+        ConnectionFeeResponse response = connectionService.getConnectionFeeInfo(connectionId, sellerId);
+        return ResponseEntity.ok(response);
+    }
+    
+    @Operation(
+        summary = "연결 서비스 수수료 결제 (신규)",
+        description = """
+            판매자가 연결 수수료를 결제하여 구매자와의 채팅을 활성화합니다.
+            
+            **현재 정책:**
+            - 무료 프로모션 기간 - 결제 없이 즉시 활성화
+            - 추후 유료 전환시 포인트 결제 시스템 활용
+            
+            **결제 검증:**
+            - 프론트엔드 계산 수수료와 서버 계산 일치 확인
+            - 이중 결제 방지 로직
+            - 권한 검증 (판매자만 결제 가능)
+            
+            **결제 완료 후:**
+            - 연결 서비스 PENDING → ACTIVE 상태 변경
+            - 채팅방 자동 활성화
+            - 양방향 실시간 채팅 가능
+            """
+    )
+    @ApiResponses(value = {
+        @ApiResponse(
+            responseCode = "200", 
+            description = "연결 수수료 결제 성공",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = PaymentResult.class),
+                examples = @ExampleObject(
+                    name = "결제 완료 응답",
+                    value = """
+                    {
+                      "connectionId": 1,
+                      "success": true,
+                      "status": "ACTIVE",
+                      "chatRoomActivated": true,
+                      "connectedAt": "2024-08-04T10:30:00",
+                      "message": "연결 서비스가 활성화되었습니다. (무료 프로모션)"
+                    }
+                    """
+                )
+            )
+        ),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청 - 수수료 불일치 또는 이미 처리된 연결"),
+        @ApiResponse(responseCode = "401", description = "인증 실패"),
+        @ApiResponse(responseCode = "403", description = "권한 없음 - 판매자만 결제 가능"),
+        @ApiResponse(responseCode = "404", description = "연결 서비스를 찾을 수 없음"),
+        @ApiResponse(responseCode = "500", description = "결제 처리 실패")
+    })
+    @PostMapping("/{connectionId}/pay")
+    public ResponseEntity<PaymentResult> payConnectionFee(
+            @Parameter(description = "연결 서비스 ID", example = "1") @PathVariable Long connectionId,
+            @Parameter(description = "판매자 ID", example = "1") @RequestHeader("User-Id") Long sellerId,
+            @Parameter(description = "결제 요청 정보") @Valid @RequestBody PayConnectionFeeRequest request) {
+        
+        // 경로 변수와 요청 본문의 connectionId 일치 확인
+        if (!connectionId.equals(request.getConnectionId())) {
+            return ResponseEntity.badRequest().body(
+                PaymentResult.builder()
+                    .connectionId(connectionId)
+                    .success(false)
+                    .message("요청 정보가 일치하지 않습니다.")
+                    .errorCode("INVALID_REQUEST")
+                    .build()
+            );
+        }
+        
+        PaymentResult result = connectionService.payConnectionFee(request, sellerId);
+        
+        if (result.getSuccess()) {
+            return ResponseEntity.ok(result);
+        } else {
+            return ResponseEntity.badRequest().body(result);
+        }
+    }
     
     @Operation(
         summary = "연결 서비스 결제 처리",
