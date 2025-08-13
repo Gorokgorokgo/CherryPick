@@ -287,3 +287,26 @@ jobs:
         rm -rf build/ 2>/dev/null || true
         rm -rf .gradle/ 2>/dev/null || true
         echo "🧹 Build artifacts cleaned up"
+
+    # Slack 알림 단계들 (결과만)
+    - name: Notify Slack - Deployment Success
+      if: success()
+      run: |
+        COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" | head -c 50)
+        AUTHOR=$(git log -1 --pretty=format:"%an")
+        DEPLOY_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+        
+        curl -X POST -H "Content-type: application/json" \
+        --data "{\"text\":\"✅ **CherryPick 배포 성공!**\n• Repository: ${{ github.repository }}\n• Branch: ${{ github.ref_name }}\n• Commit: ${COMMIT_MESSAGE}\n• Author: ${AUTHOR}\n• Deploy Time: ${DEPLOY_TIME}\n• Status: ✅ Healthy & Running\"}" \
+        "${{ secrets.SLACK_WEBHOOK }}"
+
+    - name: Notify Slack - Deployment Failed  
+      if: failure()
+      run: |
+        COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" | head -c 50)
+        AUTHOR=$(git log -1 --pretty=format:"%an")
+        FAIL_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+        
+        curl -X POST -H "Content-type: application/json" \
+        --data "{\"text\":\"❌ **CherryPick 배포 실패!**\n• Repository: ${{ github.repository }}\n• Branch: ${{ github.ref_name }}\n• Commit: ${COMMIT_MESSAGE}\n• Author: ${AUTHOR}\n• Fail Time: ${FAIL_TIME}\n• Status: ❌ Deployment Failed\n• Action Required: 로그를 확인하고 수동 개입이 필요합니다\"}" \
+        "${{ secrets.SLACK_WEBHOOK }}"

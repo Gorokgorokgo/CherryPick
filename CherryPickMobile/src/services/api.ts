@@ -113,6 +113,99 @@ class ApiService {
     return response.data;
   }
 
+  async getUserStats() {
+    const response = await this.api.get('/users/stats');
+    return response.data;
+  }
+
+  async updateProfileImage(imageUrl: string) {
+    const response = await this.api.put('/users/profile/image', { imageUrl });
+    return response.data;
+  }
+
+  async updateProfile(profileData: {
+    nickname?: string;
+    profileImage?: string;
+  }) {
+    const response = await this.api.put('/users/profile', profileData);
+    return response.data;
+  }
+
+  // Point APIs
+  async getPointBalance() {
+    const response = await this.api.get('/points/balance');
+    return response.data;
+  }
+
+  async getPointTransactions(page = 0, size = 20) {
+    const response = await this.api.get(`/points/transactions?page=${page}&size=${size}`);
+    return response.data;
+  }
+
+  async chargePoints(amount: number) {
+    const response = await this.api.post('/points/charge', { amount });
+    return response.data;
+  }
+
+  // My Auction APIs
+  async getMySellingAuctions(page = 0, size = 20) {
+    const response = await this.api.get(`/auctions/my/selling?page=${page}&size=${size}`);
+    return response.data;
+  }
+
+  async getMyBiddingAuctions(page = 0, size = 20) {
+    const response = await this.api.get(`/auctions/my/bidding?page=${page}&size=${size}`);
+    return response.data;
+  }
+
+  async getMyCompletedAuctions(page = 0, size = 20) {
+    const response = await this.api.get(`/auctions/my/completed?page=${page}&size=${size}`);
+    return response.data;
+  }
+
+  async getMyConnections(page = 0, size = 20) {
+    const response = await this.api.get(`/connections/my?page=${page}&size=${size}`);
+    return response.data;
+  }
+
+  // Auction creation API
+  async createAuction(auctionData: {
+    title: string;
+    description: string;
+    category: string;
+    startPrice: number;
+    buyNowPrice?: number | null;
+    auctionDuration: number;
+    region: string;
+    images: string[];
+  }) {
+    const response = await this.api.post('/auctions', auctionData);
+    return response.data;
+  }
+
+  // Image upload API
+  async uploadImage(imageUri: string) {
+    const formData = new FormData();
+    formData.append('image', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'auction_image.jpg',
+    } as any);
+
+    const response = await this.api.post('/upload/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  // Batch image upload API
+  async uploadImages(imageUris: string[]) {
+    const uploadPromises = imageUris.map(uri => this.uploadImage(uri));
+    return Promise.all(uploadPromises);
+  }
+
   // Notification APIs
   async updateFcmToken(fcmToken: string) {
     const response = await this.api.post('/notifications/fcm-token', {

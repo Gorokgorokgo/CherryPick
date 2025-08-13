@@ -13,23 +13,50 @@ import { SplashScreen } from '../screens/auth/SplashScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { HomeScreen } from '../screens/main/HomeScreen';
 import { ChatRoomScreen } from '../screens/chat/ChatRoomScreen';
+import { AuctionCreateScreen } from '../screens/auction/AuctionCreateScreen';
+import { ProfileScreen } from '../screens/profile/ProfileScreen';
+import { PointManageScreen } from '../screens/profile/PointManageScreen';
+import { MyAuctionsScreen } from '../screens/profile/MyAuctionsScreen';
 
 const RootStack = createStackNavigator<RootStackParamList>();
 const AuthStack = createStackNavigator<AuthStackParamList>();
 const MainTab = createBottomTabNavigator<MainTabParamList>();
 const ChatStack = createStackNavigator<ChatStackParamList>();
 
-// Placeholder screens for Tab Navigation
-const AuctionScreen = () => (
-  <Text style={{ flex: 1, textAlign: 'center', marginTop: 100 }}>
-    경매 등록 화면 (6주차 구현 예정)
-  </Text>
+// Auction Screen Component
+const AuctionScreen = ({ navigation }: any) => (
+  <AuctionCreateScreen
+    onCreateSuccess={() => {
+      // 경매 등록 성공 후 홈 화면으로 이동
+      navigation.navigate(SCREENS.HOME);
+    }}
+    onBackPress={() => {
+      // 뒤로 가기 시 홈 화면으로 이동
+      navigation.navigate(SCREENS.HOME);
+    }}
+  />
 );
 
-const ProfileScreen = () => (
-  <Text style={{ flex: 1, textAlign: 'center', marginTop: 100 }}>
-    프로필 화면 (6주차 구현 예정)
-  </Text>
+// Profile Screen Component
+const ProfileScreenWrapper = ({ navigation }: any) => (
+  <ProfileScreen
+    onNavigateToPoints={() => {
+      // 포인트 관리 화면으로 네비게이션 (모달 형태)
+      navigation.navigate('PointManage');
+    }}
+    onNavigateToMyAuctions={() => {
+      // 내 경매 관리 화면으로 네비게이션
+      navigation.navigate('MyAuctions');
+    }}
+    onNavigateToSettings={() => {
+      // 설정 화면으로 네비게이션 (추후 구현)
+      console.log('Navigate to Settings');
+    }}
+    onLogout={() => {
+      // 로그아웃 시 Auth 화면으로 이동
+      navigation.navigate('Auth');
+    }}
+  />
 );
 
 const ChatListScreen = () => (
@@ -135,7 +162,7 @@ function MainNavigator() {
 
       <MainTab.Screen
         name={SCREENS.PROFILE}
-        component={ProfileScreen}
+        component={ProfileScreenWrapper}
         options={{
           title: '내정보',
           tabBarIcon: () => <Text style={{ fontSize: 20 }}>👤</Text>,
@@ -189,6 +216,34 @@ export default function RootNavigator() {
 
         <RootStack.Screen name="Auth" component={AuthNavigator} />
         <RootStack.Screen name="Main" component={MainNavigator} />
+        
+        {/* Profile Stack Screens */}
+        <RootStack.Screen 
+          name="PointManage" 
+          options={{ presentation: 'modal' }}
+        >
+          {({ navigation }) => (
+            <PointManageScreen
+              onBackPress={() => navigation.goBack()}
+            />
+          )}
+        </RootStack.Screen>
+        
+        <RootStack.Screen 
+          name="MyAuctions"
+          options={{ presentation: 'modal' }}
+        >
+          {({ navigation }) => (
+            <MyAuctionsScreen
+              onBackPress={() => navigation.goBack()}
+              onAuctionPress={(auction) => {
+                console.log('Navigate to auction detail:', auction.title);
+                // TODO: 경매 상세 화면으로 네비게이션
+                navigation.goBack();
+              }}
+            />
+          )}
+        </RootStack.Screen>
       </RootStack.Navigator>
     </NavigationContainer>
   );

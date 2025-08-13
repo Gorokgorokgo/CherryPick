@@ -9,6 +9,34 @@ export interface User {
   createdAt: string;
 }
 
+// Point Types
+export interface Point {
+  id: number;
+  userId: number;
+  balance: number;
+  lastUpdatedAt: string;
+}
+
+export interface PointTransaction {
+  id: number;
+  userId: number;
+  type: 'CHARGE' | 'USE' | 'REFUND' | 'CONNECTION_FEE';
+  amount: number;
+  description: string;
+  balanceAfter: number;
+  createdAt: string;
+}
+
+// User Profile Stats
+export interface UserStats {
+  totalAuctions: number;
+  totalBids: number;
+  successfulSales: number;
+  successfulPurchases: number;
+  connectionFeePaid: number;
+  totalPoints: number;
+}
+
 // Auction Types
 export interface Auction {
   id: number;
@@ -76,6 +104,8 @@ export type RootStackParamList = {
   Splash: undefined;
   Auth: undefined;
   Main: undefined;
+  PointManage: undefined;
+  MyAuctions: undefined;
 };
 
 export type AuthStackParamList = {
