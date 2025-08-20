@@ -54,6 +54,28 @@ logs/
 *.tmp
 *.temp
 
+### Node.js ###
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+### React Native ###
+CherryPickApp/
+MyApp/
+TempProject/
+
+### React Native Mobile ###
+mobile/node_modules/
+mobile/.metro-health-check*
+mobile/metro-cache/
+mobile/android/app/build/
+mobile/android/build/
+mobile/ios/build/
+mobile/ios/Pods/
+mobile/*.jsbundle
+
 ### Claude Code 설정 파일 ###
 CLAUDE.md
 .claude/
