@@ -24,4 +24,8 @@ public class EntityNotFoundException extends BusinessException {
     public static EntityNotFoundException account() {
         return new EntityNotFoundException(ErrorCode.ACCOUNT_NOT_FOUND);
     }
+    
+    public static EntityNotFoundException chatRoom() {
+        return new EntityNotFoundException(ErrorCode.ENTITY_NOT_FOUND);
+    }
 }

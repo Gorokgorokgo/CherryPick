@@ -1,6 +1,7 @@
 package com.cherrypick.app.domain.chat.repository;
 
 import com.cherrypick.app.domain.chat.entity.ChatRoom;
+import com.cherrypick.app.domain.chat.enums.ChatRoomStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -22,10 +24,22 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     Optional<ChatRoom> findByConnectionServiceId(Long connectionServiceId);
     
     /**
-     * 사용자별 채팅방 목록 조회 (판매자 또는 구매자)
+     * 사용자별 채팅방 목록 조회 (판매자 또는 구매자) - List 버전
+     */
+    @Query("SELECT cr FROM ChatRoom cr WHERE cr.seller.id = :userId OR cr.buyer.id = :userId ORDER BY cr.lastMessageAt DESC, cr.createdAt DESC")
+    List<ChatRoom> findByUserId(@Param("userId") Long userId);
+    
+    /**
+     * 사용자별 채팅방 목록 조회 (판매자 또는 구매자) - Pageable 버전
      */
     @Query("SELECT cr FROM ChatRoom cr WHERE cr.seller.id = :userId OR cr.buyer.id = :userId ORDER BY cr.lastMessageAt DESC, cr.createdAt DESC")
     Page<ChatRoom> findByUserId(@Param("userId") Long userId, Pageable pageable);
+    
+    /**
+     * 사용자별 특정 상태의 채팅방 목록 조회
+     */
+    @Query("SELECT cr FROM ChatRoom cr WHERE (cr.seller.id = :userId OR cr.buyer.id = :userId) AND cr.status = :status ORDER BY cr.lastMessageAt DESC, cr.createdAt DESC")
+    List<ChatRoom> findByUserIdAndStatus(@Param("userId") Long userId, @Param("status") ChatRoomStatus status);
     
     /**
      * 판매자의 채팅방 목록 조회
