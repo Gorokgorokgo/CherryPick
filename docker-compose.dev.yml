@@ -51,7 +51,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: admin123
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
-      - "8081:80"
+      - "8082:80"
     depends_on:
       postgres-dev:
         condition: service_healthy

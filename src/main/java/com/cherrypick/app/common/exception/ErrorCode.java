@@ -15,6 +15,8 @@ public enum ErrorCode {
     METHOD_NOT_ALLOWED("C004", "허용되지 않은 HTTP 메서드입니다.", HttpStatus.METHOD_NOT_ALLOWED),
     ACCESS_DENIED("C005", "접근 권한이 없습니다.", HttpStatus.FORBIDDEN),
     INTERNAL_SERVER_ERROR("C006", "내부 서버 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    BAD_REQUEST("C007", "잘못된 요청입니다.", HttpStatus.BAD_REQUEST),
+    FORBIDDEN("C008", "접근이 금지되었습니다.", HttpStatus.FORBIDDEN),
     
     // 인증/인가
     UNAUTHORIZED("A001", "인증이 필요합니다.", HttpStatus.UNAUTHORIZED),
