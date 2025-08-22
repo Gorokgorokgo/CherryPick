@@ -83,10 +83,6 @@ class ChatServiceTest {
                 .build();
                 
         auction = mock(Auction.class);
-        given(auction.getId()).willReturn(1L);
-        given(auction.getTitle()).willReturn("테스트 상품");
-        given(auction.getDescription()).willReturn("테스트 설명");
-        given(auction.getSeller()).willReturn(seller);
                 
         connectionService = ConnectionService.builder()
                 .id(1L)
