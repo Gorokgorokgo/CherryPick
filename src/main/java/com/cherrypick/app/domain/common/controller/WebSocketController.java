@@ -1,5 +1,8 @@
 package com.cherrypick.app.domain.common.controller;
 
+import com.cherrypick.app.domain.chat.dto.request.SendMessageRequest;
+import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
+import com.cherrypick.app.domain.chat.service.ChatService;
 import com.cherrypick.app.domain.common.dto.AuctionUpdateMessage;
 import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +26,7 @@ import java.security.Principal;
 public class WebSocketController {
     
     private final WebSocketMessagingService webSocketMessagingService;
+    private final ChatService chatService;
     
     /**
      * 특정 경매 구독
@@ -110,5 +114,170 @@ public class WebSocketController {
         }
         
         log.info("사용자 {}가 개인 알림 구독", userId);
+    }
+    
+    // === 채팅 관련 WebSocket 핸들러 ===
+    
+    /**
+     * 채팅방 구독
+     * 클라이언트가 /topic/chat/{chatRoomId}를 구독할 때 호출
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param principal 인증된 사용자 정보
+     */
+    @SubscribeMapping("/topic/chat/{chatRoomId}")
+    public void subscribeToChatRoom(@DestinationVariable Long chatRoomId, Principal principal) {
+        String userId = principal != null ? principal.getName() : "anonymous";
+        log.info("사용자 {}가 채팅방 {} 구독 시작", userId, chatRoomId);
+        
+        // TODO: 채팅방 접근 권한 검증 (ChatService를 통해)
+        if (principal != null) {
+            try {
+                Long userIdLong = Long.parseLong(userId);
+                // 채팅방 상세 정보 조회로 권한 검증 (예외 발생시 권한 없음)
+                chatService.getChatRoomDetails(chatRoomId, userIdLong);
+                log.debug("채팅방 {} 구독 권한 검증 완료: userId={}", chatRoomId, userId);
+            } catch (Exception e) {
+                log.warn("채팅방 {} 구독 권한 없음: userId={}, error={}", chatRoomId, userId, e.getMessage());
+                return;
+            }
+        }
+        
+        // TODO: 온라인 사용자 목록 관리 (추후 구현)
+        // chatRoomOnlineUsersService.addUser(chatRoomId, userId);
+    }
+    
+    /**
+     * 채팅 메시지 전송 (WebSocket을 통한 실시간 전송)
+     * 클라이언트가 /app/chat/{chatRoomId}/message로 메시지를 보낼 때 호출
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param request 메시지 전송 요청
+     * @param principal 인증된 사용자 정보
+     * @return 전송된 메시지 (채팅방 구독자들에게 브로드캐스트)
+     */
+    @MessageMapping("/chat/{chatRoomId}/message")
+    @SendTo("/topic/chat/{chatRoomId}")
+    public ChatMessageResponse handleChatMessage(
+            @DestinationVariable Long chatRoomId,
+            @Payload SendMessageRequest request,
+            Principal principal) {
+        
+        if (principal == null) {
+            log.warn("인증되지 않은 사용자의 메시지 전송 시도: chatRoomId={}", chatRoomId);
+            return null;
+        }
+        
+        try {
+            Long userId = Long.parseLong(principal.getName());
+            log.debug("채팅 메시지 수신: roomId={}, userId={}, content={}",
+                    chatRoomId, userId, request.getContent().substring(0, Math.min(50, request.getContent().length())));
+            
+            // ChatService를 통해 메시지 저장 및 처리
+            ChatMessageResponse response = chatService.sendMessage(chatRoomId, userId, request);
+            
+            log.info("채팅 메시지 WebSocket 전송 완료: roomId={}, messageId={}", chatRoomId, response.getId());
+            
+            return response;
+        } catch (Exception e) {
+            log.error("채팅 메시지 처리 실패: roomId={}, error={}", chatRoomId, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * 채팅방 나가기
+     * 클라이언트가 /app/chat/{chatRoomId}/leave로 메시지를 보낼 때 호출
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param principal 인증된 사용자 정보
+     */
+    @MessageMapping("/chat/{chatRoomId}/leave")
+    public void leaveChatRoom(@DestinationVariable Long chatRoomId, Principal principal) {
+        String userId = principal != null ? principal.getName() : "anonymous";
+        log.info("사용자 {}가 채팅방 {} 구독 해제", userId, chatRoomId);
+        
+        // TODO: 온라인 사용자 목록에서 제거 (추후 구현)
+        // chatRoomOnlineUsersService.removeUser(chatRoomId, userId);
+    }
+    
+    /**
+     * 메시지 읽음 처리
+     * 클라이언트가 /app/chat/{chatRoomId}/read로 메시지를 보낼 때 호출
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param messageId 읽은 메시지 ID (Payload로 전송)
+     * @param principal 인증된 사용자 정보
+     */
+    @MessageMapping("/chat/{chatRoomId}/read")
+    public void markMessageAsRead(
+            @DestinationVariable Long chatRoomId,
+            @Payload Long messageId,
+            Principal principal) {
+        
+        if (principal == null) {
+            log.warn("인증되지 않은 사용자의 메시지 읽음 처리 시도: chatRoomId={}", chatRoomId);
+            return;
+        }
+        
+        try {
+            Long userId = Long.parseLong(principal.getName());
+            
+            // 메시지 읽음 처리
+            chatService.markMessageAsRead(chatRoomId, messageId, userId);
+            
+            // 읽음 상태를 채팅방 참여자들에게 알림
+            webSocketMessagingService.notifyMessageRead(chatRoomId, messageId, userId);
+            
+            log.debug("메시지 읽음 처리 완료: roomId={}, messageId={}, userId={}", chatRoomId, messageId, userId);
+        } catch (Exception e) {
+            log.error("메시지 읽음 처리 실패: roomId={}, messageId={}, error={}", chatRoomId, messageId, e.getMessage());
+        }
+    }
+    
+    /**
+     * 타이핑 상태 알림
+     * 클라이언트가 /app/chat/{chatRoomId}/typing으로 메시지를 보낼 때 호출
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param isTyping 타이핑 상태 (true: 타이핑 중, false: 타이핑 중지)
+     * @param principal 인증된 사용자 정보
+     */
+    @MessageMapping("/chat/{chatRoomId}/typing")
+    @SendTo("/topic/chat/{chatRoomId}/typing")
+    public TypingStatusMessage handleTypingStatus(
+            @DestinationVariable Long chatRoomId,
+            @Payload Boolean isTyping,
+            Principal principal) {
+        
+        if (principal == null) {
+            return null;
+        }
+        
+        try {
+            Long userId = Long.parseLong(principal.getName());
+            
+            log.debug("타이핑 상태 알림: roomId={}, userId={}, typing={}", chatRoomId, userId, isTyping);
+            
+            return new TypingStatusMessage(userId, isTyping, System.currentTimeMillis());
+        } catch (Exception e) {
+            log.error("타이핑 상태 처리 실패: roomId={}, error={}", chatRoomId, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * 타이핑 상태 메시지
+     */
+    public static class TypingStatusMessage {
+        public final Long userId;
+        public final boolean isTyping;
+        public final long timestamp;
+        
+        public TypingStatusMessage(Long userId, boolean isTyping, long timestamp) {
+            this.userId = userId;
+            this.isTyping = isTyping;
+            this.timestamp = timestamp;
+        }
     }
 }
