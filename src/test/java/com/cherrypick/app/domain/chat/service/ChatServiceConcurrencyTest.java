@@ -35,10 +35,14 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
 import static org.mockito.Mockito.*;
 
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
 /**
  * 채팅 서비스 동시성 테스트
  */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("채팅 서비스 동시성 테스트")
 class ChatServiceConcurrencyTest {
 

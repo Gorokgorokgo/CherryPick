@@ -7,6 +7,9 @@ import com.cherrypick.app.domain.chat.dto.response.ChatRoomResponse;
 import com.cherrypick.app.domain.chat.enums.ChatRoomStatus;
 import com.cherrypick.app.domain.chat.enums.MessageType;
 import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.config.JwtAuthenticationEntryPoint;
+import com.cherrypick.app.config.JwtRequestFilter;
+import com.cherrypick.app.common.security.SecurityLogger;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +47,15 @@ class ChatControllerTest {
 
     @MockBean
     private ChatService chatService;
+    
+    @MockBean
+    private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    
+    @MockBean
+    private JwtRequestFilter jwtRequestFilter;
+    
+    @MockBean
+    private SecurityLogger securityLogger;
 
     @Autowired
     private ObjectMapper objectMapper;
