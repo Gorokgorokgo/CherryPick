@@ -21,21 +21,18 @@ public class User extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank
     @Pattern(regexp = "^010[0-9]{8}$", message = "올바른 전화번호 형식이 아닙니다.")
-    @Column(unique = true, nullable = false)
+    @Column(unique = true)
     private String phoneNumber;
 
     @NotBlank
     @Column(nullable = false, length = 20)
     private String nickname;
 
-    @NotBlank
-    @Column(unique = true, nullable = false, length = 100)
+    @Column(unique = true, length = 100)
     private String email;
 
-    @NotBlank
-    @Column(nullable = false)
+    @Column
     private String password;
 
     @Builder.Default

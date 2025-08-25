@@ -33,6 +33,7 @@ dependencies {
 
     // 보안 (로그인 인증/인가 처리)
     implementation 'org.springframework.boot:spring-boot-starter-security' // Spring Security
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client' // OAuth2 Client
 
     // 실시간 통신 (입찰 알림 등 WebSocket)
     implementation 'org.springframework.boot:spring-boot-starter-websocket' // STOMP, SockJS 등
@@ -58,6 +59,9 @@ dependencies {
 
     // .env 환경변수 자동 로드 (더 안정적인 라이브러리)
     implementation 'io.github.cdimascio:dotenv-java:3.0.0'
+
+    // HTTP 클라이언트 (OAuth API 호출용)
+    implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebClient
 
     
     runtimeOnly 'org.postgresql:postgresql'
