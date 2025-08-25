@@ -101,7 +101,7 @@ class SocialAuthControllerTest {
                 .andExpect(jsonPath("$.token").value("test-jwt-token"))
                 .andExpect(jsonPath("$.userId").value(1L))
                 .andExpect(jsonPath("$.email").value("test@gmail.com"))
-                .andExpected(jsonPath("$.nickname").value("테스트유저"));
+                .andExpect(jsonPath("$.nickname").value("테스트유저"));
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.cherrypick.app.domain.auth.dto.request.PhoneVerificationRequest;
 import com.cherrypick.app.domain.auth.dto.request.VerifyCodeRequest;
 import com.cherrypick.app.domain.auth.dto.request.SignupRequest;
 import com.cherrypick.app.domain.auth.dto.request.LoginRequest;
+import com.cherrypick.app.domain.auth.dto.request.PhoneLoginRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -127,6 +128,54 @@ public class AuthController {
     })
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
+        
+        if (response.getToken() != null) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    @PostMapping("/phone-login")
+    @Operation(summary = "전화번호 로그인", 
+               description = """
+                   전화번호와 인증번호로 로그인합니다.
+                   
+                   **사용 흐름:**
+                   1. `/api/auth/send-code`로 인증번호 발송
+                   2. `/api/auth/phone-login`로 인증번호 입력하여 로그인
+                   
+                   **특징:**
+                   - 기존 가입 사용자만 로그인 가능
+                   - 인증번호는 5분간 유효
+                   - 로그인 성공 시 JWT 토큰 발급
+                   
+                   **사용 예시:**
+                   ```json
+                   {
+                     "phoneNumber": "01012345678",
+                     "verificationCode": "123456"
+                   }
+                   ```
+                   
+                   **성공 응답:**
+                   ```json
+                   {
+                     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                     "user": {
+                       "id": 1,
+                       "email": "user@example.com",
+                       "nickname": "체리유저"
+                     }
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "전화번호 로그인 성공 - JWT 토큰 발급"),
+            @ApiResponse(responseCode = "400", description = "미가입 전화번호, 잘못된 인증번호, 인증번호 만료 등")
+    })
+    public ResponseEntity<AuthResponse> phoneLogin(@Valid @RequestBody PhoneLoginRequest request) {
+        AuthResponse response = authService.phoneLogin(request);
         
         if (response.getToken() != null) {
             return ResponseEntity.ok(response);

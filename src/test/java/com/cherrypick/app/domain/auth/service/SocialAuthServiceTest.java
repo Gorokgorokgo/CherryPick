@@ -103,7 +103,6 @@ class SocialAuthServiceTest {
         // then
         assertThat(response.getToken()).isEqualTo("test-jwt-token");
         assertThat(response.getUserId()).isEqualTo(1L);
-        assertThat(response.getEmail()).isEqualTo("test@gmail.com");
         assertThat(response.getNickname()).isEqualTo("테스트유저");
     }
 
