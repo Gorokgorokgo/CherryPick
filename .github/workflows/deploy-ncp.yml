@@ -291,9 +291,9 @@ jobs:
     - name: Notify Slack - Success
       if: success()
       run: |
-        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"✅ CherryPick 배포 성공! 🎉 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }}\"}" "https://hooks.slack.com/services/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"
+        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"✅ CherryPick 배포 성공! 🎉 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }}\"}" "${{ secrets.SLACK_WEBHOOK }}"
         
     - name: Notify Slack - Failure
       if: failure()
       run: |
-        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"❌ CherryPick 배포 실패! 🚨 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }} - 즉시 확인 필요!\"}" "https://hooks.slack.com/services/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"
+        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"❌ CherryPick 배포 실패! 🚨 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }} - 즉시 확인 필요!\"}" "${{ secrets.SLACK_WEBHOOK }}"
