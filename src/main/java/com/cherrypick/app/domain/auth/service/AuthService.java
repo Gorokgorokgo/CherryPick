@@ -5,6 +5,7 @@ import com.cherrypick.app.domain.auth.repository.AuthRepository;
 import com.cherrypick.app.domain.auth.dto.request.SignupRequest;
 import com.cherrypick.app.domain.auth.dto.request.LoginRequest;
 import com.cherrypick.app.domain.auth.dto.request.VerifyCodeRequest;
+import com.cherrypick.app.domain.auth.dto.request.PhoneLoginRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
 import com.cherrypick.app.domain.user.entity.User;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -149,6 +150,29 @@ public class AuthService {
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
 
         return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
+    }
+
+    public AuthResponse phoneLogin(PhoneLoginRequest request) {
+        // 등록된 사용자 확인
+        Optional<User> userOpt = authRepository.findByPhoneNumber(request.getPhoneNumber());
+        if (userOpt.isEmpty()) {
+            return new AuthResponse("가입되지 않은 전화번호입니다.");
+        }
+
+        User user = userOpt.get();
+
+        // 인증번호 확인
+        if (!verifyCode(request.getPhoneNumber(), request.getVerificationCode())) {
+            return new AuthResponse("인증번호가 올바르지 않거나 만료되었습니다.");
+        }
+
+        // 인증 성공 시 인증번호 삭제
+        redisTemplate.delete("verification:" + request.getPhoneNumber());
+
+        // JWT 토큰 생성
+        String token = jwtConfig.generateToken(user.getEmail(), user.getId());
+
+        return new AuthResponse(token, user.getId(), user.getPhoneNumber(), user.getNickname());
     }
 
     private boolean verifyCode(String phoneNumber, String code) {

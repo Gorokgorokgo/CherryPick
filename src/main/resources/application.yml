@@ -1,6 +1,8 @@
 spring:
   application:
     name: cherrypick
+  profiles:
+    include: oauth
 
   servlet:
     multipart:
