@@ -291,13 +291,9 @@ jobs:
     - name: Notify Slack - Success
       if: success()
       run: |
-        curl -X POST -H "Content-type: application/json" --data "{
-          \"text\": \"✅ **CherryPick 배포 성공!**\\n🎉 배포가 성공적으로 완료되었습니다!\\n📍 브랜치: ${{ github.ref_name }}\\n📝 커밋: ${{ github.event.head_commit.message }}\\n👤 작성자: ${{ github.actor }}\\n🔗 액션: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-        }" "https://hooks.slack.com/services/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"
+        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"✅ CherryPick 배포 성공! 🎉 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }}\"}" "https://hooks.slack.com/services/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"
         
     - name: Notify Slack - Failure
       if: failure()
       run: |
-        curl -X POST -H "Content-type: application/json" --data "{
-          \"text\": \"❌ **CherryPick 배포 실패!**\\n🚨 배포에 실패했습니다!\\n📍 브랜치: ${{ github.ref_name }}\\n📝 커밋: ${{ github.event.head_commit.message }}\\n👤 작성자: ${{ github.actor }}\\n🔗 액션: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\\n\\n즉시 확인이 필요합니다! 🔥\"
-        }" "https://hooks.slack.com/services/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"
+        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"❌ CherryPick 배포 실패! 🚨 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }} - 즉시 확인 필요!\"}" "https://hooks.slack.com/services/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"
