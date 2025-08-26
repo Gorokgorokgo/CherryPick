@@ -27,10 +27,11 @@ public class SocialAuthService {
 
     public AuthResponse socialLogin(SocialLoginRequest request) {
         try {
-            // 1. OAuth 제공자에서 사용자 정보 조회
+            // 1. OAuth 제공자에서 사용자 정보 조회 (State 검증 포함)
             SocialUserInfo socialUserInfo = oAuthService.getSocialUserInfo(
                     request.getProvider(), 
-                    request.getCode(), 
+                    request.getCode(),
+                    request.getState(),
                     request.getRedirectUri()
             );
 
@@ -60,10 +61,11 @@ public class SocialAuthService {
                 return new AuthResponse("필수 약관에 동의해주세요.");
             }
 
-            // 2. OAuth 제공자에서 사용자 정보 조회
+            // 2. OAuth 제공자에서 사용자 정보 조회 (State 검증 포함)
             SocialUserInfo socialUserInfo = oAuthService.getSocialUserInfo(
                     request.getProvider(), 
-                    request.getCode(), 
+                    request.getCode(),
+                    request.getState(),
                     request.getRedirectUri()
             );
 
@@ -123,6 +125,6 @@ public class SocialAuthService {
 
     @Transactional(readOnly = true)
     public SocialUserInfo getSocialUserInfo(SocialLoginRequest request) {
-        return oAuthService.getSocialUserInfo(request.getProvider(), request.getCode(), request.getRedirectUri());
+        return oAuthService.getSocialUserInfo(request.getProvider(), request.getCode(), request.getState(), request.getRedirectUri());
     }
 }
