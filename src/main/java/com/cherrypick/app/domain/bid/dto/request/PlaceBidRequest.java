@@ -16,7 +16,6 @@ public class PlaceBidRequest {
     private Long auctionId;
 
     @NotNull(message = "입찰 금액은 필수입니다")
-    @DecimalMin(value = "100", message = "입찰 금액은 최소 100원 이상이어야 합니다")
     @Schema(description = "입찰 금액 (100원 단위)", example = "10500")
     private BigDecimal bidAmount;
 
