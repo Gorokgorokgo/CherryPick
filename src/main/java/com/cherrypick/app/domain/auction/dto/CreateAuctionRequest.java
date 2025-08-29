@@ -98,8 +98,4 @@ public class CreateAuctionRequest {
         }
     }
     
-    public BigDecimal calculateDepositAmount() {
-        // 보증금 = 희망가의 10%
-        return hopePrice.multiply(BigDecimal.valueOf(0.1));
-    }
 }

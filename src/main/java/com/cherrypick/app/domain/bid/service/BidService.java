@@ -11,9 +11,6 @@ import com.cherrypick.app.domain.bid.dto.response.BidResponse;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.enums.BidStatus;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
-import com.cherrypick.app.domain.point.entity.PointLock;
-import com.cherrypick.app.domain.point.enums.PointLockStatus;
-import com.cherrypick.app.domain.point.repository.PointLockRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
@@ -35,7 +32,6 @@ public class BidService {
     private final BidRepository bidRepository;
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
-    private final PointLockRepository pointLockRepository;
     private final WebSocketMessagingService webSocketMessagingService;
     
     /**
