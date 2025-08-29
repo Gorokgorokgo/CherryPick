@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -48,4 +49,74 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     // 제목으로 검색
     @Query("SELECT a FROM Auction a WHERE a.status = 'ACTIVE' AND a.title LIKE %:keyword%")
     Page<Auction> findByTitleContaining(@Param("keyword") String keyword, Pageable pageable);
+    
+    // === 고급 검색 메소드들 ===
+    
+    // 키워드 검색 (제목 + 설명)
+    @Query("SELECT a FROM Auction a WHERE a.status = :status " +
+           "AND (LOWER(a.title) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+           "OR LOWER(a.description) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<Auction> searchByKeyword(@Param("keyword") String keyword, @Param("status") AuctionStatus status, Pageable pageable);
+    
+    // 가격 범위로 검색
+    @Query("SELECT a FROM Auction a WHERE a.status = :status " +
+           "AND a.currentPrice >= :minPrice AND a.currentPrice <= :maxPrice")
+    Page<Auction> findByPriceRange(@Param("minPrice") BigDecimal minPrice, 
+                                  @Param("maxPrice") BigDecimal maxPrice, 
+                                  @Param("status") AuctionStatus status, 
+                                  Pageable pageable);
+    
+    // 마감 임박 경매 검색 (N시간 이내)
+    @Query("SELECT a FROM Auction a WHERE a.status = 'ACTIVE' " +
+           "AND a.endAt BETWEEN :now AND :endTime " +
+           "ORDER BY a.endAt ASC")
+    Page<Auction> findEndingSoon(@Param("now") LocalDateTime now, 
+                                @Param("endTime") LocalDateTime endTime, 
+                                Pageable pageable);
+    
+    // 입찰 수가 N개 이상인 경매
+    @Query("SELECT a FROM Auction a WHERE a.status = :status AND a.bidCount >= :minBidCount")
+    Page<Auction> findByMinBidCount(@Param("minBidCount") Integer minBidCount, 
+                                   @Param("status") AuctionStatus status, 
+                                   Pageable pageable);
+    
+    // 복합 검색 (키워드 + 카테고리 + 지역 + 가격범위)
+    @Query("SELECT a FROM Auction a WHERE " +
+           "(:status IS NULL OR a.status = :status) " +
+           "AND (:keyword IS NULL OR " +
+           "     LOWER(a.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "     LOWER(a.description) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+           "AND (:category IS NULL OR a.category = :category) " +
+           "AND (:regionScope IS NULL OR a.regionScope = :regionScope) " +
+           "AND (:regionCode IS NULL OR a.regionCode = :regionCode) " +
+           "AND (:minPrice IS NULL OR a.currentPrice >= :minPrice) " +
+           "AND (:maxPrice IS NULL OR a.currentPrice <= :maxPrice) " +
+           "AND (:minBidCount IS NULL OR a.bidCount >= :minBidCount) " +
+           "AND (:endingSoonTime IS NULL OR a.endAt <= :endingSoonTime)")
+    Page<Auction> searchAuctions(@Param("status") AuctionStatus status,
+                                @Param("keyword") String keyword,
+                                @Param("category") Category category,
+                                @Param("regionScope") RegionScope regionScope,
+                                @Param("regionCode") String regionCode,
+                                @Param("minPrice") BigDecimal minPrice,
+                                @Param("maxPrice") BigDecimal maxPrice,
+                                @Param("minBidCount") Integer minBidCount,
+                                @Param("endingSoonTime") LocalDateTime endingSoonTime,
+                                Pageable pageable);
+    
+    // 조회수 높은 순으로 정렬
+    Page<Auction> findByStatusOrderByViewCountDesc(AuctionStatus status, Pageable pageable);
+    
+    // 입찰 수 높은 순으로 정렬
+    Page<Auction> findByStatusOrderByBidCountDesc(AuctionStatus status, Pageable pageable);
+    
+    // 현재 가격 낮은 순으로 정렬
+    Page<Auction> findByStatusOrderByCurrentPriceAsc(AuctionStatus status, Pageable pageable);
+    
+    // 현재 가격 높은 순으로 정렬
+    Page<Auction> findByStatusOrderByCurrentPriceDesc(AuctionStatus status, Pageable pageable);
+    
+    // 마감 임박 순으로 정렬 (진행중인 경매만)
+    @Query("SELECT a FROM Auction a WHERE a.status = 'ACTIVE' ORDER BY a.endAt ASC")
+    Page<Auction> findActiveAuctionsOrderByEndingSoon(Pageable pageable);
 }

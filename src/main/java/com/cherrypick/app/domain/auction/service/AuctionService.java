@@ -1,6 +1,7 @@
 package com.cherrypick.app.domain.auction.service;
 
 import com.cherrypick.app.domain.auction.dto.AuctionResponse;
+import com.cherrypick.app.domain.auction.dto.AuctionSearchRequest;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.entity.AuctionImage;
@@ -13,7 +14,9 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -218,5 +221,149 @@ public class AuctionService {
         
         System.out.println("경매 낙찰 처리 완료: " + auction.getTitle() + " -> " + winner.getNickname() + " (" + finalPrice + "원)");
         System.out.println("연결 서비스 대기 중 - 판매자가 수수료 결제 시 채팅 활성화");
+    }
+    
+    // === 고급 검색 및 필터링 기능 ===
+    
+    /**
+     * 통합 검색 기능 - 키워드, 카테고리, 지역, 가격 범위 등 복합 조건 검색
+     * 
+     * @param searchRequest 검색 조건
+     * @param pageable 페이지 정보
+     * @return 검색 결과
+     */
+    public Page<AuctionResponse> searchAuctions(AuctionSearchRequest searchRequest, Pageable pageable) {
+        // 검색 조건 검증
+        searchRequest.validatePriceRange();
+        
+        // 정렬 조건에 따른 Pageable 생성
+        Pageable sortedPageable = createSortedPageable(searchRequest.getSortBy(), pageable);
+        
+        // 마감 임박 시간 계산
+        LocalDateTime endingSoonTime = null;
+        if (searchRequest.getEndingSoonHours() != null) {
+            endingSoonTime = LocalDateTime.now().plusHours(searchRequest.getEndingSoonHours());
+        }
+        
+        Page<Auction> auctions;
+        
+        // 특별한 정렬 조건들 처리
+        if (searchRequest.getSortBy() == AuctionSearchRequest.SortOption.ENDING_SOON) {
+            // 마감 임박 순 정렬 - 별도 쿼리 사용
+            auctions = auctionRepository.findActiveAuctionsOrderByEndingSoon(sortedPageable);
+        } else {
+            // 일반 복합 검색
+            auctions = auctionRepository.searchAuctions(
+                searchRequest.getStatus(),
+                searchRequest.getKeyword(),
+                searchRequest.getCategory(),
+                searchRequest.getRegionScope(),
+                searchRequest.getRegionCode(),
+                searchRequest.getMinPrice(),
+                searchRequest.getMaxPrice(),
+                searchRequest.getMinBidCount(),
+                endingSoonTime,
+                sortedPageable
+            );
+        }
+        
+        return auctions.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        });
+    }
+    
+    /**
+     * 키워드 검색 (제목 + 설명)
+     */
+    public Page<AuctionResponse> searchByKeyword(String keyword, AuctionStatus status, Pageable pageable) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return getAuctionsByStatus(status, pageable);
+        }
+        
+        Page<Auction> auctions = auctionRepository.searchByKeyword(keyword.trim(), status, pageable);
+        
+        return auctions.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        });
+    }
+    
+    /**
+     * 가격 범위로 검색
+     */
+    public Page<AuctionResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, 
+                                                   AuctionStatus status, Pageable pageable) {
+        // 가격 범위 검증
+        if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
+            throw new IllegalArgumentException("최소 가격은 최대 가격보다 작아야 합니다.");
+        }
+        
+        // 기본값 설정
+        if (minPrice == null) minPrice = BigDecimal.ZERO;
+        if (maxPrice == null) maxPrice = new BigDecimal("999999999"); // 매우 큰 값
+        
+        Page<Auction> auctions = auctionRepository.findByPriceRange(minPrice, maxPrice, status, pageable);
+        
+        return auctions.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        });
+    }
+    
+    /**
+     * 마감 임박 경매 조회 (N시간 이내)
+     */
+    public Page<AuctionResponse> getEndingSoonAuctions(int hours, Pageable pageable) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime endTime = now.plusHours(hours);
+        
+        Page<Auction> auctions = auctionRepository.findEndingSoon(now, endTime, pageable);
+        
+        return auctions.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        });
+    }
+    
+    /**
+     * 인기 경매 조회 (입찰 수 기준)
+     */
+    public Page<AuctionResponse> getPopularAuctions(int minBidCount, AuctionStatus status, Pageable pageable) {
+        Page<Auction> auctions = auctionRepository.findByMinBidCount(minBidCount, status, pageable);
+        
+        return auctions.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        });
+    }
+    
+    /**
+     * 상태별 경매 조회 (기존 getActiveAuctions의 일반화)
+     */
+    public Page<AuctionResponse> getAuctionsByStatus(AuctionStatus status, Pageable pageable) {
+        Page<Auction> auctions = auctionRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+        
+        return auctions.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        });
+    }
+    
+    /**
+     * 정렬 조건에 따른 Pageable 생성
+     */
+    private Pageable createSortedPageable(AuctionSearchRequest.SortOption sortOption, Pageable pageable) {
+        Sort sort = switch (sortOption) {
+            case CREATED_ASC -> Sort.by(Sort.Direction.ASC, "createdAt");
+            case PRICE_ASC -> Sort.by(Sort.Direction.ASC, "currentPrice");
+            case PRICE_DESC -> Sort.by(Sort.Direction.DESC, "currentPrice");
+            case VIEW_COUNT_DESC -> Sort.by(Sort.Direction.DESC, "viewCount");
+            case BID_COUNT_DESC -> Sort.by(Sort.Direction.DESC, "bidCount");
+            case ENDING_SOON -> Sort.by(Sort.Direction.ASC, "endAt");
+            default -> Sort.by(Sort.Direction.DESC, "createdAt"); // CREATED_DESC (기본값)
+        };
+        
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
     }
 }
