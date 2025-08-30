@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 @Schema(description = "경매 등록 요청")
@@ -62,6 +63,17 @@ public class CreateAuctionRequest {
     @NotEmpty(message = "상품 이미지는 최소 1개 이상 필요합니다.")
     @Size(max = 10, message = "상품 이미지는 최대 10개까지 가능합니다.")
     private List<String> imageUrls;
+    
+    @Schema(description = "상품 상태 (1-10점)", example = "8", required = true)
+    @NotNull(message = "상품 상태는 필수입니다.")
+    @Min(value = 1, message = "상품 상태는 1점 이상이어야 합니다.")
+    @Max(value = 10, message = "상품 상태는 10점 이하여야 합니다.")
+    private Integer productCondition;
+
+    @Schema(description = "상품 구매일", example = "2023-12-01", required = true)
+    @NotNull(message = "상품 구매일은 필수입니다.")
+    @PastOrPresent(message = "구매일은 현재 날짜 이전이어야 합니다.")
+    private LocalDate purchaseDate;
     
     public void validate() {
         if (startPrice.compareTo(hopePrice) > 0) {

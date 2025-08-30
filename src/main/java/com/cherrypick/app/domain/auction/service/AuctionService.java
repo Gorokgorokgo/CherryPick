@@ -78,7 +78,9 @@ public class AuctionService {
                 request.getAuctionTimeHours(),
                 request.getRegionScope(),
                 request.getRegionCode(),
-                request.getRegionName()
+                request.getRegionName(),
+                request.getProductCondition(),
+                request.getPurchaseDate()
         );
         
         Auction savedAuction = auctionRepository.save(auction);
