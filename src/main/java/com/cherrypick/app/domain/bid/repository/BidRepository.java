@@ -53,4 +53,21 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
     @Query("SELECT b FROM Bid b WHERE b.bidder = :bidder AND b.bidAmount = " +
            "(SELECT MAX(b2.bidAmount) FROM Bid b2 WHERE b2.auction = b.auction)")
     List<Bid> findWinningBidsByBidder(@Param("bidder") User bidder);
+    
+    // 자동입찰 관련 메서드들
+    
+    // 특정 경매의 활성 자동입찰 조회
+    @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId AND b.isAutoBid = true AND b.status = 'ACTIVE' " +
+           "ORDER BY b.maxAutoBidAmount DESC")
+    List<Bid> findActiveAutoBidsByAuctionId(@Param("auctionId") Long auctionId);
+    
+    // 사용자의 활성 자동입찰 조회
+    @Query("SELECT b FROM Bid b WHERE b.bidder.id = :bidderId AND b.isAutoBid = true AND b.status = 'ACTIVE'")
+    List<Bid> findActiveAutoBidsByBidderId(@Param("bidderId") Long bidderId);
+    
+    // 특정 경매에서 특정 입찰자의 현재 자동입찰 조회
+    @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId AND b.bidder.id = :bidderId " +
+           "AND b.isAutoBid = true AND b.status = 'ACTIVE'")
+    Optional<Bid> findActiveAutoBidByAuctionIdAndBidderId(@Param("auctionId") Long auctionId, 
+                                                          @Param("bidderId") Long bidderId);
 }

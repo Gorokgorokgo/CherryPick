@@ -33,6 +33,7 @@ public class BidService {
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
     private final WebSocketMessagingService webSocketMessagingService;
+    private final AutoBidService autoBidService;
     
     /**
      * 입찰하기 (개정된 비즈니스 모델)
@@ -83,6 +84,7 @@ public class BidService {
                 .bidAmount(request.getBidAmount())
                 .isAutoBid(request.getIsAutoBid())
                 .maxAutoBidAmount(request.getMaxAutoBidAmount())
+                .autoBidPercentage(request.getAutoBidPercentage())
                 .status(BidStatus.ACTIVE)
                 .bidTime(LocalDateTime.now())
                 .build();
@@ -101,6 +103,11 @@ public class BidService {
             auction.getBidCount(),
             bidder.getNickname() != null ? bidder.getNickname() : "익명" + bidder.getId()
         );
+        
+        // 자동입찰 트리거 (수동 입찰에만 적용)
+        if (!Boolean.TRUE.equals(request.getIsAutoBid())) {
+            autoBidService.processAutoBidsForAuction(auction.getId(), request.getBidAmount());
+        }
         
         return BidResponse.from(savedBid, true);
     }
