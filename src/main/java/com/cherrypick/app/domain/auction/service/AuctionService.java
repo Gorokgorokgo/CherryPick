@@ -62,11 +62,7 @@ public class AuctionService {
         User seller = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
         
-        // 경매 시작/종료 시간 자동 계산
-        LocalDateTime startAt = LocalDateTime.now();
-        LocalDateTime endAt = startAt.plusHours(request.getAuctionTimeHours());
-        
-        // 경매 엔티티 생성 (정적 팩토리 메서드 사용)
+        // 경매 엔티티 생성 (정적 팩토리 메서드에서 시간 자동 계산)
         Auction auction = Auction.createAuction(
                 seller,
                 request.getTitle(),
@@ -244,7 +240,7 @@ public class AuctionService {
         // 마감 임박 시간 계산
         LocalDateTime endingSoonTime = null;
         if (searchRequest.getEndingSoonHours() != null) {
-            endingSoonTime = LocalDateTime.now().plusHours(searchRequest.getEndingSoonHours());
+            endingSoonTime = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")).plusHours(searchRequest.getEndingSoonHours());
         }
         
         Page<Auction> auctions;
@@ -317,7 +313,7 @@ public class AuctionService {
      * 마감 임박 경매 조회 (N시간 이내)
      */
     public Page<AuctionResponse> getEndingSoonAuctions(int hours, Pageable pageable) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
         LocalDateTime endTime = now.plusHours(hours);
         
         Page<Auction> auctions = auctionRepository.findEndingSoon(now, endTime, pageable);

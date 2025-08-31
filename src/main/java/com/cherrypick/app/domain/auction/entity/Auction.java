@@ -9,7 +9,6 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -85,7 +84,7 @@ public class Auction extends BaseEntity {
     private Integer productCondition;
 
     @Column(name = "purchase_date") 
-    private LocalDate purchaseDate;
+    private String purchaseDate;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "winner_id")
@@ -109,7 +108,7 @@ public class Auction extends BaseEntity {
             String regionCode,
             String regionName,
             Integer productCondition,
-            LocalDate purchaseDate) {
+            String purchaseDate) {
         
         LocalDateTime now = LocalDateTime.now();
         
