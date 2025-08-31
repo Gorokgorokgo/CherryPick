@@ -42,10 +42,10 @@ public class CreateAuctionRequest {
     @Schema(description = "최저 내정가 (Reserve Price) - 선택사항", example = "500000")
     private BigDecimal reservePrice;
     
-    @Schema(description = "경매 진행 시간 (시간 단위)", example = "72", required = true)
+    @Schema(description = "경매 진행 시간 (3, 6, 12, 24, 48, 72시간 중 선택)", example = "24", required = true)
     @NotNull(message = "경매 시간은 필수입니다.")
-    @Min(value = 24, message = "경매 시간은 최소 24시간입니다.")
-    @Max(value = 168, message = "경매 시간은 최대 168시간(7일)입니다.")
+    @Min(value = 3, message = "경매 시간은 최소 3시간입니다.")
+    @Max(value = 72, message = "경매 시간은 최대 72시간입니다.")
     private Integer auctionTimeHours;
     
     @Schema(description = "지역 범위", example = "NATIONWIDE", required = true)
@@ -99,6 +99,12 @@ public class CreateAuctionRequest {
         // Reserve Price도 100원 단위 체크
         if (reservePrice != null && reservePrice.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
             throw new IllegalArgumentException("최저 내정가는 100원 단위로 설정해주세요.");
+        }
+        
+        // 경매 시간 검증 (허용된 시간만)
+        List<Integer> allowedHours = List.of(3, 6, 12, 24, 48, 72);
+        if (!allowedHours.contains(auctionTimeHours)) {
+            throw new IllegalArgumentException("경매 시간은 3, 6, 12, 24, 48, 72시간 중에서만 선택 가능합니다.");
         }
         
         // 지역 범위에 따른 지역 정보 검증
