@@ -45,6 +45,10 @@ public class AuctionResponse {
     private Long remainingTimeMs; // 남은 시간 (밀리초)
     private boolean isExpired;
     
+    // 상품 메타정보
+    private Integer productCondition; // 상품 상태 (1-10점)
+    private String purchaseDate; // 구매일
+    
     public static AuctionResponse from(Auction auction, List<AuctionImage> images) {
         AuctionResponse response = new AuctionResponse();
         
@@ -75,8 +79,12 @@ public class AuctionResponse {
                 .map(AuctionImage::getImageUrl)
                 .toList());
         
-        // 시간 계산
-        LocalDateTime now = LocalDateTime.now();
+        // 상품 메타정보 (기존 데이터 호환성을 위한 기본값 처리)
+        response.setProductCondition(auction.getProductCondition() != null ? auction.getProductCondition() : 7);
+        response.setPurchaseDate(auction.getPurchaseDate() != null ? auction.getPurchaseDate() : "구매일 미상");
+        
+        // 시간 계산 (한국 시간대 기준)
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
         if (auction.getEndAt().isAfter(now)) {
             response.setRemainingTimeMs(java.time.Duration.between(now, auction.getEndAt()).toMillis());
             response.setExpired(false);

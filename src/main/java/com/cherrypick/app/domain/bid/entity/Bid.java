@@ -42,6 +42,10 @@ public class Bid extends BaseEntity {
     private BigDecimal maxAutoBidAmount;
 
     @Builder.Default
+    @Column(name = "auto_bid_percentage", columnDefinition = "INTEGER DEFAULT 5")
+    private Integer autoBidPercentage = 5; // 기본 5% (5-10% 범위)
+
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private BidStatus status = BidStatus.ACTIVE;

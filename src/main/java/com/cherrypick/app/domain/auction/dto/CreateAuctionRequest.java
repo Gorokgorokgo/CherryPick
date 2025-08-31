@@ -63,6 +63,15 @@ public class CreateAuctionRequest {
     @Size(max = 10, message = "상품 이미지는 최대 10개까지 가능합니다.")
     private List<String> imageUrls;
     
+    @Schema(description = "상품 상태 (1-10점)", example = "8", required = true)
+    @NotNull(message = "상품 상태는 필수입니다.")
+    @Min(value = 1, message = "상품 상태는 1점 이상이어야 합니다.")
+    @Max(value = 10, message = "상품 상태는 10점 이하여야 합니다.")
+    private Integer productCondition;
+
+    @Schema(description = "상품 구매일", example = "2023년 3월 구매", required = false)
+    private String purchaseDate;
+    
     public void validate() {
         if (startPrice.compareTo(hopePrice) > 0) {
             throw new IllegalArgumentException("시작가는 희망가보다 클 수 없습니다.");
@@ -98,8 +107,4 @@ public class CreateAuctionRequest {
         }
     }
     
-    public BigDecimal calculateDepositAmount() {
-        // 보증금 = 희망가의 10%
-        return hopePrice.multiply(BigDecimal.valueOf(0.1));
-    }
 }

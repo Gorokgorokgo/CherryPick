@@ -11,9 +11,6 @@ import com.cherrypick.app.domain.bid.dto.response.BidResponse;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.enums.BidStatus;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
-import com.cherrypick.app.domain.point.entity.PointLock;
-import com.cherrypick.app.domain.point.enums.PointLockStatus;
-import com.cherrypick.app.domain.point.repository.PointLockRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
@@ -35,8 +32,8 @@ public class BidService {
     private final BidRepository bidRepository;
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
-    private final PointLockRepository pointLockRepository;
     private final WebSocketMessagingService webSocketMessagingService;
+    private final AutoBidService autoBidService;
     
     /**
      * 입찰하기 (개정된 비즈니스 모델)
@@ -87,6 +84,7 @@ public class BidService {
                 .bidAmount(request.getBidAmount())
                 .isAutoBid(request.getIsAutoBid())
                 .maxAutoBidAmount(request.getMaxAutoBidAmount())
+                .autoBidPercentage(request.getAutoBidPercentage())
                 .status(BidStatus.ACTIVE)
                 .bidTime(LocalDateTime.now())
                 .build();
@@ -105,6 +103,11 @@ public class BidService {
             auction.getBidCount(),
             bidder.getNickname() != null ? bidder.getNickname() : "익명" + bidder.getId()
         );
+        
+        // 자동입찰 트리거 (수동 입찰에만 적용)
+        if (!Boolean.TRUE.equals(request.getIsAutoBid())) {
+            autoBidService.processAutoBidsForAuction(auction.getId(), request.getBidAmount());
+        }
         
         return BidResponse.from(savedBid, true);
     }

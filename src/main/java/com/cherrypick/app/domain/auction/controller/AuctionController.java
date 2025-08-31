@@ -1,8 +1,10 @@
 package com.cherrypick.app.domain.auction.controller;
 
 import com.cherrypick.app.domain.auction.dto.AuctionResponse;
+import com.cherrypick.app.domain.auction.dto.AuctionSearchRequest;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
 import com.cherrypick.app.domain.auction.service.AuctionService;
+import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
 import com.cherrypick.app.domain.user.service.UserService;
@@ -20,6 +22,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
 
 @Tag(name = "6단계 - 경매 관리", description = "경매 등록, 조회, 검색 | 보증금 10% 자동 차감")
 @RestController
@@ -153,6 +157,169 @@ public class AuctionController {
         Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         Pageable pageable = PageRequest.of(page, size);
         Page<AuctionResponse> auctions = auctionService.getMyAuctions(userId, pageable);
+        return ResponseEntity.ok(auctions);
+    }
+    
+    // === 고급 검색 및 필터링 API ===
+    
+    @Operation(summary = "통합 경매 검색", 
+               description = """
+                   키워드, 카테고리, 지역, 가격 범위 등 복합 조건으로 경매를 검색합니다.
+                   
+                   **검색 조건:**
+                   - keyword: 제목, 설명에서 검색 (대소문자 구분 없음)
+                   - category: 카테고리 필터 (ELECTRONICS, CLOTHING, BOOKS, etc.)
+                   - regionScope: 지역 범위 (NATIONWIDE, CITY, NEIGHBORHOOD)
+                   - regionCode: 지역 코드 (regionScope가 CITY일 때 필요)
+                   - minPrice, maxPrice: 가격 범위
+                   - status: 경매 상태 (기본값: ACTIVE)
+                   - sortBy: 정렬 옵션 (CREATED_DESC, PRICE_ASC, ENDING_SOON, etc.)
+                   - endingSoonHours: N시간 이내 마감 경매만
+                   - minBidCount: 최소 입찰 수
+                   
+                   **정렬 옵션:**
+                   - CREATED_DESC: 최신순 (기본값)
+                   - CREATED_ASC: 오래된순
+                   - PRICE_ASC: 낮은 가격순
+                   - PRICE_DESC: 높은 가격순
+                   - ENDING_SOON: 마감 임박순
+                   - VIEW_COUNT_DESC: 조회수 높은순
+                   - BID_COUNT_DESC: 입찰수 높은순
+                   
+                   **사용 예시:**
+                   - 키워드 검색: keyword=아이폰
+                   - 가격 범위: minPrice=100000&maxPrice=500000
+                   - 마감 임박: endingSoonHours=24&sortBy=ENDING_SOON
+                   - 인기 경매: minBidCount=5&sortBy=BID_COUNT_DESC
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "검색 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 검색 조건")
+    })
+    @GetMapping("/search")
+    public ResponseEntity<Page<AuctionResponse>> searchAuctions(
+            @Parameter(description = "키워드 (제목, 설명 검색)") @RequestParam(required = false) String keyword,
+            @Parameter(description = "카테고리") @RequestParam(required = false) Category category,
+            @Parameter(description = "지역 범위") @RequestParam(required = false) RegionScope regionScope,
+            @Parameter(description = "지역 코드") @RequestParam(required = false) String regionCode,
+            @Parameter(description = "최소 가격") @RequestParam(required = false) BigDecimal minPrice,
+            @Parameter(description = "최대 가격") @RequestParam(required = false) BigDecimal maxPrice,
+            @Parameter(description = "경매 상태") @RequestParam(required = false, defaultValue = "ACTIVE") AuctionStatus status,
+            @Parameter(description = "정렬 옵션") @RequestParam(required = false, defaultValue = "CREATED_DESC") AuctionSearchRequest.SortOption sortBy,
+            @Parameter(description = "N시간 이내 마감") @RequestParam(required = false) Integer endingSoonHours,
+            @Parameter(description = "최소 입찰 수") @RequestParam(required = false) Integer minBidCount,
+            @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
+        
+        // 요청 객체 생성
+        AuctionSearchRequest searchRequest = new AuctionSearchRequest();
+        searchRequest.setKeyword(keyword);
+        searchRequest.setCategory(category);
+        searchRequest.setRegionScope(regionScope);
+        searchRequest.setRegionCode(regionCode);
+        searchRequest.setMinPrice(minPrice);
+        searchRequest.setMaxPrice(maxPrice);
+        searchRequest.setStatus(status);
+        searchRequest.setSortBy(sortBy);
+        searchRequest.setEndingSoonHours(endingSoonHours);
+        searchRequest.setMinBidCount(minBidCount);
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuctionResponse> auctions = auctionService.searchAuctions(searchRequest, pageable);
+        return ResponseEntity.ok(auctions);
+    }
+    
+    @Operation(summary = "키워드 검색", description = "제목과 설명에서 키워드로 경매를 검색합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "검색 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청")
+    })
+    @GetMapping("/search/keyword")
+    public ResponseEntity<Page<AuctionResponse>> searchByKeyword(
+            @Parameter(description = "검색 키워드") @RequestParam String keyword,
+            @Parameter(description = "경매 상태") @RequestParam(required = false, defaultValue = "ACTIVE") AuctionStatus status,
+            @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuctionResponse> auctions = auctionService.searchByKeyword(keyword, status, pageable);
+        return ResponseEntity.ok(auctions);
+    }
+    
+    @Operation(summary = "가격 범위 검색", description = "지정된 가격 범위 내의 경매를 검색합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "검색 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 가격 범위")
+    })
+    @GetMapping("/search/price")
+    public ResponseEntity<Page<AuctionResponse>> searchByPriceRange(
+            @Parameter(description = "최소 가격") @RequestParam(required = false) BigDecimal minPrice,
+            @Parameter(description = "최대 가격") @RequestParam(required = false) BigDecimal maxPrice,
+            @Parameter(description = "경매 상태") @RequestParam(required = false, defaultValue = "ACTIVE") AuctionStatus status,
+            @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuctionResponse> auctions = auctionService.searchByPriceRange(minPrice, maxPrice, status, pageable);
+        return ResponseEntity.ok(auctions);
+    }
+    
+    @Operation(summary = "마감 임박 경매", 
+               description = "지정된 시간 내에 마감되는 경매를 조회합니다. 마감 시간 순으로 정렬됩니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 시간 값")
+    })
+    @GetMapping("/ending-soon")
+    public ResponseEntity<Page<AuctionResponse>> getEndingSoonAuctions(
+            @Parameter(description = "시간 (시간 단위, 기본값: 24시간)") @RequestParam(defaultValue = "24") int hours,
+            @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
+        
+        if (hours <= 0 || hours > 168) { // 최대 1주일
+            throw new IllegalArgumentException("시간은 1시간부터 168시간(1주일) 사이여야 합니다.");
+        }
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuctionResponse> auctions = auctionService.getEndingSoonAuctions(hours, pageable);
+        return ResponseEntity.ok(auctions);
+    }
+    
+    @Operation(summary = "인기 경매", 
+               description = "입찰 수가 많은 인기 경매를 조회합니다. 입찰 수 순으로 정렬됩니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 입찰 수")
+    })
+    @GetMapping("/popular")
+    public ResponseEntity<Page<AuctionResponse>> getPopularAuctions(
+            @Parameter(description = "최소 입찰 수 (기본값: 3)") @RequestParam(defaultValue = "3") int minBidCount,
+            @Parameter(description = "경매 상태") @RequestParam(required = false, defaultValue = "ACTIVE") AuctionStatus status,
+            @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
+        
+        if (minBidCount < 0) {
+            throw new IllegalArgumentException("최소 입찰 수는 0 이상이어야 합니다.");
+        }
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuctionResponse> auctions = auctionService.getPopularAuctions(minBidCount, status, pageable);
+        return ResponseEntity.ok(auctions);
+    }
+    
+    @Operation(summary = "상태별 경매 조회", description = "특정 상태의 경매를 조회합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 상태")
+    })
+    @GetMapping("/status/{status}")
+    public ResponseEntity<Page<AuctionResponse>> getAuctionsByStatus(
+            @Parameter(description = "경매 상태") @PathVariable AuctionStatus status,
+            @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuctionResponse> auctions = auctionService.getAuctionsByStatus(status, pageable);
         return ResponseEntity.ok(auctions);
     }
 }

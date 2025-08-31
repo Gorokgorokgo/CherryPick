@@ -32,6 +32,10 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  
+  # 시간대 설정
+  jackson:
+    time-zone: Asia/Seoul
 
 server:
   port: 8080

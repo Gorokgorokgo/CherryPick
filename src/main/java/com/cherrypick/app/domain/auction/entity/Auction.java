@@ -80,6 +80,12 @@ public class Auction extends BaseEntity {
     @Column(name = "end_at", nullable = false)
     private LocalDateTime endAt;
 
+    @Column(name = "product_condition")
+    private Integer productCondition;
+
+    @Column(name = "purchase_date") 
+    private String purchaseDate;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "winner_id")
     private User winner;
@@ -100,7 +106,9 @@ public class Auction extends BaseEntity {
             Integer auctionTimeHours,
             RegionScope regionScope,
             String regionCode,
-            String regionName) {
+            String regionName,
+            Integer productCondition,
+            String purchaseDate) {
         
         LocalDateTime now = LocalDateTime.now();
         
@@ -123,6 +131,8 @@ public class Auction extends BaseEntity {
             0, // bidCount - DB 기본값
             now,
             now.plusHours(auctionTimeHours),
+            productCondition,
+            purchaseDate,
             null // winner는 null로 시작
         );
     }
