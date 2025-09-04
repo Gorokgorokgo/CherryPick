@@ -12,7 +12,7 @@ import com.cherrypick.app.domain.chat.entity.ChatRoom;
 import com.cherrypick.app.domain.chat.enums.ChatRoomStatus;
 import com.cherrypick.app.domain.chat.repository.ChatMessageRepository;
 import com.cherrypick.app.domain.chat.repository.ChatRoomRepository;
-import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.connection.entity.ConnectionService;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;

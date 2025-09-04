@@ -6,7 +6,7 @@ import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.enums.BidStatus;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.user.repository.UserRepository;
-import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;

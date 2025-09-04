@@ -1,4 +1,4 @@
-package com.cherrypick.app.domain.common.dto;
+package com.cherrypick.app.domain.websocket.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Builder;
@@ -25,8 +25,8 @@ public class AuctionUpdateMessage {
     public enum MessageType {
         NEW_BID,           // 새로운 입찰
         AUCTION_ENDED,     // 경매 종료
-        AUCTION_EXTENDED,  // 스나이핑 방지 연장
-        BID_COUNT_UPDATE   // 입찰 참여자 수 변경
+        AUCTION_EXTENDED,  // 스나이핑 방지 연장11
+        BIDDER_COUNT_CHANGED // 입찰자 수 변경 (별칭)
     }
     
     /**
@@ -108,9 +108,21 @@ public class AuctionUpdateMessage {
      */
     public static AuctionUpdateMessage bidCountUpdate(Long auctionId, Integer bidCount) {
         return AuctionUpdateMessage.builder()
-                .messageType(MessageType.BID_COUNT_UPDATE)
+                .messageType(MessageType.BIDDER_COUNT_CHANGED)
                 .auctionId(auctionId)
                 .bidCount(bidCount)
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
+
+    /**
+     * 입찰자 수 변경 메시지 생성 (별칭)
+     */
+    public static AuctionUpdateMessage bidderCountChanged(Long auctionId, Integer bidderCount) {
+        return AuctionUpdateMessage.builder()
+                .messageType(MessageType.BIDDER_COUNT_CHANGED)
+                .auctionId(auctionId)
+                .bidCount(bidderCount)
                 .timestamp(LocalDateTime.now())
                 .build();
     }

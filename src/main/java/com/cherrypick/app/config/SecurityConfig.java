@@ -36,7 +36,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**", "/api/hello/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/swagger-resources/**", "/webjars/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
-                .requestMatchers("/test").permitAll()
+                .requestMatchers("/test", "/test/**").permitAll()  // 테스트 API 허용
+                .requestMatchers("/ws").permitAll()  // WebSocket 엔드포인트 허용
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
