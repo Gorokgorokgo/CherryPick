@@ -1,11 +1,11 @@
-package com.cherrypick.app.domain.common.service;
+package com.cherrypick.app.domain.websocket.service;
 
 import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
-import com.cherrypick.app.domain.common.dto.AuctionUpdateMessage;
+import com.cherrypick.app.domain.websocket.dto.AuctionUpdateMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
 
 /**
  * WebSocket 실시간 메시징 서비스
@@ -16,7 +16,12 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class WebSocketMessagingService {
     
-    private final SimpMessagingTemplate messagingTemplate;
+    private final com.cherrypick.app.config.WebSocketHandler webSocketHandler;
+    
+    @PostConstruct
+    public void init() {
+        log.info("🔧 WebSocketMessagingService 초기화 - Handler: {}", webSocketHandler.getClass().getName());
+    }
     
     /**
      * 특정 경매의 모든 구독자에게 메시지 브로드캐스트
@@ -39,11 +44,11 @@ public class WebSocketMessagingService {
         String destination = "/topic/auctions/" + auctionId;
         
         try {
-            messagingTemplate.convertAndSend(destination, message);
-            log.debug("WebSocket 메시지 전송 성공: {} -> {}", destination, message.getMessageType());
+            log.info("📤 WebSocket 메시지 전송 시도: {} -> {} [HANDLER: {}]", destination, message.getMessageType(), webSocketHandler.getClass().getSimpleName());
+            webSocketHandler.sendToAuctionSubscribers(destination, message);
+            log.info("✅ WebSocket 메시지 전송 성공: {} -> {}", destination, message.getMessageType());
         } catch (Exception e) {
-            log.error("WebSocket 메시지 전송 실패: {} -> {}", destination, message.getMessageType(), e);
-            // TODO: 메시지 전송 실패시 재시도 로직 또는 데드 레터 큐 처리
+            log.error("❌ WebSocket 메시지 전송 실패: {} -> {}", destination, message.getMessageType(), e);
         }
     }
     
@@ -57,7 +62,7 @@ public class WebSocketMessagingService {
         String destination = "/queue/users/" + userId;
         
         try {
-            messagingTemplate.convertAndSend(destination, message);
+            webSocketHandler.sendToAuctionSubscribers(destination, message);
             log.debug("개인 WebSocket 메시지 전송 성공: {} -> {}", destination, message.getMessageType());
         } catch (Exception e) {
             log.error("개인 WebSocket 메시지 전송 실패: {} -> {}", destination, message.getMessageType(), e);
@@ -74,7 +79,7 @@ public class WebSocketMessagingService {
         String destination = "/topic/global";
         
         try {
-            messagingTemplate.convertAndSend(destination, message);
+            webSocketHandler.sendToAuctionSubscribers(destination, message);
             log.debug("글로벌 WebSocket 메시지 전송 성공: {}", message.getMessageType());
         } catch (Exception e) {
             log.error("글로벌 WebSocket 메시지 전송 실패: {}", message.getMessageType(), e);
@@ -86,10 +91,21 @@ public class WebSocketMessagingService {
      */
     public void notifyNewBid(Long auctionId, java.math.BigDecimal currentPrice, 
                            Integer bidCount, String bidderNickname) {
-        AuctionUpdateMessage message = AuctionUpdateMessage.newBid(
-            auctionId, currentPrice, bidCount, bidderNickname
-        );
-        broadcastToAuction(auctionId, message);
+        try {
+            log.info("🚀 notifyNewBid 호출됨 [START] - auctionId: {}, currentPrice: {}, bidCount: {}, bidderNickname: {}", 
+                    auctionId, currentPrice, bidCount, bidderNickname);
+            log.info("🔍 사용 중인 Handler: {}", webSocketHandler.getClass().getSimpleName());
+            
+            AuctionUpdateMessage message = AuctionUpdateMessage.newBid(
+                auctionId, currentPrice, bidCount, bidderNickname
+            );
+            
+            log.info("📝 AuctionUpdateMessage 생성 완료: {}", message);
+            broadcastToAuction(auctionId, message);
+            
+        } catch (Exception e) {
+            log.error("❌ notifyNewBid 실행 중 예외 발생 - auctionId: {}", auctionId, e);
+        }
     }
     
     /**
@@ -108,6 +124,14 @@ public class WebSocketMessagingService {
      */
     public void notifyBidCountUpdate(Long auctionId, Integer bidCount) {
         AuctionUpdateMessage message = AuctionUpdateMessage.bidCountUpdate(auctionId, bidCount);
+        broadcastToAuction(auctionId, message);
+    }
+
+    /**
+     * 입찰자 수 변경시 실시간 알림 (별칭 메서드)
+     */
+    public void notifyBidderCountChanged(Long auctionId, Integer bidderCount) {
+        AuctionUpdateMessage message = AuctionUpdateMessage.bidderCountChanged(auctionId, bidderCount);
         broadcastToAuction(auctionId, message);
     }
     
@@ -134,7 +158,7 @@ public class WebSocketMessagingService {
         String destination = "/topic/chat/" + chatRoomId;
         
         try {
-            messagingTemplate.convertAndSend(destination, message);
+            webSocketHandler.sendToAuctionSubscribers(destination, message);
             log.debug("채팅 메시지 전송 성공: {} -> messageId: {}", destination, message.getId());
         } catch (Exception e) {
             log.error("채팅 메시지 전송 실패: {} -> messageId: {}", destination, message.getId(), e);
@@ -155,7 +179,7 @@ public class WebSocketMessagingService {
         ChatStatusMessage statusMessage = new ChatStatusMessage(chatRoomId, status, message);
         
         try {
-            messagingTemplate.convertAndSend(destination, statusMessage);
+            webSocketHandler.sendToAuctionSubscribers(destination, statusMessage);
             log.debug("채팅방 상태 변경 알림 전송: {} -> status: {}", destination, status);
         } catch (Exception e) {
             log.error("채팅방 상태 변경 알림 전송 실패: {} -> status: {}", destination, status, e);
@@ -174,7 +198,7 @@ public class WebSocketMessagingService {
         UserStatusMessage statusMessage = new UserStatusMessage(userId, isOnline);
         
         try {
-            messagingTemplate.convertAndSend(destination, statusMessage);
+            webSocketHandler.sendToAuctionSubscribers(destination, statusMessage);
             log.debug("사용자 온라인 상태 알림 전송: {} -> online: {}", destination, isOnline);
         } catch (Exception e) {
             log.error("사용자 온라인 상태 알림 전송 실패: {} -> online: {}", destination, isOnline, e);
@@ -194,7 +218,7 @@ public class WebSocketMessagingService {
         MessageReadEvent readEvent = new MessageReadEvent(messageId, readerId, System.currentTimeMillis());
         
         try {
-            messagingTemplate.convertAndSend(destination, readEvent);
+            webSocketHandler.sendToAuctionSubscribers(destination, readEvent);
             log.debug("메시지 읽음 상태 알림 전송: {} -> messageId: {}", destination, messageId);
         } catch (Exception e) {
             log.error("메시지 읽음 상태 알림 전송 실패: {} -> messageId: {}", destination, messageId, e);
