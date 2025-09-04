@@ -13,7 +13,7 @@ import com.cherrypick.app.domain.bid.enums.BidStatus;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
-import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
