@@ -48,7 +48,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
         
         // 연결 확인 메시지 전송
         sendMessage(session, createConnectedMessage(sessionId));
-        log.info("✅ WebSocket 연결 성공: {} [VERSION: 2024-09-04-DEBUG]", sessionId);
+        log.info("✅ WebSocket 연결 성공: {}", sessionId);
     }
     
     @Override
@@ -57,8 +57,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
         String payload = message.getPayload();
         
         try {
-            log.info("📩 WebSocket 메시지 수신 [{}]: {}", sessionId, payload);
-            
             JsonNode messageNode = objectMapper.readTree(payload);
             String type = messageNode.has("type") ? messageNode.get("type").asText() : "";
             
@@ -97,7 +95,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
                     subscribers.remove(sessionId);
                     if (subscribers.isEmpty()) {
                         auctionSubscribers.remove(auctionId);
-                        log.debug("경매 {} 구독자 목록 제거됨", auctionId);
                     }
                 }
             });
@@ -105,8 +102,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
         
         // 활성 세션에서 제거
         activeSessions.remove(sessionId);
-        
-        log.debug("세션 정리 완료: {}", sessionId);
     }
     
     @Override
@@ -128,16 +123,11 @@ public class WebSocketHandler extends TextWebSocketHandler {
         
         String auctionId = messageNode.get("auctionId").asText();
         
-        log.info("🔍 구독 처리 시작 - 세션: {}, 경매: {}", sessionId, auctionId);
-        
         // 구독 정보 저장
         sessionSubscriptions.get(sessionId).add(auctionId);
         auctionSubscribers.computeIfAbsent(auctionId, k -> new CopyOnWriteArraySet<>()).add(sessionId);
         
-        log.info("📊 구독 후 상태 - 경매 {} 구독자 수: {}", auctionId, auctionSubscribers.get(auctionId).size());
-        log.info("📋 경매 {} 구독자 목록: {}", auctionId, auctionSubscribers.get(auctionId));
-        
-        log.info("📡 구독 완료 [{}]: auction-{} [DEBUG-TEST-2024]", sessionId, auctionId);
+        log.info("📡 구독 완료 [{}]: auction-{}", sessionId, auctionId);
         
         // 구독 확인 메시지 전송
         sendMessage(session, Map.of(
@@ -202,10 +192,8 @@ public class WebSocketHandler extends TextWebSocketHandler {
      * 특정 경매 구독자들에게 메시지 전송 (기존 WebSocketMessagingService와 호환성)
      */
     public void sendToAuctionSubscribers(String destination, Object message) {
-        log.info("🎯 sendToAuctionSubscribers 호출 - destination: {}, message: {}", destination, message);
         // destination 형식: "/topic/auctions/123" -> auctionId: "123" 
         String auctionId = extractAuctionId(destination);
-        log.info("🔍 추출된 auctionId: {}", auctionId);
         if (auctionId != null) {
             broadcastToAuction(auctionId, message);
         } else {
@@ -217,11 +205,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
      * 특정 경매 구독자들에게 메시지 브로드캐스트
      */
     public void broadcastToAuction(String auctionId, Object message) {
-        log.info("🚀 broadcastToAuction 호출 - auctionId: {}, message: {}", auctionId, message);
-        log.info("🔍 현재 전체 구독 정보: {}", auctionSubscribers);
-        
         Set<String> subscriberIds = auctionSubscribers.get(auctionId);
-        log.info("📋 경매 {} 구독자 목록: {}", auctionId, subscriberIds);
         
         if (subscriberIds == null || subscriberIds.isEmpty()) {
             log.warn("경매 {} 구독자가 없음", auctionId);
@@ -232,18 +216,15 @@ public class WebSocketHandler extends TextWebSocketHandler {
         int failCount = 0;
         
         for (String sessionId : subscriberIds) {
-            log.info("🔍 세션 {} 처리 시도", sessionId);
             WebSocketSession session = activeSessions.get(sessionId);
             
             if (session != null && session.isOpen()) {
-                log.info("✅ 세션 {} 활성화됨, 메시지 전송 시도", sessionId);
                 if (sendMessage(session, message)) {
                     successCount++;
                 } else {
                     failCount++;
                 }
             } else {
-                log.warn("❌ 세션 {} 비활성화 또는 닫힘", sessionId);
                 // 세션이 없거나 닫혀있는 경우 정리
                 subscriberIds.remove(sessionId);
                 failCount++;
@@ -259,12 +240,10 @@ public class WebSocketHandler extends TextWebSocketHandler {
     private boolean sendMessage(WebSocketSession session, Object message) {
         try {
             String jsonMessage = objectMapper.writeValueAsString(message);
-            log.debug("📤 전송할 JSON 메시지: {}", jsonMessage);
             session.sendMessage(new TextMessage(jsonMessage));
-            log.debug("✅ 세션 {}에 메시지 전송 성공", session.getId());
             return true;
         } catch (Exception e) {
-            log.error("❌ 메시지 전송 실패 [{}]: 메시지={}, 오류={}", session.getId(), message, e.getMessage(), e);
+            log.error("❌ 메시지 전송 실패 [{}]: {}", session.getId(), e.getMessage());
             return false;
         }
     }
