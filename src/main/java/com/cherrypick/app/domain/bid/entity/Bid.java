@@ -43,7 +43,7 @@ public class Bid extends BaseEntity {
 
     @Builder.Default
     @Column(name = "auto_bid_percentage", columnDefinition = "INTEGER DEFAULT 5")
-    private Integer autoBidPercentage = 5; // 기본 5% (5-10% 범위)
+    private Integer autoBidPercentage = 5; // 기본 5% (2-50% 범위)
 
     @Builder.Default
     @Enumerated(EnumType.STRING)

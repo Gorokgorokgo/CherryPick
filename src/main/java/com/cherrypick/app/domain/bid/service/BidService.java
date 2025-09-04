@@ -166,30 +166,83 @@ public class BidService {
     }
     
     /**
-     * 입찰 금액 유효성 검증 (5-10% 비율 기반)
+     * 입찰 금액 유효성 검증 (가격대별 차등 규칙)
      */
     private void validateBidAmount(Auction auction, BigDecimal bidAmount) {
         BigDecimal currentPrice = auction.getCurrentPrice();
         
-        // 1. 5% 증가 체크 (최소 입찰 증가율)
-        BigDecimal minimumBid = currentPrice.multiply(BigDecimal.valueOf(1.05));
+        // 1. 최소 입찰 단위 검증
+        validateMinimumBidUnit(currentPrice, bidAmount);
         
-        // 2. 10% 이상 증가는 제한 (너무 큰 증가폭 방지)
-        BigDecimal maximumBid = currentPrice.multiply(BigDecimal.valueOf(1.10));
+        // 2. 최대 입찰 제한 검증  
+        validateMaximumBidLimit(currentPrice, bidAmount);
+    }
+    
+    /**
+     * 가격대별 최소 입찰 단위 검증
+     */
+    private void validateMinimumBidUnit(BigDecimal currentPrice, BigDecimal bidAmount) {
+        BigDecimal minimumUnit;
+        String unitMessage;
         
+        if (currentPrice.compareTo(BigDecimal.valueOf(10000)) < 0) {
+            // 100원~1만원: 500원 단위
+            minimumUnit = BigDecimal.valueOf(500);
+            unitMessage = "500원";
+        } else if (currentPrice.compareTo(BigDecimal.valueOf(1000000)) < 0) {
+            // 1만원~100만원: 1,000원 단위
+            minimumUnit = BigDecimal.valueOf(1000);
+            unitMessage = "1,000원";
+        } else if (currentPrice.compareTo(BigDecimal.valueOf(10000000)) < 0) {
+            // 100만원~1,000만원: 5,000원 단위
+            minimumUnit = BigDecimal.valueOf(5000);
+            unitMessage = "5,000원";
+        } else {
+            // 1,000만원 이상: 10,000원 단위
+            minimumUnit = BigDecimal.valueOf(10000);
+            unitMessage = "10,000원";
+        }
+        
+        // 최소 증가 금액 검증
+        BigDecimal minimumBid = currentPrice.add(minimumUnit);
         if (bidAmount.compareTo(minimumBid) < 0) {
             throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
-                "입찰가는 현재가의 5% 이상 높아야 합니다.");
+                String.format("최소 %s 이상 증가해야 합니다.", unitMessage));
+        }
+        
+        // 단위 검증
+        if (bidAmount.remainder(minimumUnit).compareTo(BigDecimal.ZERO) != 0) {
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
+                String.format("입찰가는 %s 단위로 입력해주세요.", unitMessage));
+        }
+    }
+    
+    /**
+     * 가격대별 최대 입찰 제한 검증
+     */
+    private void validateMaximumBidLimit(BigDecimal currentPrice, BigDecimal bidAmount) {
+        BigDecimal maximumBid;
+        
+        if (currentPrice.compareTo(BigDecimal.valueOf(10000)) < 0) {
+            // 1만원 미만: 5만원 고정
+            maximumBid = BigDecimal.valueOf(50000);
+        } else if (currentPrice.compareTo(BigDecimal.valueOf(100000)) < 0) {
+            // 1만원~10만원: 현재가의 5배
+            maximumBid = currentPrice.multiply(BigDecimal.valueOf(5));
+        } else if (currentPrice.compareTo(BigDecimal.valueOf(1000000)) < 0) {
+            // 10만원~100만원: 현재가의 4배
+            maximumBid = currentPrice.multiply(BigDecimal.valueOf(4));
+        } else if (currentPrice.compareTo(BigDecimal.valueOf(10000000)) < 0) {
+            // 100만원~1,000만원: 현재가의 3배
+            maximumBid = currentPrice.multiply(BigDecimal.valueOf(3));
+        } else {
+            // 1,000만원 이상: 현재가의 2배
+            maximumBid = currentPrice.multiply(BigDecimal.valueOf(2));
         }
         
         if (bidAmount.compareTo(maximumBid) > 0) {
             throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT,
-                "한 번에 10% 이상 증가한 입찰은 제한됩니다.");
-        }
-        
-        // 3. 100원 단위 체크
-        if (bidAmount.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
-            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, "입찰가는 100원 단위로 입력해주세요.");
+                String.format("최대 입찰 한도를 초과했습니다. (한도: %s원)", maximumBid.toPlainString()));
         }
     }
     
