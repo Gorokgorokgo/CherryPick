@@ -179,41 +179,41 @@ public class BidService {
     }
     
     /**
-     * 가격대별 최소 입찰 단위 검증
+     * 가격대별 최소 입찰 증가 검증 (입찰 단위는 모두 100원 통일)
      */
     private void validateMinimumBidUnit(BigDecimal currentPrice, BigDecimal bidAmount) {
-        BigDecimal minimumUnit;
-        String unitMessage;
+        BigDecimal minimumIncrement;
+        String incrementMessage;
         
         if (currentPrice.compareTo(BigDecimal.valueOf(10000)) < 0) {
-            // 100원~1만원: 500원 단위
-            minimumUnit = BigDecimal.valueOf(500);
-            unitMessage = "500원";
+            // 1만원 미만: 최소 500원 이상 증가
+            minimumIncrement = BigDecimal.valueOf(500);
+            incrementMessage = "500원";
         } else if (currentPrice.compareTo(BigDecimal.valueOf(1000000)) < 0) {
-            // 1만원~100만원: 1,000원 단위
-            minimumUnit = BigDecimal.valueOf(1000);
-            unitMessage = "1,000원";
+            // 1만원~100만원: 최소 1,000원 이상 증가
+            minimumIncrement = BigDecimal.valueOf(1000);
+            incrementMessage = "1,000원";
         } else if (currentPrice.compareTo(BigDecimal.valueOf(10000000)) < 0) {
-            // 100만원~1,000만원: 5,000원 단위
-            minimumUnit = BigDecimal.valueOf(5000);
-            unitMessage = "5,000원";
+            // 100만원~1,000만원: 최소 5,000원 이상 증가
+            minimumIncrement = BigDecimal.valueOf(5000);
+            incrementMessage = "5,000원";
         } else {
-            // 1,000만원 이상: 10,000원 단위
-            minimumUnit = BigDecimal.valueOf(10000);
-            unitMessage = "10,000원";
+            // 1,000만원 이상: 최소 10,000원 이상 증가
+            minimumIncrement = BigDecimal.valueOf(10000);
+            incrementMessage = "10,000원";
         }
         
         // 최소 증가 금액 검증
-        BigDecimal minimumBid = currentPrice.add(minimumUnit);
+        BigDecimal minimumBid = currentPrice.add(minimumIncrement);
         if (bidAmount.compareTo(minimumBid) < 0) {
             throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
-                String.format("최소 %s 이상 증가해야 합니다.", unitMessage));
+                String.format("최소 %s 이상 증가해야 합니다.", incrementMessage));
         }
         
-        // 단위 검증
-        if (bidAmount.remainder(minimumUnit).compareTo(BigDecimal.ZERO) != 0) {
+        // 입찰 단위는 모두 100원으로 통일
+        if (bidAmount.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
             throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
-                String.format("입찰가는 %s 단위로 입력해주세요.", unitMessage));
+                "입찰가는 100원 단위로 입력해주세요.");
         }
     }
     
