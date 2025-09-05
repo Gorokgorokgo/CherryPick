@@ -15,6 +15,7 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -104,10 +106,9 @@ public class BidService {
             bidder.getNickname() != null ? bidder.getNickname() : "익명" + bidder.getId()
         );
         
-        // 자동입찰 트리거 (수동 입찰에만 적용)
-        if (!Boolean.TRUE.equals(request.getIsAutoBid())) {
-            autoBidService.processAutoBidsForAuction(auction.getId(), request.getBidAmount());
-        }
+        // 자동입찰 트리거 (모든 입찰에 대해 적용)
+        log.info("🚀 자동입찰 서비스 호출 중 - 경매 ID: {}, 입찰가: {}", auction.getId(), request.getBidAmount());
+        autoBidService.processAutoBidsForAuction(auction.getId(), request.getBidAmount());
         
         return BidResponse.from(savedBid, true);
     }
