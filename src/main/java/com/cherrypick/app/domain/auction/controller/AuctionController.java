@@ -322,4 +322,17 @@ public class AuctionController {
         Page<AuctionResponse> auctions = auctionService.getAuctionsByStatus(status, pageable);
         return ResponseEntity.ok(auctions);
     }
+    
+    @Operation(summary = "경매 강제 종료", description = "테스트용: 경매를 강제로 종료시킵니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "강제 종료 성공"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PatchMapping("/test/force-end/{id}")
+    public ResponseEntity<AuctionResponse> forceEndAuction(
+            @Parameter(description = "경매 ID") @PathVariable Long id) {
+        
+        AuctionResponse auction = auctionService.forceEndAuction(id);
+        return ResponseEntity.ok(auction);
+    }
 }

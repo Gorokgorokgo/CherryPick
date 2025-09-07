@@ -12,7 +12,10 @@ import com.cherrypick.app.domain.auction.repository.AuctionImageRepository;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.common.exception.BusinessException;
+import com.cherrypick.app.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -23,7 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -363,5 +368,33 @@ public class AuctionService {
         };
         
         return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
+    }
+    
+    /**
+     * 경매 강제 종료 (테스트용)
+     */
+    @Transactional
+    public AuctionResponse forceEndAuction(Long auctionId) {
+        Auction auction = auctionRepository.findById(auctionId)
+            .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다. ID: " + auctionId));
+        
+        // 강제 종료 메서드 호출
+        auction.forceEnd();
+        
+        Auction savedAuction = auctionRepository.save(auction);
+        
+        log.info("경매 강제 종료 완료: ID={}, 제목={}", auctionId, auction.getTitle());
+        
+        // 경매 강제 종료에서는 이미지 정보가 불필요하므로 빈 리스트 전달
+        return AuctionResponse.from(savedAuction, List.of());
+    }
+    
+    /**
+     * 경매 종료 후 처리 (단순 로깅)
+     */
+    @Transactional
+    public void processAuctionEnd(Auction auction) {
+        log.info("경매 종료됨: ID={}, 제목={}", auction.getId(), auction.getTitle());
+        log.info("프론트엔드에서 타이머가 0초가 되면 자동으로 채팅방이 생성됩니다.");
     }
 }
