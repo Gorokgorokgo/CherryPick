@@ -204,4 +204,12 @@ public class Auction extends BaseEntity {
     public boolean isEnded() {
         return this.status == AuctionStatus.ENDED || LocalDateTime.now().isAfter(this.endAt);
     }
+    
+    /**
+     * 경매 강제 종료 (테스트용)
+     */
+    public void forceEnd() {
+        this.status = AuctionStatus.ENDED;
+        this.endAt = LocalDateTime.now();
+    }
 }
