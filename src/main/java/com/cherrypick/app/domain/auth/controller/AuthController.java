@@ -110,7 +110,7 @@ public class AuthController {
             @ApiResponse(responseCode = "400", description = "인증 코드 만료/오류, 중복 사용자, 필수 약관 미동의")
     })
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
-        System.out.println("AuthController.signup - Request received: " + request.getEmail()); // 디버깅용
+        log.debug("AuthController.signup - Request received: {}", request.getEmail());
         AuthResponse response = authService.signup(request);
         
         if (response.getToken() != null) {

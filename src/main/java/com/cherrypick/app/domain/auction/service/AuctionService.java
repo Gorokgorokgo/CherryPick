@@ -200,7 +200,7 @@ public class AuctionService {
         // 2. 유찰 알림 발송 (별도 서비스에서 처리)
         // notificationService.sendAuctionFailedNotification(auction);
         
-        System.out.println("경매 유찰 처리 완료: " + auction.getTitle() + " (Reserve Price 미달)");
+        log.info("경매 유찰 처리 완료: {} (Reserve Price 미달)", auction.getTitle());
     }
     
     /**
@@ -217,8 +217,8 @@ public class AuctionService {
         // 3. 낙찰 알림 발송 (별도 서비스에서 처리)
         // notificationService.sendAuctionWonNotification(auction, winner);
         
-        System.out.println("경매 낙찰 처리 완료: " + auction.getTitle() + " -> " + winner.getNickname() + " (" + finalPrice + "원)");
-        System.out.println("연결 서비스 대기 중 - 판매자가 수수료 결제 시 채팅 활성화");
+        log.info("경매 낙찰 처리 완료: {} -> {} ({}원)", auction.getTitle(), winner.getNickname(), finalPrice);
+        log.info("연결 서비스 대기 중 - 판매자가 수수료 결제 시 채팅 활성화");
     }
     
     // === 고급 검색 및 필터링 기능 ===

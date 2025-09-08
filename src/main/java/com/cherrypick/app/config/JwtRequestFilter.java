@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
@@ -15,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 
+@Slf4j
 @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
 
@@ -30,7 +32,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         
         // 인증이 필요없는 경로는 필터를 건너뜀
         String requestPath = request.getRequestURI();
-        System.out.println("JwtRequestFilter - Path: " + requestPath); // 디버깅용
+        log.debug("JwtRequestFilter - Path: {}", requestPath);
         if (requestPath.startsWith("/api/auth/") || 
             requestPath.startsWith("/api/hello/") ||
             requestPath.startsWith("/swagger-ui/") || 
@@ -38,11 +40,11 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             requestPath.startsWith("/actuator/") ||
             requestPath.equals("/test") ||
             requestPath.equals("/swagger-ui.html")) {
-            System.out.println("JwtRequestFilter - SKIPPING auth for: " + requestPath); // 디버깅용
+            log.debug("JwtRequestFilter - SKIPPING auth for: {}", requestPath);
             chain.doFilter(request, response);
             return;
         }
-        System.out.println("JwtRequestFilter - CHECKING auth for: " + requestPath); // 디버깅용
+        log.debug("JwtRequestFilter - CHECKING auth for: {}", requestPath);
 
         final String requestTokenHeader = request.getHeader("Authorization");
 

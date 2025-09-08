@@ -1,10 +1,12 @@
 package com.cherrypick.app;
 
 import io.github.cdimascio.dotenv.Dotenv;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import java.util.TimeZone;
 
+@Slf4j
 @SpringBootApplication
 public class CherrypickApplication {
 
@@ -22,7 +24,7 @@ public class CherrypickApplication {
             });
         } catch (Exception e) {
             // .env 파일이 없어도 애플리케이션 실행 계속
-            System.out.println("No .env file found, using system environment variables");
+            log.info("No .env file found, using system environment variables");
         }
     }
 
