@@ -121,8 +121,8 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     @Query("SELECT a FROM Auction a WHERE a.status = 'ACTIVE' ORDER BY a.endAt ASC")
     Page<Auction> findActiveAuctionsOrderByEndingSoon(Pageable pageable);
     
-    // 경매 강제 종료 (테스트용)
+    // 경매 강제 종료 (테스트용) - 네이티브 쿼리 사용
     @Modifying
-    @Query("UPDATE Auction a SET a.endAt = :endTime WHERE a.id = :auctionId")
-    void updateAuctionEndTime(@Param("auctionId") Long auctionId, @Param("endTime") LocalDateTime endTime);
+    @Query(value = "UPDATE auctions SET end_at = :endTime WHERE id = :auctionId", nativeQuery = true)
+    int updateAuctionEndTime(@Param("auctionId") Long auctionId, @Param("endTime") LocalDateTime endTime);
 }
