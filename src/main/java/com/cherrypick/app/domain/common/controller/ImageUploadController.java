@@ -48,8 +48,14 @@ public class ImageUploadController {
             ImageUploadResponse response = ImageUploadResponse.from(uploadedImage);
             
             return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (IOException e) {
-            return ResponseEntity.badRequest().build();
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "이미지 업로드 중 오류가 발생했습니다: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
     
@@ -73,8 +79,22 @@ public class ImageUploadController {
                     .toList();
             
             return ResponseEntity.ok(responses);
-        } catch (IOException e) {
-            return ResponseEntity.badRequest().build();
+        } catch (IllegalArgumentException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (RuntimeException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            if (e.getCause() instanceof IOException) {
+                errorResponse.put("error", "일부 이미지 업로드에 실패했습니다: " + e.getMessage());
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "이미지 업로드 중 예상치 못한 오류가 발생했습니다.");
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
     
@@ -127,7 +147,9 @@ public class ImageUploadController {
             
             // 에러 메시지에 따라 HTTP 상태 코드 결정
             if (e.getMessage().contains("찾을 수 없습니다")) {
-                return ResponseEntity.notFound().build();
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "이미지를 찾을 수 없습니다.");
+                return ResponseEntity.notFound().body(errorResponse);
             } else if (e.getMessage().contains("권한")) {
                 return ResponseEntity.status(403).body(errorResponse);
             } else {

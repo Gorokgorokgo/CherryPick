@@ -84,7 +84,7 @@ public class NotificationController {
             @Parameter(description = "FCM 토큰 정보") @Valid @RequestBody UpdateFcmTokenRequest request) {
         
         notificationService.updateFcmToken(userId, request.getFcmToken());
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(
@@ -368,7 +368,7 @@ public class NotificationController {
             @Parameter(description = "알림 ID", example = "1") @PathVariable Long notificationId) {
         
         notificationService.markNotificationAsRead(userId, notificationId);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(

@@ -85,7 +85,7 @@ public class UserAccountController {
         
         Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         userAccountService.setPrimaryAccount(userId, accountId);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
     
     @Operation(summary = "계좌 삭제", description = "등록된 계좌을 삭제합니다. 기본 계좌은 다른 계좌이 있을 때만 삭제할 수 있습니다.")
@@ -102,6 +102,6 @@ public class UserAccountController {
         
         Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         userAccountService.deleteAccount(userId, accountId);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 }

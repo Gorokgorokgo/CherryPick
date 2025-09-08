@@ -152,7 +152,7 @@ public class ChatController {
         
         chatService.markMessageAsRead(roomId, messageId, userId);
         
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -174,7 +174,7 @@ public class ChatController {
         
         chatService.markAllMessagesAsRead(roomId, userId);
         
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -196,7 +196,7 @@ public class ChatController {
         
         chatService.leaveChatRoom(roomId, userId);
         
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     /**
