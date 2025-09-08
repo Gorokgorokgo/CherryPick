@@ -14,6 +14,8 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.common.exception.BusinessException;
 import com.cherrypick.app.common.exception.ErrorCode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -37,6 +39,11 @@ public class AuctionService {
     private final AuctionRepository auctionRepository;
     private final AuctionImageRepository auctionImageRepository;
     private final UserRepository userRepository;
+    private final com.cherrypick.app.domain.chat.service.ChatService chatService;
+    private final com.cherrypick.app.domain.bid.repository.BidRepository bidRepository;
+    
+    @PersistenceContext
+    private EntityManager entityManager;
     
     /**
      * 경매 등록 (개정된 비즈니스 모델)
@@ -371,22 +378,66 @@ public class AuctionService {
     }
     
     /**
-     * 경매 강제 종료 (테스트용)
+     * 경매 강제 종료
      */
     @Transactional
     public AuctionResponse forceEndAuction(Long auctionId) {
+        log.info("경매 ID {} 강제 종료 요청됨", auctionId);
+        
+        // 경매 조회
         Auction auction = auctionRepository.findById(auctionId)
-            .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다. ID: " + auctionId));
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
         
-        // 강제 종료 메서드 호출
+        // 이미 종료된 경매인지 확인
+        if (auction.isEnded()) {
+            log.warn("이미 종료된 경매입니다: ID={}", auctionId);
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        }
+        
+        // 최고 입찰자를 낙찰자로 설정
+        log.info("최고 입찰자 조회 시작: 경매ID={}", auctionId);
+        Optional<com.cherrypick.app.domain.bid.entity.Bid> highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
+        
+        if (highestBid.isPresent()) {
+            log.info("최고 입찰 발견: 입찰자={}, 입찰액={}", 
+                    highestBid.get().getBidder().getNickname(), highestBid.get().getBidAmount());
+            auction.setWinner(highestBid.get().getBidder(), highestBid.get().getBidAmount());
+            log.info("낙찰자 설정 완료: 경매ID={}, 낙찰자={}, 낙찰가={}", 
+                    auctionId, highestBid.get().getBidder().getNickname(), highestBid.get().getBidAmount());
+        } else {
+            log.warn("최고 입찰을 찾을 수 없습니다: 경매ID={}", auctionId);
+            
+            // 추가 디버깅: 해당 경매의 모든 입찰 조회
+            List<com.cherrypick.app.domain.bid.entity.Bid> allBids = bidRepository.findByAuctionOrderByBidAmountDesc(auction);
+            log.info("해당 경매의 총 입찰 수: {}", allBids.size());
+            for (com.cherrypick.app.domain.bid.entity.Bid bid : allBids) {
+                log.info("입찰 내역: 입찰자={}, 금액={}, 시간={}", 
+                        bid.getBidder().getNickname(), bid.getBidAmount(), bid.getBidTime());
+            }
+        }
+        
+        // 경매 강제 종료
         auction.forceEnd();
-        
         Auction savedAuction = auctionRepository.save(auction);
         
-        log.info("경매 강제 종료 완료: ID={}, 제목={}", auctionId, auction.getTitle());
+        log.info("경매 강제 종료 완료: ID={}, 상태={}", auctionId, savedAuction.getStatus());
         
-        // 경매 강제 종료에서는 이미지 정보가 불필요하므로 빈 리스트 전달
-        return AuctionResponse.from(savedAuction, List.of());
+        // 낙찰자가 있으면 채팅방 자동 생성
+        if (savedAuction.getWinner() != null) {
+            try {
+                chatService.createAuctionChatRoom(savedAuction, savedAuction.getSeller(), savedAuction.getWinner());
+                log.info("경매 종료 후 채팅방 생성 완료: 경매ID={}, 판매자={}, 낙찰자={}", 
+                        savedAuction.getId(), savedAuction.getSeller().getId(), savedAuction.getWinner().getId());
+            } catch (Exception e) {
+                log.error("채팅방 생성 실패: 경매ID={}, 오류={}", savedAuction.getId(), e.getMessage(), e);
+            }
+        } else {
+            log.info("낙찰자가 없어 채팅방을 생성하지 않습니다: 경매ID={}", savedAuction.getId());
+        }
+        
+        List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(savedAuction.getId());
+        return AuctionResponse.from(savedAuction, images);
     }
     
     /**
