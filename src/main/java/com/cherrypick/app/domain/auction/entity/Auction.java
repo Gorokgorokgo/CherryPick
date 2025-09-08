@@ -212,4 +212,12 @@ public class Auction extends BaseEntity {
         this.status = AuctionStatus.ENDED;
         this.endAt = LocalDateTime.now();
     }
+    
+    /**
+     * 낙찰자 설정
+     */
+    public void setWinner(User winner, BigDecimal finalPrice) {
+        this.winner = winner;
+        this.currentPrice = finalPrice;
+    }
 }
