@@ -18,11 +18,13 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import com.cherrypick.app.domain.websocket.event.TypingEvent;
 
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +44,8 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final UserRepository userRepository;
     private final WebSocketMessagingService webSocketMessagingService;
+    private final UserOnlineStatusService userOnlineStatusService;
+    private final ApplicationEventPublisher eventPublisher;
     
     // 채팅방별 동시성 제어를 위한 Lock 객체 캐시
     private final ConcurrentHashMap<Long, Object> chatRoomLocks = new ConcurrentHashMap<>();
@@ -105,6 +109,38 @@ public class ChatService {
     }
     
     /**
+     * 경매 낙찰 시 채팅방 생성
+     * 
+     * @param auction 경매 정보
+     * @param seller 판매자
+     * @param winner 낙찰자
+     * @return 생성된 채팅방
+     */
+    @Transactional
+    public ChatRoom createAuctionChatRoom(com.cherrypick.app.domain.auction.entity.Auction auction, 
+                                         User seller, User winner) {
+        // 동일한 경매에 대한 채팅방이 이미 존재하는지 확인
+        Optional<ChatRoom> existingRoom = chatRoomRepository
+                .findByAuctionIdAndSellerIdAndBuyerId(auction.getId(), seller.getId(), winner.getId());
+        
+        if (existingRoom.isPresent()) {
+            log.info("경매 채팅방이 이미 존재합니다. auctionId: {}, sellerId: {}, winnerId: {}", 
+                    auction.getId(), seller.getId(), winner.getId());
+            return existingRoom.get();
+        }
+        
+        // 새 채팅방 생성 (경매 기반)
+        ChatRoom chatRoom = ChatRoom.createAuctionChatRoom(auction, seller, winner);
+        
+        ChatRoom savedRoom = chatRoomRepository.save(chatRoom);
+        
+        log.info("경매 채팅방이 생성되었습니다. roomId: {}, auctionId: {}, sellerId: {}, winnerId: {}", 
+                savedRoom.getId(), auction.getId(), seller.getId(), winner.getId());
+        
+        return savedRoom;
+    }
+    
+    /**
      * 채팅방 조회 (연결 서비스 기반)
      * 
      * @param connectionServiceId 연결 서비스 ID
@@ -160,8 +196,10 @@ public class ChatService {
                     int unreadCount = chatMessageRepository
                             .countUnreadMessagesByChatRoomIdAndUserId(chatRoom.getId(), userId);
                     
-                    // 상대방 온라인 상태 (임시로 false, 추후 실시간 상태 관리 추가)
-                    boolean partnerOnline = false;
+                    // 상대방 온라인 상태 (실시간 상태 추적)
+                    Long partnerId = chatRoom.getSeller().getId().equals(userId) ? 
+                            chatRoom.getBuyer().getId() : chatRoom.getSeller().getId();
+                    boolean partnerOnline = userOnlineStatusService.isUserOnline(partnerId);
                     
                     return ChatRoomListResponse.from(chatRoom, userId, lastMessage, unreadCount, partnerOnline);
                 })
@@ -188,8 +226,10 @@ public class ChatService {
         int unreadCount = chatMessageRepository
                 .countUnreadMessagesByChatRoomIdAndUserId(roomId, userId);
         
-        // 상대방 온라인 상태 (임시로 false, 추후 실시간 상태 관리 추가)
-        boolean partnerOnline = false;
+        // 상대방 온라인 상태 (실시간 상태 추적)
+        Long partnerId = chatRoom.getSeller().getId().equals(userId) ? 
+                chatRoom.getBuyer().getId() : chatRoom.getSeller().getId();
+        boolean partnerOnline = userOnlineStatusService.isUserOnline(partnerId);
         
         return ChatRoomResponse.from(chatRoom, userId, unreadCount, partnerOnline);
     }
@@ -263,6 +303,16 @@ public class ChatService {
             } catch (Exception e) {
                 log.warn("WebSocket 메시지 전송 실패 (메시지는 저장됨): roomId={}, messageId={}, error={}", 
                         roomId, savedMessage.getId(), e.getMessage());
+            }
+            
+            // 메시지 전송 시 타이핑 상태 자동 중단 이벤트 발행
+            try {
+                eventPublisher.publishEvent(new TypingEvent(
+                    this, roomId, userId, null, TypingEvent.TypingEventType.MESSAGE_SENT
+                ));
+            } catch (Exception e) {
+                log.warn("타이핑 상태 자동 중단 이벤트 발행 실패: roomId={}, userId={}, error={}", 
+                        roomId, userId, e.getMessage());
             }
             
             log.info("메시지 전송 완료: roomId={}, userId={}, messageId={}", roomId, userId, savedMessage.getId());

@@ -8,6 +8,7 @@ import com.cherrypick.app.domain.user.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -119,4 +120,9 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     // 마감 임박 순으로 정렬 (진행중인 경매만)
     @Query("SELECT a FROM Auction a WHERE a.status = 'ACTIVE' ORDER BY a.endAt ASC")
     Page<Auction> findActiveAuctionsOrderByEndingSoon(Pageable pageable);
+    
+    // 경매 강제 종료 (테스트용) - 네이티브 쿼리 사용
+    @Modifying
+    @Query(value = "UPDATE auctions SET end_at = :endTime WHERE id = :auctionId", nativeQuery = true)
+    int updateAuctionEndTime(@Param("auctionId") Long auctionId, @Param("endTime") LocalDateTime endTime);
 }

@@ -128,6 +128,12 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(savedUser.getEmail(), savedUser.getId());
+        
+        System.out.println("========================================");
+        System.out.println("🎉 회원가입 완료 - JWT 토큰 발급");
+        System.out.println("사용자: " + savedUser.getNickname() + " (" + savedUser.getEmail() + ")");
+        System.out.println("JWT Token: " + token);
+        System.out.println("========================================");
 
         return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname(), "회원가입 성공");
     }
@@ -148,6 +154,12 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
+        
+        System.out.println("========================================");
+        System.out.println("🔑 로그인 성공 - JWT 토큰 발급");
+        System.out.println("사용자: " + user.getNickname() + " (" + user.getEmail() + ")");
+        System.out.println("JWT Token: " + token);
+        System.out.println("========================================");
 
         return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
     }
@@ -171,6 +183,12 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
+        
+        System.out.println("========================================");
+        System.out.println("📱 전화번호 로그인 성공 - JWT 토큰 발급");
+        System.out.println("사용자: " + user.getNickname() + " (" + user.getPhoneNumber() + ")");
+        System.out.println("JWT Token: " + token);
+        System.out.println("========================================");
 
         return new AuthResponse(token, user.getId(), user.getPhoneNumber(), user.getNickname());
     }

@@ -152,4 +152,21 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             @Param("chatRoomId") Long chatRoomId,
             @Param("startDate") String startDate,
             @Param("endDate") String endDate);
+
+    /**
+     * 채팅방의 미읽은 메시지 조회 (특정 사용자가 보낸 메시지 제외)
+     * 메시지 전송 상태 업데이트를 위한 쿼리
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param userId 제외할 사용자 ID (발신자)
+     * @return 미읽은 메시지 목록
+     */
+    @Query("SELECT m FROM ChatMessage m " +
+           "WHERE m.chatRoom.id = :chatRoomId " +
+           "AND m.sender.id != :userId " +
+           "AND m.isRead = false " +
+           "ORDER BY m.createdAt ASC")
+    List<ChatMessage> findUnreadMessagesByChatRoomIdAndNotSender(
+            @Param("chatRoomId") Long chatRoomId,
+            @Param("userId") Long userId);
 }

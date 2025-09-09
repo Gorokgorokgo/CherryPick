@@ -225,6 +225,47 @@ public class WebSocketMessagingService {
         }
     }
     
+    /**
+     * 메시지 전달됨 상태 알림
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param messageId 전달된 메시지 ID
+     * @param receiverId 수신자 ID
+     */
+    public void notifyMessageDelivered(Long chatRoomId, Long messageId, Long receiverId) {
+        String destination = "/topic/chat/" + chatRoomId + "/delivered";
+        
+        MessageDeliveredEvent deliveredEvent = new MessageDeliveredEvent(messageId, receiverId, System.currentTimeMillis());
+        
+        try {
+            webSocketHandler.sendToAuctionSubscribers(destination, deliveredEvent);
+            log.debug("메시지 전달됨 상태 알림 전송: {} -> messageId: {}", destination, messageId);
+        } catch (Exception e) {
+            log.error("메시지 전달됨 상태 알림 전송 실패: {} -> messageId: {}", destination, messageId, e);
+        }
+    }
+    
+    /**
+     * 타이핑 상태 알림
+     * 
+     * @param chatRoomId 채팅방 ID
+     * @param userId 타이핑하는 사용자 ID
+     * @param userNickname 사용자 닉네임
+     * @param isTyping 타이핑 중인지 여부
+     */
+    public void notifyTypingStatus(Long chatRoomId, Long userId, String userNickname, boolean isTyping) {
+        String destination = "/topic/chat/" + chatRoomId + "/typing";
+        
+        TypingStatusEvent typingEvent = new TypingStatusEvent(userId, userNickname, isTyping, System.currentTimeMillis());
+        
+        try {
+            webSocketHandler.sendToAuctionSubscribers(destination, typingEvent);
+            log.debug("타이핑 상태 알림 전송: {} -> userId: {}, isTyping: {}", destination, userId, isTyping);
+        } catch (Exception e) {
+            log.error("타이핑 상태 알림 전송 실패: {} -> userId: {}, isTyping: {}", destination, userId, isTyping, e);
+        }
+    }
+    
     // === 내부 메시지 클래스들 ===
     
     /**
@@ -270,6 +311,38 @@ public class WebSocketMessagingService {
         public MessageReadEvent(Long messageId, Long readerId, long timestamp) {
             this.messageId = messageId;
             this.readerId = readerId;
+            this.timestamp = timestamp;
+        }
+    }
+    
+    /**
+     * 메시지 전달됨 이벤트
+     */
+    public static class MessageDeliveredEvent {
+        public final Long messageId;
+        public final Long receiverId;
+        public final long timestamp;
+        
+        public MessageDeliveredEvent(Long messageId, Long receiverId, long timestamp) {
+            this.messageId = messageId;
+            this.receiverId = receiverId;
+            this.timestamp = timestamp;
+        }
+    }
+    
+    /**
+     * 타이핑 상태 이벤트
+     */
+    public static class TypingStatusEvent {
+        public final Long userId;
+        public final String userNickname;
+        public final boolean isTyping;
+        public final long timestamp;
+        
+        public TypingStatusEvent(Long userId, String userNickname, boolean isTyping, long timestamp) {
+            this.userId = userId;
+            this.userNickname = userNickname;
+            this.isTyping = isTyping;
             this.timestamp = timestamp;
         }
     }

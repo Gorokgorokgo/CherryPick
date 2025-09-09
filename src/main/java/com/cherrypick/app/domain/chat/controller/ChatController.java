@@ -5,6 +5,7 @@ import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
 import com.cherrypick.app.domain.chat.dto.response.ChatRoomListResponse;
 import com.cherrypick.app.domain.chat.dto.response.ChatRoomResponse;
 import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ import java.util.List;
 public class ChatController {
 
     private final ChatService chatService;
+    private final UserService userService;
 
     /**
      * 내 채팅방 목록 조회
@@ -50,7 +52,7 @@ public class ChatController {
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(required = false) String status) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.info("채팅방 목록 조회 요청: userId={}, status={}", userId, status);
         
@@ -72,7 +74,7 @@ public class ChatController {
             @PathVariable Long roomId,
             @AuthenticationPrincipal UserDetails userDetails) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.info("채팅방 상세 조회: roomId={}, userId={}", roomId, userId);
         
@@ -96,7 +98,7 @@ public class ChatController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 50, sort = "createdAt") Pageable pageable) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.info("채팅 메시지 조회: roomId={}, userId={}, page={}", 
                 roomId, userId, pageable.getPageNumber());
@@ -121,7 +123,7 @@ public class ChatController {
             @Valid @RequestBody SendMessageRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.info("메시지 전송: roomId={}, userId={}, content={}", 
                 roomId, userId, request.getContent().substring(0, Math.min(50, request.getContent().length())));
@@ -146,7 +148,7 @@ public class ChatController {
             @PathVariable Long messageId,
             @AuthenticationPrincipal UserDetails userDetails) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.info("메시지 읽음 처리: roomId={}, messageId={}, userId={}", roomId, messageId, userId);
         
@@ -168,7 +170,7 @@ public class ChatController {
             @PathVariable Long roomId,
             @AuthenticationPrincipal UserDetails userDetails) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.info("전체 메시지 읽음 처리: roomId={}, userId={}", roomId, userId);
         
@@ -190,7 +192,7 @@ public class ChatController {
             @PathVariable Long roomId,
             @AuthenticationPrincipal UserDetails userDetails) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.info("채팅방 나가기: roomId={}, userId={}", roomId, userId);
         
@@ -210,7 +212,7 @@ public class ChatController {
     public ResponseEntity<Integer> getUnreadMessageCount(
             @AuthenticationPrincipal UserDetails userDetails) {
         
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         
         log.debug("읽지 않은 메시지 개수 조회: userId={}", userId);
         

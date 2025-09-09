@@ -2,8 +2,12 @@ package com.cherrypick.app.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
+import com.cherrypick.app.domain.websocket.event.UserConnectionEvent;
+import com.cherrypick.app.domain.websocket.event.TypingEvent;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -24,8 +28,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public class WebSocketHandler extends TextWebSocketHandler {
     
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
     
-    public WebSocketHandler() {
+    public WebSocketHandler(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
         this.objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -39,6 +45,9 @@ public class WebSocketHandler extends TextWebSocketHandler {
     
     // 활성 WebSocket 세션들 (sessionId -> WebSocketSession)
     private final Map<String, WebSocketSession> activeSessions = new ConcurrentHashMap<>();
+    
+    // 세션별 사용자 ID 매핑 (sessionId -> userId)
+    private final Map<String, Long> sessionUserMapping = new ConcurrentHashMap<>();
     
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -61,6 +70,9 @@ public class WebSocketHandler extends TextWebSocketHandler {
             String type = messageNode.has("type") ? messageNode.get("type").asText() : "";
             
             switch (type) {
+                case "AUTH":
+                    handleAuthentication(session, messageNode);
+                    break;
                 case "SUBSCRIBE":
                     handleSubscribe(session, messageNode);
                     break;
@@ -69,6 +81,12 @@ public class WebSocketHandler extends TextWebSocketHandler {
                     break;
                 case "PING":
                     handlePing(session, messageNode);
+                    break;
+                case "TYPING_START":
+                    handleTypingStart(session, messageNode);
+                    break;
+                case "TYPING_STOP":
+                    handleTypingStop(session, messageNode);
                     break;
                 default:
                     log.warn("⚠️ 알 수 없는 메시지 타입 [{}]: {}", sessionId, type);
@@ -85,6 +103,14 @@ public class WebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         String sessionId = session.getId();
         log.info("🔚 WebSocket 연결 종료 [{}]: {}", sessionId, status.toString());
+        
+        // 사용자 연결 해제 이벤트 발행
+        Long userId = sessionUserMapping.remove(sessionId);
+        if (userId != null) {
+            eventPublisher.publishEvent(new UserConnectionEvent(
+                this, userId, sessionId, UserConnectionEvent.ConnectionEventType.DISCONNECTED
+            ));
+        }
         
         // 모든 구독 정보 정리
         Set<String> subscribedAuctions = sessionSubscriptions.remove(sessionId);
@@ -110,6 +136,43 @@ public class WebSocketHandler extends TextWebSocketHandler {
         log.error("🚫 WebSocket 전송 오류 [{}]", sessionId, exception);
     }
     
+    /**
+     * 사용자 인증 처리
+     */
+    private void handleAuthentication(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
+        
+        if (!messageNode.has("userId")) {
+            sendErrorMessage(session, "MISSING_USER_ID", "인증 요청에 userId가 필요합니다");
+            return;
+        }
+        
+        try {
+            Long userId = messageNode.get("userId").asLong();
+            
+            // 세션-사용자 매핑 저장
+            sessionUserMapping.put(sessionId, userId);
+            
+            // 사용자 연결 이벤트 발행
+            eventPublisher.publishEvent(new UserConnectionEvent(
+                this, userId, sessionId, UserConnectionEvent.ConnectionEventType.CONNECTED
+            ));
+            
+            log.info("🔐 WebSocket 사용자 인증 완료 [{}]: userId={}", sessionId, userId);
+            
+            // 인증 성공 메시지 전송
+            sendMessage(session, Map.of(
+                "type", "AUTH_SUCCESS",
+                "userId", userId,
+                "timestamp", System.currentTimeMillis()
+            ));
+            
+        } catch (Exception e) {
+            log.error("❌ WebSocket 사용자 인증 실패 [{}]", sessionId, e);
+            sendErrorMessage(session, "AUTH_FAILED", "사용자 인증에 실패했습니다");
+        }
+    }
+
     /**
      * 구독 요청 처리
      */
@@ -178,7 +241,16 @@ public class WebSocketHandler extends TextWebSocketHandler {
      * PING 요청 처리 (하트비트)
      */
     private void handlePing(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
         long timestamp = messageNode.has("timestamp") ? messageNode.get("timestamp").asLong() : System.currentTimeMillis();
+        
+        // 사용자 활동 업데이트 이벤트 발행
+        Long userId = sessionUserMapping.get(sessionId);
+        if (userId != null) {
+            eventPublisher.publishEvent(new UserConnectionEvent(
+                this, userId, sessionId, UserConnectionEvent.ConnectionEventType.ACTIVITY_UPDATE
+            ));
+        }
         
         // PONG 응답 전송
         sendMessage(session, Map.of(
@@ -186,6 +258,71 @@ public class WebSocketHandler extends TextWebSocketHandler {
             "timestamp", timestamp,
             "serverTime", System.currentTimeMillis()
         ));
+    }
+    
+    /**
+     * 타이핑 시작 요청 처리
+     */
+    private void handleTypingStart(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
+        Long userId = sessionUserMapping.get(sessionId);
+        
+        if (userId == null) {
+            sendErrorMessage(session, "NOT_AUTHENTICATED", "인증이 필요합니다");
+            return;
+        }
+        
+        if (!messageNode.has("chatRoomId") || !messageNode.has("userNickname")) {
+            sendErrorMessage(session, "MISSING_REQUIRED_FIELDS", "chatRoomId와 userNickname이 필요합니다");
+            return;
+        }
+        
+        try {
+            Long chatRoomId = messageNode.get("chatRoomId").asLong();
+            String userNickname = messageNode.get("userNickname").asText();
+            
+            eventPublisher.publishEvent(new TypingEvent(
+                this, chatRoomId, userId, userNickname, TypingEvent.TypingEventType.START
+            ));
+            
+            log.debug("타이핑 시작 처리: sessionId={}, userId={}, chatRoomId={}", sessionId, userId, chatRoomId);
+            
+        } catch (Exception e) {
+            log.error("타이핑 시작 처리 오류 [{}]", sessionId, e);
+            sendErrorMessage(session, "TYPING_START_ERROR", "타이핑 시작 처리 중 오류가 발생했습니다");
+        }
+    }
+    
+    /**
+     * 타이핑 중단 요청 처리
+     */
+    private void handleTypingStop(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
+        Long userId = sessionUserMapping.get(sessionId);
+        
+        if (userId == null) {
+            sendErrorMessage(session, "NOT_AUTHENTICATED", "인증이 필요합니다");
+            return;
+        }
+        
+        if (!messageNode.has("chatRoomId")) {
+            sendErrorMessage(session, "MISSING_CHAT_ROOM_ID", "chatRoomId가 필요합니다");
+            return;
+        }
+        
+        try {
+            Long chatRoomId = messageNode.get("chatRoomId").asLong();
+            
+            eventPublisher.publishEvent(new TypingEvent(
+                this, chatRoomId, userId, null, TypingEvent.TypingEventType.STOP
+            ));
+            
+            log.debug("타이핑 중단 처리: sessionId={}, userId={}, chatRoomId={}", sessionId, userId, chatRoomId);
+            
+        } catch (Exception e) {
+            log.error("타이핑 중단 처리 오류 [{}]", sessionId, e);
+            sendErrorMessage(session, "TYPING_STOP_ERROR", "타이핑 중단 처리 중 오류가 발생했습니다");
+        }
     }
     
     /**
