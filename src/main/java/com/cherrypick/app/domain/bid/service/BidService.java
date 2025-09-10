@@ -93,10 +93,46 @@ public class BidService {
         
         Bid savedBid = bidRepository.save(bid);
         
+        // 기존 자동입찰 설정 먼저 비활성화 (수동입찰 시에도 적용)
+        List<Bid> existingAutoBids = bidRepository.findActiveAutoBidsByBidderId(userId);
+        for (Bid existingAutoBid : existingAutoBids) {
+            if (existingAutoBid.getAuction().getId().equals(request.getAuctionId())) {
+                existingAutoBid.setStatus(BidStatus.CANCELLED);
+                bidRepository.save(existingAutoBid);
+                log.info("🚫 기존 자동입찰 설정 취소됨 - 입찰자: {}, 기존 최대금액: {}", 
+                        userId, existingAutoBid.getMaxAutoBidAmount());
+            }
+        }
+        
+        // 자동입찰 설정이 있는 경우 새로운 자동입찰 레코드 생성
+        if (request.getMaxAutoBidAmount() != null && 
+            request.getMaxAutoBidAmount().compareTo(request.getBidAmount()) > 0) {
+            
+            // 새 자동입찰 설정 생성 (금액 0으로 설정하여 입찰 내역과 구분)
+            Bid autoBidConfig = Bid.builder()
+                    .auction(auction)
+                    .bidder(bidder)
+                    .bidAmount(BigDecimal.ZERO) // 설정용이므로 0원으로 저장
+                    .isAutoBid(true) // 자동입찰 설정
+                    .maxAutoBidAmount(request.getMaxAutoBidAmount())
+                    .autoBidPercentage(request.getAutoBidPercentage())
+                    .status(BidStatus.ACTIVE)
+                    .bidTime(LocalDateTime.now())
+                    .build();
+            
+            bidRepository.save(autoBidConfig);
+            log.info("🤖 자동입찰 설정 생성됨 - 입찰자: {}, 최대금액: {}", 
+                    userId, request.getMaxAutoBidAmount());
+        }
+        
         // 경매 현재가 및 입찰수 업데이트
+        BigDecimal previousPrice = auction.getCurrentPrice();
         auction.updateCurrentPrice(request.getBidAmount());
         auction.increaseBidCount();
         auctionRepository.save(auction);
+        
+        log.info("💰 경매 현재가 업데이트 - 경매 ID: {}, 이전가: {}, 입찰가: {}, 업데이트 후: {}", 
+                auction.getId(), previousPrice, request.getBidAmount(), auction.getCurrentPrice());
         
         // 실시간 입찰 알림 전송 (WebSocket)
         webSocketMessagingService.notifyNewBid(

@@ -81,7 +81,10 @@ public class AutoBidService {
             }
             
             // 새로운 자동입찰 로직: 최고 입찰액 기반 경쟁
-            processSmartAutoBidding(activeAutoBids, newBidAmount, auction);
+            // 중요: DB에서 최신 현재가를 다시 조회 (수동입찰이 이미 반영됨)
+            BigDecimal currentPrice = auction.getCurrentPrice();
+            log.info("📊 자동입찰 처리용 현재가: {}원 (전달받은 입찰가: {}원)", currentPrice, newBidAmount);
+            processSmartAutoBidding(activeAutoBids, currentPrice, auction);
             
             return CompletableFuture.completedFuture(null);
             
@@ -120,13 +123,13 @@ public class AutoBidService {
             return;
         }
         
-        // 2명 이상의 자동입찰자가 있을 때 스마트 처리
-        log.info("🏆 스마트 자동입찰 시작 - 자동입찰자: {}명", activeAutoBids.size());
+        // 최고금액별로 정렬 (내림차순)
+        activeAutoBids.sort((a, b) -> b.getMaxAutoBidAmount().compareTo(a.getMaxAutoBidAmount()));
         
-        // 최고 입찰액이 높은 순으로 정렬 (이미 쿼리에서 정렬됨)
-        Bid highestBidder = activeAutoBids.get(0);    // 가장 높은 최대금액
-        Bid secondBidder = activeAutoBids.get(1);     // 두 번째 높은 최대금액
+        Bid highestBidder = activeAutoBids.get(0);
+        Bid secondBidder = activeAutoBids.get(1);
         
+        log.info("🏁 스마트 자동입찰 시작 - 자동입찰자: {}명", activeAutoBids.size());
         log.info("🥇 1위: 입찰자 {} (최대: {}원)", highestBidder.getBidder().getId(), highestBidder.getMaxAutoBidAmount());
         log.info("🥈 2위: 입찰자 {} (최대: {}원)", secondBidder.getBidder().getId(), secondBidder.getMaxAutoBidAmount());
         
@@ -198,7 +201,7 @@ public class AutoBidService {
                     .auction(auction)
                     .bidder(autoBidConfig.getBidder())
                     .bidAmount(bidAmount)
-                    .isAutoBid(false)  // 트리거된 입찰은 자동입찰 설정이 아님
+                    .isAutoBid(true)  // 자동입찰로 생성된 입찰
                     .maxAutoBidAmount(autoBidConfig.getMaxAutoBidAmount())  // 참조를 위해 유지
                     .autoBidPercentage(autoBidConfig.getAutoBidPercentage())
                     .status(BidStatus.ACTIVE)
@@ -263,7 +266,7 @@ public class AutoBidService {
                     .auction(auction)
                     .bidder(autoBid.getBidder())
                     .bidAmount(nextBidAmount)
-                    .isAutoBid(false)  // 트리거된 입찰은 자동입찰 설정이 아님
+                    .isAutoBid(true)  // 자동입찰로 생성된 입찰
                     .maxAutoBidAmount(autoBid.getMaxAutoBidAmount())  // 참조를 위해 유지
                     .autoBidPercentage(autoBid.getAutoBidPercentage())
                     .status(BidStatus.ACTIVE)
@@ -327,12 +330,7 @@ public class AutoBidService {
             return false;
         }
         
-        // 4. 현재가가 내 자동입찰 설정보다 높은지 확인
-        if (currentHighestBid.compareTo(autoBid.getBidAmount()) <= 0) {
-            log.debug("현재가가 내 설정 입찰가보다 높지 않아 자동입찰 건너뜀 - 입찰자: {}, 현재가: {}, 내 설정가: {}", 
-                    autoBid.getBidder().getId(), currentHighestBid, autoBid.getBidAmount());
-            return false;
-        }
+        // 4. 자동입찰 설정은 bidAmount가 0이므로 이 조건 생략
         
         log.debug("자동입찰 조건 통과 - 입찰자: {}, 현재가: {}, 최대금액: {}", 
                 autoBid.getBidder().getId(), currentHighestBid, autoBid.getMaxAutoBidAmount());
