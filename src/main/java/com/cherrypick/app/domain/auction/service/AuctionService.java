@@ -132,17 +132,37 @@ public class AuctionService {
         });
     }
     
-    @Transactional
     public AuctionResponse getAuctionDetail(Long auctionId) {
         Auction auction = auctionRepository.findById(auctionId)
                 .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
         
-        // 조회수 증가 (비즈니스 메서드 사용)
-        auction.increaseViewCount();
-        auctionRepository.save(auction);
+        // 조회수 증가 로직을 제거 - 별도 API에서 처리하도록 변경
         
         List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auctionId);
         return AuctionResponse.from(auction, images);
+    }
+    
+    /**
+     * 조회수 증가 없이 경매 상세 정보만 조회
+     */
+    public AuctionResponse getAuctionDetailWithoutViewIncrement(Long auctionId) {
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
+        
+        List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auctionId);
+        return AuctionResponse.from(auction, images);
+    }
+    
+    /**
+     * 조회수만 증가시키는 메서드
+     */
+    @Transactional
+    public void increaseAuctionViewCount(Long auctionId) {
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
+        
+        auction.increaseViewCount();
+        auctionRepository.save(auction);
     }
     
     public Page<AuctionResponse> getMyAuctions(Long userId, Pageable pageable) {

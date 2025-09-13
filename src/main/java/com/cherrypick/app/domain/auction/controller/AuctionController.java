@@ -24,6 +24,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Tag(name = "6단계 - 경매 관리", description = "경매 등록, 조회, 검색 | 보증금 10% 자동 차감")
 @RestController
@@ -131,7 +132,7 @@ public class AuctionController {
         return ResponseEntity.ok(auctions);
     }
     
-    @Operation(summary = "경매 상세 조회", description = "특정 경매의 상세 정보를 조회합니다. 조회수가 1 증가됩니다.")
+    @Operation(summary = "경매 상세 조회", description = "특정 경매의 상세 정보를 조회합니다. 조회수는 별도 API(/view)로 증가시킵니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "경매 상세 조회 성공"),
             @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
@@ -140,6 +141,31 @@ public class AuctionController {
     public ResponseEntity<AuctionResponse> getAuctionDetail(
             @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
         AuctionResponse response = auctionService.getAuctionDetail(auctionId);
+        return ResponseEntity.ok(response);
+    }
+    
+    @Operation(summary = "경매 상세 조회 (조회수 증가 없음)", description = "특정 경매의 상세 정보를 조회합니다. 조회수는 증가하지 않습니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "경매 상세 조회 성공"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @GetMapping("/{auctionId}/info")
+    public ResponseEntity<AuctionResponse> getAuctionDetailWithoutViewIncrement(
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+        AuctionResponse response = auctionService.getAuctionDetailWithoutViewIncrement(auctionId);
+        return ResponseEntity.ok(response);
+    }
+    
+    @Operation(summary = "경매 조회수 증가", description = "경매의 조회수를 1 증가시킵니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "조회수 증가 성공"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PostMapping("/{auctionId}/view")
+    public ResponseEntity<Map<String, String>> increaseAuctionViewCount(
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+        auctionService.increaseAuctionViewCount(auctionId);
+        Map<String, String> response = Map.of("message", "조회수가 증가되었습니다");
         return ResponseEntity.ok(response);
     }
     
