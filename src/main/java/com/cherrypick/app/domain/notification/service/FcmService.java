@@ -6,10 +6,14 @@ import com.cherrypick.app.domain.notification.enums.NotificationType;
 import com.cherrypick.app.domain.notification.repository.NotificationHistoryRepository;
 import com.cherrypick.app.domain.notification.repository.NotificationSettingRepository;
 import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.websocket.dto.AuctionUpdateMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
 
 /**
  * FCM 푸시 알림 서비스
@@ -22,6 +26,7 @@ public class FcmService {
 
     private final NotificationSettingRepository notificationSettingRepository;
     private final NotificationHistoryRepository notificationHistoryRepository;
+    private final WebSocketMessagingService webSocketMessagingService;
     
     /**
      * 연결 서비스 결제 요청 알림 (판매자용)
@@ -45,7 +50,10 @@ public class FcmService {
         
         // FCM 푸시 발송 (현재는 로그만, 추후 실제 FCM 연동)
         sendFcmPush(setting.getFcmToken(), title, message, notification);
-        
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(seller.getId(), NotificationType.CONNECTION_PAYMENT_REQUEST, title, message, connectionId);
+
         log.info("연결 서비스 결제 요청 알림 발송 완료. userId: {}, connectionId: {}", seller.getId(), connectionId);
     }
     
@@ -71,7 +79,10 @@ public class FcmService {
         
         // FCM 푸시 발송
         sendFcmPush(setting.getFcmToken(), title, message, notification);
-        
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(buyer.getId(), NotificationType.CHAT_ACTIVATED, title, message, connectionId);
+
         log.info("채팅 활성화 알림 발송 완료. userId: {}, connectionId: {}", buyer.getId(), connectionId);
     }
     
@@ -84,15 +95,18 @@ public class FcmService {
         if (!setting.getBidNotification()) {
             return;
         }
-        
+
         String title = "새로운 입찰이 있습니다!";
         String message = String.format("'%s' 경매에 %,d원 입찰이 들어왔습니다.", auctionTitle, bidAmount);
-        
+
         NotificationHistory notification = NotificationHistory.createNotification(
                 seller, NotificationType.NEW_BID, title, message, auctionId);
         notificationHistoryRepository.save(notification);
-        
+
         sendFcmPush(setting.getFcmToken(), title, message, notification);
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(seller.getId(), NotificationType.NEW_BID, title, message, auctionId);
     }
     
     /**
@@ -104,15 +118,18 @@ public class FcmService {
         if (!setting.getWinningNotification()) {
             return;
         }
-        
+
         String title = "낙찰되었습니다! 🎉";
         String message = String.format("'%s' 경매에서 %,d원에 낙찰되었습니다. 판매자의 연결 서비스 결제를 기다려주세요.", auctionTitle, finalPrice);
-        
+
         NotificationHistory notification = NotificationHistory.createNotification(
                 buyer, NotificationType.AUCTION_WON, title, message, auctionId);
         notificationHistoryRepository.save(notification);
-        
+
         sendFcmPush(setting.getFcmToken(), title, message, notification);
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(buyer.getId(), NotificationType.AUCTION_WON, title, message, auctionId);
     }
     
     /**
@@ -124,16 +141,19 @@ public class FcmService {
         if (!setting.getTransactionCompletionNotification()) {
             return;
         }
-        
+
         String title = "거래가 완료되었습니다! ✅";
         String role = isSeller ? "판매" : "구매";
         String message = String.format("'%s' %s 거래가 성공적으로 완료되었습니다. 수고하셨습니다!", auctionTitle, role);
-        
+
         NotificationHistory notification = NotificationHistory.createNotification(
                 user, NotificationType.TRANSACTION_COMPLETED, title, message, connectionId);
         notificationHistoryRepository.save(notification);
-        
+
         sendFcmPush(setting.getFcmToken(), title, message, notification);
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(user.getId(), NotificationType.TRANSACTION_COMPLETED, title, message, connectionId);
     }
     
     /**
@@ -169,6 +189,32 @@ public class FcmService {
     }
     
     /**
+     * WebSocket 실시간 알림 발송
+     */
+    private void sendWebSocketNotification(Long userId, NotificationType type, String title, String message, Long resourceId) {
+        try {
+            // 알림 내용을 메시지로 통합
+            String notificationMessage = String.format("[%s] %s: %s", type.getDescription(), title, message);
+
+            // 기존 AuctionUpdateMessage 구조 활용하여 알림 메시지 생성
+            AuctionUpdateMessage wsMessage = AuctionUpdateMessage.builder()
+                    .messageType(AuctionUpdateMessage.MessageType.NEW_BID) // 임시로 NEW_BID 사용
+                    .auctionId(resourceId)
+                    .message(notificationMessage)
+                    .timestamp(java.time.LocalDateTime.now())
+                    .build();
+
+            // WebSocket으로 사용자에게 실시간 알림 발송
+            webSocketMessagingService.sendToUser(userId, wsMessage);
+
+            log.debug("WebSocket 실시간 알림 발송 성공. userId: {}, type: {}", userId, type);
+
+        } catch (Exception e) {
+            log.error("WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}", userId, type, e.getMessage());
+        }
+    }
+
+    /**
      * 실제 FCM 푸시 발송 (현재는 로그만, 추후 Firebase SDK 연동)
      */
     private void sendFcmPush(String fcmToken, String title, String message, NotificationHistory notification) {
@@ -176,7 +222,7 @@ public class FcmService {
             log.warn("FCM 토큰이 없어 푸시 알림을 발송할 수 없습니다. notificationId: {}", notification.getId());
             return;
         }
-        
+
         try {
             // TODO: 실제 FCM SDK를 통한 푸시 발송
             // FirebaseMessaging.getInstance().send(
@@ -188,15 +234,15 @@ public class FcmService {
             //             .build())
             //         .build()
             // );
-            
+
             // 현재는 로그로 대체
-            log.info("FCM 푸시 발송 (모의): token={}, title={}, message={}", 
+            log.info("FCM 푸시 발송 (모의): token={}, title={}, message={}",
                     fcmToken.substring(0, Math.min(20, fcmToken.length())) + "...", title, message);
-            
+
             // 발송 성공 처리 (불변 객체 패턴)
             NotificationHistory updatedNotification = notification.markFcmSent();
             notificationHistoryRepository.save(updatedNotification);
-            
+
         } catch (Exception e) {
             log.error("FCM 푸시 발송 실패. notificationId: {}, error: {}", notification.getId(), e.getMessage());
         }
