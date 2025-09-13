@@ -29,8 +29,9 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
     // 경매의 모든 입찰 조회 (금액 순)
     List<Bid> findByAuctionOrderByBidAmountDesc(Auction auction);
     
-    // 경매 ID로 입찰 내역 조회 (금액 순, 페이지네이션)
-    Page<Bid> findByAuctionIdOrderByBidAmountDesc(Long auctionId, Pageable pageable);
+    // 경매 ID로 입찰 내역 조회 (금액 순, 페이지네이션) - 자동입찰 설정(금액 0) 제외
+    @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId AND b.bidAmount > 0 ORDER BY b.bidAmount DESC")
+    Page<Bid> findByAuctionIdOrderByBidAmountDesc(@Param("auctionId") Long auctionId, Pageable pageable);
     
     // 사용자의 입찰 내역 조회
     Page<Bid> findByBidderOrderByCreatedAtDesc(User bidder, Pageable pageable);
