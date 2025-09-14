@@ -198,4 +198,66 @@ public class AuthService {
         String storedCode = redisTemplate.opsForValue().get(key);
         return storedCode != null && storedCode.equals(code);
     }
+
+    /**
+     * 닉네임 중복 검사
+     */
+    public AuthResponse checkNickname(String nickname) {
+        try {
+            // 닉네임 형식 검증
+            if (nickname == null || nickname.trim().isEmpty()) {
+                return new AuthResponse("닉네임을 입력해주세요.");
+            }
+
+            String trimmedNickname = nickname.trim();
+
+            // 닉네임 길이 및 패턴 검증
+            if (trimmedNickname.length() < 2 || trimmedNickname.length() > 12) {
+                return new AuthResponse("닉네임은 2~12자 사이여야 합니다.");
+            }
+
+            if (!trimmedNickname.matches("^[가-힣a-zA-Z0-9_-]+$")) {
+                return new AuthResponse("닉네임은 한글, 영문, 숫자, _, - 조합만 가능합니다.");
+            }
+
+            // 중복 확인
+            if (authRepository.findByNickname(trimmedNickname).isPresent()) {
+                return new AuthResponse("이미 사용 중인 닉네임입니다.");
+            }
+
+            return new AuthResponse("사용 가능한 닉네임입니다.");
+        } catch (Exception e) {
+            System.err.println("닉네임 중복 검사 오류: " + e.getMessage());
+            return new AuthResponse("닉네임 검사 중 오류가 발생했습니다.");
+        }
+    }
+
+    /**
+     * 이메일 중복 검사
+     */
+    public AuthResponse checkEmail(String email) {
+        try {
+            // 이메일 형식 검증
+            if (email == null || email.trim().isEmpty()) {
+                return new AuthResponse("이메일을 입력해주세요.");
+            }
+
+            String trimmedEmail = email.trim().toLowerCase();
+
+            // 기본 이메일 형식 검증
+            if (!trimmedEmail.matches("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$")) {
+                return new AuthResponse("올바른 이메일 형식이 아닙니다.");
+            }
+
+            // 중복 확인
+            if (authRepository.findByEmail(trimmedEmail).isPresent()) {
+                return new AuthResponse("이미 가입된 이메일입니다.");
+            }
+
+            return new AuthResponse("사용 가능한 이메일입니다.");
+        } catch (Exception e) {
+            System.err.println("이메일 중복 검사 오류: " + e.getMessage());
+            return new AuthResponse("이메일 검사 중 오류가 발생했습니다.");
+        }
+    }
 }

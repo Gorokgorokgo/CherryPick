@@ -285,4 +285,75 @@ public class BidService {
     
     // 포인트 예치(Lock) 시스템 제거 - 법적 리스크 해결
     // 기존의 releaseExistingBidLocks()와 lockBidAmount() 메서드 제거
+
+    /**
+     * 자동입찰 설정 (즉시 입찰 없이 최대 금액만 저장)
+     */
+    @Transactional
+    public BidResponse setupAutoBid(Long userId, Long auctionId, java.math.BigDecimal maxAutoBidAmount) {
+        // 경매 조회 및 유효성 검증
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(EntityNotFoundException::auction);
+        validateAuctionForBidding(auction);
+
+        // 사용자 조회 및 자기 경매 제한
+        User bidder = userRepository.findById(userId)
+                .orElseThrow(EntityNotFoundException::user);
+        if (auction.getSeller().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.SELF_BID_NOT_ALLOWED);
+        }
+
+        // 최대 금액 유효성 검증: 100원 단위, 현재가 이상, 상한선 이내
+        if (maxAutoBidAmount == null || maxAutoBidAmount.remainder(java.math.BigDecimal.valueOf(100)).compareTo(java.math.BigDecimal.ZERO) != 0) {
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, "자동 입찰 최대 금액은 100원 단위로 입력해주세요.");
+        }
+        java.math.BigDecimal currentPrice = auction.getCurrentPrice();
+        if (maxAutoBidAmount.compareTo(currentPrice) <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, "자동 입찰 최대 금액은 현재가보다 높아야 합니다.");
+        }
+        // 상한선 검증 (가격대별 최대 입찰 제한 재사용)
+        validateMaximumBidLimit(currentPrice, maxAutoBidAmount);
+
+        // 기존 활성 자동입찰 설정 비활성화
+        bidRepository.findActiveAutoBidByAuctionIdAndBidderId(auctionId, userId)
+                .ifPresent(existing -> {
+                    existing.setStatus(BidStatus.CANCELLED);
+                    bidRepository.save(existing);
+                });
+
+        // 새 자동입찰 설정 저장 (설정 레코드는 bidAmount=0)
+        Bid autoBidConfig = Bid.builder()
+                .auction(auction)
+                .bidder(bidder)
+                .bidAmount(java.math.BigDecimal.ZERO)
+                .isAutoBid(true)
+                .maxAutoBidAmount(maxAutoBidAmount)
+                .status(BidStatus.ACTIVE)
+                .bidTime(LocalDateTime.now())
+                .build();
+
+        Bid saved = bidRepository.save(autoBidConfig);
+        return BidResponse.from(saved, false);
+    }
+
+    /**
+     * 자동입찰 설정 취소
+     */
+    @Transactional
+    public void cancelAutoBid(Long userId, Long auctionId) {
+        bidRepository.findActiveAutoBidByAuctionIdAndBidderId(auctionId, userId)
+                .ifPresent(existing -> {
+                    existing.setStatus(BidStatus.CANCELLED);
+                    bidRepository.save(existing);
+                });
+    }
+
+    /**
+     * 내 자동입찰 설정 조회 (활성 설정)
+     */
+    public BidResponse getMyAutoBid(Long userId, Long auctionId) {
+        return bidRepository.findActiveAutoBidByAuctionIdAndBidderId(auctionId, userId)
+                .map(b -> BidResponse.from(b, false))
+                .orElseThrow(() -> new BusinessException(ErrorCode.NO_BID_EXISTS, "활성 자동입찰 설정이 없습니다."));
+    }
 }
