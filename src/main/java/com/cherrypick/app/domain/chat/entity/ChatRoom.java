@@ -35,7 +35,7 @@ public class ChatRoom extends BaseEntity {
     private User buyer;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "connection_service_id", nullable = false)
+    @JoinColumn(name = "connection_service_id", nullable = true)
     private ConnectionService connectionService;
 
     @Builder.Default
@@ -66,6 +66,24 @@ public class ChatRoom extends BaseEntity {
                 .buyer(buyer)
                 .connectionService(connectionService)
                 .status(ChatRoomStatus.INACTIVE)
+                .build();
+    }
+    
+    /**
+     * 채팅방 생성 (경매 낙찰 기반, ConnectionService 없이)
+     */
+    public static ChatRoom createAuctionChatRoom(
+            Auction auction,
+            User seller, 
+            User buyer) {
+        
+        return ChatRoom.builder()
+                .auction(auction)
+                .seller(seller)
+                .buyer(buyer)
+                .connectionService(null) // 경매 낙찰 기반은 ConnectionService 없음
+                .status(ChatRoomStatus.ACTIVE) // 즉시 활성화
+                .activatedAt(LocalDateTime.now())
                 .build();
     }
 

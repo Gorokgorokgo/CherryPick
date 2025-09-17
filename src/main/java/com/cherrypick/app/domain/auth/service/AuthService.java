@@ -5,6 +5,7 @@ import com.cherrypick.app.domain.auth.repository.AuthRepository;
 import com.cherrypick.app.domain.auth.dto.request.SignupRequest;
 import com.cherrypick.app.domain.auth.dto.request.LoginRequest;
 import com.cherrypick.app.domain.auth.dto.request.VerifyCodeRequest;
+import com.cherrypick.app.domain.auth.dto.request.PhoneLoginRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
 import com.cherrypick.app.domain.user.entity.User;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -127,6 +128,12 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(savedUser.getEmail(), savedUser.getId());
+        
+        System.out.println("========================================");
+        System.out.println("🎉 회원가입 완료 - JWT 토큰 발급");
+        System.out.println("사용자: " + savedUser.getNickname() + " (" + savedUser.getEmail() + ")");
+        System.out.println("JWT Token: " + token);
+        System.out.println("========================================");
 
         return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname(), "회원가입 성공");
     }
@@ -147,13 +154,110 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
+        
+        System.out.println("========================================");
+        System.out.println("🔑 로그인 성공 - JWT 토큰 발급");
+        System.out.println("사용자: " + user.getNickname() + " (" + user.getEmail() + ")");
+        System.out.println("JWT Token: " + token);
+        System.out.println("========================================");
 
         return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
+    }
+
+    public AuthResponse phoneLogin(PhoneLoginRequest request) {
+        // 등록된 사용자 확인
+        Optional<User> userOpt = authRepository.findByPhoneNumber(request.getPhoneNumber());
+        if (userOpt.isEmpty()) {
+            return new AuthResponse("가입되지 않은 전화번호입니다.");
+        }
+
+        User user = userOpt.get();
+
+        // 인증번호 확인
+        if (!verifyCode(request.getPhoneNumber(), request.getVerificationCode())) {
+            return new AuthResponse("인증번호가 올바르지 않거나 만료되었습니다.");
+        }
+
+        // 인증 성공 시 인증번호 삭제
+        redisTemplate.delete("verification:" + request.getPhoneNumber());
+
+        // JWT 토큰 생성
+        String token = jwtConfig.generateToken(user.getEmail(), user.getId());
+        
+        System.out.println("========================================");
+        System.out.println("📱 전화번호 로그인 성공 - JWT 토큰 발급");
+        System.out.println("사용자: " + user.getNickname() + " (" + user.getPhoneNumber() + ")");
+        System.out.println("JWT Token: " + token);
+        System.out.println("========================================");
+
+        return new AuthResponse(token, user.getId(), user.getPhoneNumber(), user.getNickname());
     }
 
     private boolean verifyCode(String phoneNumber, String code) {
         String key = "verification:" + phoneNumber;
         String storedCode = redisTemplate.opsForValue().get(key);
         return storedCode != null && storedCode.equals(code);
+    }
+
+    /**
+     * 닉네임 중복 검사
+     */
+    public AuthResponse checkNickname(String nickname) {
+        try {
+            // 닉네임 형식 검증
+            if (nickname == null || nickname.trim().isEmpty()) {
+                return new AuthResponse("닉네임을 입력해주세요.");
+            }
+
+            String trimmedNickname = nickname.trim();
+
+            // 닉네임 길이 및 패턴 검증
+            if (trimmedNickname.length() < 2 || trimmedNickname.length() > 12) {
+                return new AuthResponse("닉네임은 2~12자 사이여야 합니다.");
+            }
+
+            if (!trimmedNickname.matches("^[가-힣a-zA-Z0-9_-]+$")) {
+                return new AuthResponse("닉네임은 한글, 영문, 숫자, _, - 조합만 가능합니다.");
+            }
+
+            // 중복 확인
+            if (authRepository.findByNickname(trimmedNickname).isPresent()) {
+                return new AuthResponse("이미 사용 중인 닉네임입니다.");
+            }
+
+            return new AuthResponse("사용 가능한 닉네임입니다.");
+        } catch (Exception e) {
+            System.err.println("닉네임 중복 검사 오류: " + e.getMessage());
+            return new AuthResponse("닉네임 검사 중 오류가 발생했습니다.");
+        }
+    }
+
+    /**
+     * 이메일 중복 검사
+     */
+    public AuthResponse checkEmail(String email) {
+        try {
+            // 이메일 형식 검증
+            if (email == null || email.trim().isEmpty()) {
+                return new AuthResponse("이메일을 입력해주세요.");
+            }
+
+            String trimmedEmail = email.trim().toLowerCase();
+
+            // 기본 이메일 형식 검증
+            if (!trimmedEmail.matches("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$")) {
+                return new AuthResponse("올바른 이메일 형식이 아닙니다.");
+            }
+
+            // 중복 확인
+            if (authRepository.findByEmail(trimmedEmail).isPresent()) {
+                return new AuthResponse("이미 가입된 이메일입니다.");
+            }
+
+            return new AuthResponse("사용 가능한 이메일입니다.");
+        } catch (Exception e) {
+            System.err.println("이메일 중복 검사 오류: " + e.getMessage());
+            return new AuthResponse("이메일 검사 중 오류가 발생했습니다.");
+        }
     }
 }

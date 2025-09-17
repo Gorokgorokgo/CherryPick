@@ -42,10 +42,10 @@ public class CreateAuctionRequest {
     @Schema(description = "최저 내정가 (Reserve Price) - 선택사항", example = "500000")
     private BigDecimal reservePrice;
     
-    @Schema(description = "경매 진행 시간 (시간 단위)", example = "72", required = true)
+    @Schema(description = "경매 진행 시간 (3, 6, 12, 24, 48, 72시간 중 선택)", example = "24", required = true)
     @NotNull(message = "경매 시간은 필수입니다.")
-    @Min(value = 24, message = "경매 시간은 최소 24시간입니다.")
-    @Max(value = 168, message = "경매 시간은 최대 168시간(7일)입니다.")
+    @Min(value = 3, message = "경매 시간은 최소 3시간입니다.")
+    @Max(value = 72, message = "경매 시간은 최대 72시간입니다.")
     private Integer auctionTimeHours;
     
     @Schema(description = "지역 범위", example = "NATIONWIDE", required = true)
@@ -62,6 +62,15 @@ public class CreateAuctionRequest {
     @NotEmpty(message = "상품 이미지는 최소 1개 이상 필요합니다.")
     @Size(max = 10, message = "상품 이미지는 최대 10개까지 가능합니다.")
     private List<String> imageUrls;
+    
+    @Schema(description = "상품 상태 (1-10점)", example = "8", required = true)
+    @NotNull(message = "상품 상태는 필수입니다.")
+    @Min(value = 1, message = "상품 상태는 1점 이상이어야 합니다.")
+    @Max(value = 10, message = "상품 상태는 10점 이하여야 합니다.")
+    private Integer productCondition;
+
+    @Schema(description = "상품 구매일", example = "2023년 3월 구매", required = false)
+    private String purchaseDate;
     
     public void validate() {
         if (startPrice.compareTo(hopePrice) > 0) {
@@ -92,14 +101,16 @@ public class CreateAuctionRequest {
             throw new IllegalArgumentException("최저 내정가는 100원 단위로 설정해주세요.");
         }
         
+        // 경매 시간 검증 (허용된 시간만)
+        List<Integer> allowedHours = List.of(3, 6, 12, 24, 48, 72);
+        if (!allowedHours.contains(auctionTimeHours)) {
+            throw new IllegalArgumentException("경매 시간은 3, 6, 12, 24, 48, 72시간 중에서만 선택 가능합니다.");
+        }
+        
         // 지역 범위에 따른 지역 정보 검증
         if (regionScope != RegionScope.NATIONWIDE && (regionCode == null || regionCode.trim().isEmpty())) {
             throw new IllegalArgumentException("지역별 경매의 경우 지역 정보는 필수입니다.");
         }
     }
     
-    public BigDecimal calculateDepositAmount() {
-        // 보증금 = 희망가의 10%
-        return hopePrice.multiply(BigDecimal.valueOf(0.1));
-    }
 }

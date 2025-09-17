@@ -53,6 +53,7 @@ logs/
 ### 임시 파일 ###
 *.tmp
 *.temp
+nul
 
 ### Node.js ###
 node_modules/

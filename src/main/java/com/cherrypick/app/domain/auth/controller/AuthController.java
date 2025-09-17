@@ -5,6 +5,9 @@ import com.cherrypick.app.domain.auth.dto.request.PhoneVerificationRequest;
 import com.cherrypick.app.domain.auth.dto.request.VerifyCodeRequest;
 import com.cherrypick.app.domain.auth.dto.request.SignupRequest;
 import com.cherrypick.app.domain.auth.dto.request.LoginRequest;
+import com.cherrypick.app.domain.auth.dto.request.PhoneLoginRequest;
+import com.cherrypick.app.domain.auth.dto.request.NicknameCheckRequest;
+import com.cherrypick.app.domain.auth.dto.request.EmailCheckRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -133,5 +136,111 @@ public class AuthController {
         } else {
             return ResponseEntity.badRequest().body(response);
         }
+    }
+
+    @PostMapping("/phone-login")
+    @Operation(summary = "전화번호 로그인",
+               description = """
+                   전화번호와 인증번호로 로그인합니다.
+
+                   **사용 흐름:**
+                   1. `/api/auth/send-code`로 인증번호 발송
+                   2. `/api/auth/phone-login`로 인증번호 입력하여 로그인
+
+                   **특징:**
+                   - 기존 가입 사용자만 로그인 가능
+                   - 인증번호는 5분간 유효
+                   - 로그인 성공 시 JWT 토큰 발급
+
+                   **사용 예시:**
+                   ```json
+                   {
+                     "phoneNumber": "01012345678",
+                     "verificationCode": "123456"
+                   }
+                   ```
+
+                   **성공 응답:**
+                   ```json
+                   {
+                     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                     "user": {
+                       "id": 1,
+                       "email": "user@example.com",
+                       "nickname": "체리유저"
+                     }
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "전화번호 로그인 성공 - JWT 토큰 발급"),
+            @ApiResponse(responseCode = "400", description = "미가입 전화번호, 잘못된 인증번호, 인증번호 만료 등")
+    })
+    public ResponseEntity<AuthResponse> phoneLogin(@Valid @RequestBody PhoneLoginRequest request) {
+        AuthResponse response = authService.phoneLogin(request);
+
+        if (response.getToken() != null) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    @PostMapping("/check-nickname")
+    @Operation(summary = "닉네임 중복 검사",
+               description = """
+                   닉네임의 중복 여부를 검사합니다.
+
+                   **사용 예시:**
+                   ```json
+                   {
+                     "nickname": "체리유저"
+                   }
+                   ```
+
+                   **성공 응답:**
+                   ```json
+                   {
+                     "available": true,
+                     "message": "사용 가능한 닉네임입니다."
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "닉네임 중복 검사 완료"),
+            @ApiResponse(responseCode = "400", description = "잘못된 닉네임 형식")
+    })
+    public ResponseEntity<AuthResponse> checkNickname(@Valid @RequestBody NicknameCheckRequest request) {
+        AuthResponse response = authService.checkNickname(request.getNickname());
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/check-email")
+    @Operation(summary = "이메일 중복 검사",
+               description = """
+                   이메일의 중복 여부를 검사합니다.
+
+                   **사용 예시:**
+                   ```json
+                   {
+                     "email": "user@example.com"
+                   }
+                   ```
+
+                   **성공 응답:**
+                   ```json
+                   {
+                     "available": true,
+                     "message": "사용 가능한 이메일입니다."
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "이메일 중복 검사 완료"),
+            @ApiResponse(responseCode = "400", description = "잘못된 이메일 형식")
+    })
+    public ResponseEntity<AuthResponse> checkEmail(@Valid @RequestBody EmailCheckRequest request) {
+        AuthResponse response = authService.checkEmail(request.getEmail());
+        return ResponseEntity.ok(response);
     }
 }

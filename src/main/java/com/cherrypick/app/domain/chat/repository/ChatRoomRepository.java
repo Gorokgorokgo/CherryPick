@@ -56,4 +56,12 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
      */
     @Query("SELECT COUNT(cr) FROM ChatRoom cr WHERE (cr.seller.id = :userId OR cr.buyer.id = :userId) AND cr.status = 'ACTIVE'")
     long countActiveRoomsByUserId(@Param("userId") Long userId);
+    
+    /**
+     * 경매 기반 채팅방 조회 (경매 ID, 판매자 ID, 구매자 ID로)
+     */
+    Optional<ChatRoom> findByAuctionIdAndSellerIdAndBuyerId(
+            @Param("auctionId") Long auctionId,
+            @Param("sellerId") Long sellerId,
+            @Param("buyerId") Long buyerId);
 }

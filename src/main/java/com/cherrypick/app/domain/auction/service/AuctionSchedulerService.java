@@ -8,7 +8,7 @@ import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.connection.dto.response.ConnectionResponse;
 import com.cherrypick.app.domain.connection.service.ConnectionServiceImpl;
-import com.cherrypick.app.domain.common.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -42,7 +42,7 @@ public class AuctionSchedulerService {
     @Scheduled(fixedDelay = 60000) // 1분마다 실행
     @Transactional
     public void processEndedAuctions() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
         log.debug("경매 종료 처리 스케줄러 실행: {}", now);
         
         // 종료 시간이 지난 활성 경매들 조회

@@ -87,7 +87,9 @@ public class ChatRoomListResponse {
                 .auctionTitle(chatRoom.getAuction().getTitle())
                 .category(chatRoom.getAuction().getCategory() != null ? 
                          chatRoom.getAuction().getCategory().name() : "기타")
-                .finalPrice(chatRoom.getConnectionService().getFinalPrice().longValue())
+                .finalPrice(chatRoom.getConnectionService() != null ? 
+                           chatRoom.getConnectionService().getFinalPrice().longValue() : 
+                           chatRoom.getAuction().getCurrentPrice().longValue())
                 .partnerId(isCurrentUserSeller ? 
                           chatRoom.getBuyer().getId() : chatRoom.getSeller().getId())
                 .partnerName(isCurrentUserSeller ? 
