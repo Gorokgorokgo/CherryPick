@@ -207,21 +207,41 @@ public class BidService {
      */
     private void validateBidAmount(Auction auction, BigDecimal bidAmount) {
         BigDecimal currentPrice = auction.getCurrentPrice();
-        
+        BigDecimal startPrice = auction.getStartPrice();
+
+        // 첫 입찰 여부 확인 (현재가 = 시작가인 경우)
+        boolean isFirstBid = currentPrice.compareTo(startPrice) == 0;
+
         // 1. 최소 입찰 단위 검증
-        validateMinimumBidUnit(currentPrice, bidAmount);
-        
-        // 2. 최대 입찰 제한 검증  
+        validateMinimumBidUnit(currentPrice, bidAmount, isFirstBid, startPrice);
+
+        // 2. 최대 입찰 제한 검증
         validateMaximumBidLimit(currentPrice, bidAmount);
     }
     
     /**
      * 가격대별 최소 입찰 증가 검증 (입찰 단위는 모두 100원 통일)
      */
-    private void validateMinimumBidUnit(BigDecimal currentPrice, BigDecimal bidAmount) {
+    private void validateMinimumBidUnit(BigDecimal currentPrice, BigDecimal bidAmount, boolean isFirstBid, BigDecimal startPrice) {
+        // 입찰 단위는 모두 100원으로 통일
+        if (bidAmount.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT,
+                "입찰가는 100원 단위로 입력해주세요.");
+        }
+
+        // 첫 입찰인 경우 시작가부터 입찰 가능
+        if (isFirstBid) {
+            if (bidAmount.compareTo(startPrice) < 0) {
+                throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT,
+                    String.format("첫 입찰은 최소 시작가 %s원부터 가능합니다.", startPrice.toPlainString()));
+            }
+            return; // 첫 입찰은 시작가 이상이면 OK
+        }
+
+        // 일반 입찰인 경우 현재가 + 최소 증가폭
         BigDecimal minimumIncrement;
         String incrementMessage;
-        
+
         if (currentPrice.compareTo(BigDecimal.valueOf(10000)) < 0) {
             // 1만원 미만: 최소 500원 이상 증가
             minimumIncrement = BigDecimal.valueOf(500);
@@ -239,18 +259,12 @@ public class BidService {
             minimumIncrement = BigDecimal.valueOf(10000);
             incrementMessage = "10,000원";
         }
-        
+
         // 최소 증가 금액 검증
         BigDecimal minimumBid = currentPrice.add(minimumIncrement);
         if (bidAmount.compareTo(minimumBid) < 0) {
-            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT,
                 String.format("최소 %s 이상 증가해야 합니다.", incrementMessage));
-        }
-        
-        // 입찰 단위는 모두 100원으로 통일
-        if (bidAmount.remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
-            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, 
-                "입찰가는 100원 단위로 입력해주세요.");
         }
     }
     
