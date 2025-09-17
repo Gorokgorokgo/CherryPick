@@ -1,6 +1,7 @@
 package com.cherrypick.app.domain.bid.controller;
 
 import com.cherrypick.app.domain.bid.dto.request.PlaceBidRequest;
+import com.cherrypick.app.domain.bid.dto.request.AutoBidSetupRequest;
 import com.cherrypick.app.domain.bid.dto.response.BidResponse;
 import com.cherrypick.app.domain.bid.service.BidService;
 import com.cherrypick.app.domain.user.service.UserService;
@@ -117,5 +118,39 @@ public class BidController {
         
         BidResponse highestBid = bidService.getHighestBid(auctionId);
         return ResponseEntity.ok(highestBid);
+    }
+
+    @Operation(summary = "자동입찰 설정", description = "즉시 입찰 없이 최대 자동입찰 금액만 설정합니다.")
+    @PostMapping("/auto")
+    public ResponseEntity<BidResponse> setupAutoBid(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @Valid @RequestBody AutoBidSetupRequest request
+    ) {
+        request.validate();
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        BidResponse response = bidService.setupAutoBid(userId, request.getAuctionId(), request.getMaxAutoBidAmount());
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "자동입찰 설정 취소", description = "해당 경매에 대한 나의 자동입찰 설정을 취소합니다.")
+    @DeleteMapping("/auto/{auctionId}")
+    public ResponseEntity<Void> cancelAutoBid(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long auctionId
+    ) {
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        bidService.cancelAutoBid(userId, auctionId);
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "내 자동입찰 설정 조회", description = "해당 경매에 대한 나의 활성 자동입찰 설정을 조회합니다.")
+    @GetMapping("/auto/{auctionId}")
+    public ResponseEntity<BidResponse> getMyAutoBid(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long auctionId
+    ) {
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        BidResponse response = bidService.getMyAutoBid(userId, auctionId);
+        return ResponseEntity.ok(response);
     }
 }

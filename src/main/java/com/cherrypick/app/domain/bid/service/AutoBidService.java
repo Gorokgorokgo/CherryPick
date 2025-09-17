@@ -69,15 +69,30 @@ public class AutoBidService {
             // 해당 경매의 활성 자동입찰자들 조회 (최대금액 높은 순)
             List<Bid> activeAutoBids = bidRepository.findActiveAutoBidsByAuctionId(auctionId);
             log.info("📋 조회된 자동입찰 설정 개수: {} - 경매 ID: {}", activeAutoBids.size(), auctionId);
-            
+
             if (activeAutoBids.isEmpty()) {
-                log.info("❌ 활성 자동입찰자가 없음 - 경매 ID: {}", auctionId);
+                log.warn("❌ 활성 자동입찰자가 없음 - 경매 ID: {}", auctionId);
+
+                // 디버그: 해당 경매의 모든 Bid 레코드 조회
+                List<Bid> allBidsForAuction = bidRepository.findAll().stream()
+                        .filter(bid -> bid.getAuction().getId().equals(auctionId))
+                        .toList();
+
+                log.info("🔍 경매 {}의 전체 Bid 레코드 개수: {}", auctionId, allBidsForAuction.size());
+
+                for (Bid bid : allBidsForAuction) {
+                    log.info("📝 Bid 레코드 - ID: {}, 입찰자: {}, 금액: {}, 자동입찰: {}, 상태: {}, 최대자동금액: {}",
+                            bid.getId(), bid.getBidder().getId(), bid.getBidAmount(),
+                            bid.getIsAutoBid(), bid.getStatus(), bid.getMaxAutoBidAmount());
+                }
+
                 return CompletableFuture.completedFuture(null);
             }
-            
+
             for (Bid autoBid : activeAutoBids) {
-                log.info("🎯 자동입찰 설정 발견 - 입찰자: {}, 최대금액: {}", 
-                        autoBid.getBidder().getId(), autoBid.getMaxAutoBidAmount());
+                log.info("🎯 자동입찰 설정 발견 - 입찰자: {}, 최대금액: {}, 상태: {}, 입찰금액: {}",
+                        autoBid.getBidder().getId(), autoBid.getMaxAutoBidAmount(),
+                        autoBid.getStatus(), autoBid.getBidAmount());
             }
             
             // 새로운 자동입찰 로직: 최고 입찰액 기반 경쟁
@@ -310,29 +325,39 @@ public class AutoBidService {
      * @return 실행 여부
      */
     private boolean shouldTriggerAutoBid(Bid autoBid, BigDecimal currentHighestBid, Auction auction) {
+        log.info("🔍 자동입찰 조건 검사 시작 - 입찰자: {}, 현재가: {}, 최대금액: {}",
+                autoBid.getBidder().getId(), currentHighestBid, autoBid.getMaxAutoBidAmount());
+
         // 1. 경매가 활성상태인지 확인
         if (!auction.isActive()) {
-            log.debug("비활성 경매로 자동입찰 건너뜀 - 경매 ID: {}", auction.getId());
+            log.warn("❌ 비활성 경매로 자동입찰 건너뜀 - 경매 ID: {}, 상태: {}", auction.getId(), auction.getStatus());
             return false;
         }
-        
+
         // 2. 현재가가 이미 내 최대금액을 초과했는지 확인
         if (currentHighestBid.compareTo(autoBid.getMaxAutoBidAmount()) >= 0) {
-            log.debug("현재가가 이미 최대 자동입찰 금액을 초과하여 건너뜀 - 입찰자: {}, 현재가: {}, 최대금액: {}", 
+            log.warn("❌ 현재가가 이미 최대 자동입찰 금액을 초과하여 건너뜀 - 입찰자: {}, 현재가: {}, 최대금액: {}",
                     autoBid.getBidder().getId(), currentHighestBid, autoBid.getMaxAutoBidAmount());
             return false;
         }
-        
+
         // 3. 내가 현재 최고입찰자인지 확인 (가장 중요한 체크)
         Bid currentHighest = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auction.getId()).orElse(null);
-        if (currentHighest != null && currentHighest.getBidder().getId().equals(autoBid.getBidder().getId())) {
-            log.debug("내가 이미 최고입찰자이므로 자동입찰 건너뜀 - 입찰자: {}", autoBid.getBidder().getId());
-            return false;
+        if (currentHighest != null) {
+            log.info("🏆 현재 최고입찰자: {} (금액: {}원), 자동입찰자: {}",
+                    currentHighest.getBidder().getId(), currentHighest.getBidAmount(), autoBid.getBidder().getId());
+
+            if (currentHighest.getBidder().getId().equals(autoBid.getBidder().getId())) {
+                log.warn("❌ 내가 이미 최고입찰자이므로 자동입찰 건너뜀 - 입찰자: {}", autoBid.getBidder().getId());
+                return false;
+            }
+        } else {
+            log.info("🆕 첫 입찰 상황 - 현재 최고입찰자 없음");
         }
-        
+
         // 4. 자동입찰 설정은 bidAmount가 0이므로 이 조건 생략
-        
-        log.debug("자동입찰 조건 통과 - 입찰자: {}, 현재가: {}, 최대금액: {}", 
+
+        log.info("✅ 자동입찰 조건 통과 - 입찰자: {}, 현재가: {}, 최대금액: {}",
                 autoBid.getBidder().getId(), currentHighestBid, autoBid.getMaxAutoBidAmount());
         return true;
     }

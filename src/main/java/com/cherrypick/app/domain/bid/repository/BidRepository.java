@@ -57,20 +57,22 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
     
     // 자동입찰 관련 메서드들
     
-    // 특정 경매의 활성 자동입찰 조회 (각 사용자별 최신 자동입찰 설정)
+    // 특정 경매의 활성 자동입찰 설정 조회 (bidAmount=0인 설정 레코드만, 각 사용자별 최신)
     @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId AND b.isAutoBid = true AND b.status = 'ACTIVE' " +
-           "AND b.id = (SELECT MAX(b2.id) FROM Bid b2 WHERE b2.auction.id = :auctionId AND b2.bidder.id = b.bidder.id AND b2.isAutoBid = true AND b2.status = 'ACTIVE') " +
+           "AND b.bidAmount = 0 " +
+           "AND b.id = (SELECT MAX(b2.id) FROM Bid b2 WHERE b2.auction.id = :auctionId AND b2.bidder.id = b.bidder.id AND b2.isAutoBid = true AND b2.status = 'ACTIVE' AND b2.bidAmount = 0) " +
            "ORDER BY b.maxAutoBidAmount DESC")
     List<Bid> findActiveAutoBidsByAuctionId(@Param("auctionId") Long auctionId);
     
-    // 사용자의 활성 자동입찰 조회
-    @Query("SELECT b FROM Bid b WHERE b.bidder.id = :bidderId AND b.isAutoBid = true AND b.status = 'ACTIVE'")
+    // 사용자의 활성 자동입찰 설정 조회 (bidAmount=0인 설정 레코드만)
+    @Query("SELECT b FROM Bid b WHERE b.bidder.id = :bidderId AND b.isAutoBid = true AND b.status = 'ACTIVE' AND b.bidAmount = 0")
     List<Bid> findActiveAutoBidsByBidderId(@Param("bidderId") Long bidderId);
     
-    // 특정 경매에서 특정 입찰자의 현재 자동입찰 조회
+    // 특정 경매에서 특정 입찰자의 현재 자동입찰 설정 조회 (bidAmount=0인 설정 레코드만)
     @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId AND b.bidder.id = :bidderId " +
-           "AND b.isAutoBid = true AND b.status = 'ACTIVE'")
-    Optional<Bid> findActiveAutoBidByAuctionIdAndBidderId(@Param("auctionId") Long auctionId, 
+           "AND b.isAutoBid = true AND b.status = 'ACTIVE' AND b.bidAmount = 0 " +
+           "ORDER BY b.id DESC")
+    Optional<Bid> findActiveAutoBidByAuctionIdAndBidderId(@Param("auctionId") Long auctionId,
                                                           @Param("bidderId") Long bidderId);
     
     // 특정 경매에서 특정 입찰자의 최신 입찰 조회 (시간순) - Spring Data JPA naming convention 사용
