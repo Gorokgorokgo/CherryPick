@@ -28,7 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -101,35 +103,26 @@ public class AuctionService {
     
     public Page<AuctionResponse> getActiveAuctions(Pageable pageable) {
         Page<Auction> auctions = auctionRepository.findByStatusOrderByCreatedAtDesc(AuctionStatus.ACTIVE, pageable);
-        
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+
+        return createAuctionResponsePage(auctions);
     }
     
     public Page<AuctionResponse> getAuctionsByCategory(Category category, Pageable pageable) {
         Page<Auction> auctions = auctionRepository.findByCategoryAndStatusOrderByCreatedAtDesc(category, AuctionStatus.ACTIVE, pageable);
-        
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+
+        return createAuctionResponsePage(auctions);
     }
     
     public Page<AuctionResponse> getAuctionsByRegion(RegionScope regionScope, String regionCode, Pageable pageable) {
         Page<Auction> auctions;
-        
+
         if (regionScope == RegionScope.NATIONWIDE) {
             auctions = auctionRepository.findByRegionScopeAndStatusOrderByCreatedAtDesc(regionScope, AuctionStatus.ACTIVE, pageable);
         } else {
             auctions = auctionRepository.findByRegionScopeAndRegionCodeAndStatusOrderByCreatedAtDesc(regionScope, regionCode, AuctionStatus.ACTIVE, pageable);
         }
-        
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+
+        return createAuctionResponsePage(auctions);
     }
     
     public AuctionResponse getAuctionDetail(Long auctionId) {
@@ -167,11 +160,8 @@ public class AuctionService {
     
     public Page<AuctionResponse> getMyAuctions(Long userId, Pageable pageable) {
         Page<Auction> auctions = auctionRepository.findBySellerIdOrderByCreatedAtDesc(userId, pageable);
-        
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+
+        return createAuctionResponsePage(auctions);
     }
     
     private List<AuctionImage> saveAuctionImages(Auction auction, List<String> imageUrls) {
@@ -182,8 +172,34 @@ public class AuctionService {
                         .sortOrder(imageUrls.indexOf(url))
                         .build())
                 .toList();
-        
+
         return auctionImageRepository.saveAll(images);
+    }
+
+    /**
+     * N+1 문제 해결을 위한 헬퍼 메서드 - 경매 목록과 이미지를 효율적으로 조합
+     */
+    private Page<AuctionResponse> createAuctionResponsePage(Page<Auction> auctions) {
+        // 경매가 없으면 빈 페이지 반환
+        if (auctions.isEmpty()) {
+            return auctions.map(auction -> AuctionResponse.from(auction, List.of()));
+        }
+
+        // 모든 경매의 이미지를 한 번에 조회
+        List<Long> auctionIds = auctions.getContent().stream()
+                .map(Auction::getId)
+                .toList();
+
+        List<AuctionImage> allImages = auctionImageRepository.findByAuctionIdInOrderByAuctionIdAndSortOrder(auctionIds);
+
+        // 경매 ID별로 이미지 그룹핑
+        Map<Long, List<AuctionImage>> imageMap = allImages.stream()
+                .collect(Collectors.groupingBy(image -> image.getAuction().getId()));
+
+        return auctions.map(auction -> {
+            List<AuctionImage> images = imageMap.getOrDefault(auction.getId(), List.of());
+            return AuctionResponse.from(auction, images);
+        });
     }
     
     /**
@@ -297,10 +313,7 @@ public class AuctionService {
             );
         }
         
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+        return createAuctionResponsePage(auctions);
     }
     
     /**
@@ -313,10 +326,7 @@ public class AuctionService {
         
         Page<Auction> auctions = auctionRepository.searchByKeyword(keyword.trim(), status, pageable);
         
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+        return createAuctionResponsePage(auctions);
     }
     
     /**
@@ -335,10 +345,7 @@ public class AuctionService {
         
         Page<Auction> auctions = auctionRepository.findByPriceRange(minPrice, maxPrice, status, pageable);
         
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+        return createAuctionResponsePage(auctions);
     }
     
     /**
@@ -350,10 +357,7 @@ public class AuctionService {
         
         Page<Auction> auctions = auctionRepository.findEndingSoon(now, endTime, pageable);
         
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+        return createAuctionResponsePage(auctions);
     }
     
     /**
@@ -362,10 +366,7 @@ public class AuctionService {
     public Page<AuctionResponse> getPopularAuctions(int minBidCount, AuctionStatus status, Pageable pageable) {
         Page<Auction> auctions = auctionRepository.findByMinBidCount(minBidCount, status, pageable);
         
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+        return createAuctionResponsePage(auctions);
     }
     
     /**
@@ -374,10 +375,7 @@ public class AuctionService {
     public Page<AuctionResponse> getAuctionsByStatus(AuctionStatus status, Pageable pageable) {
         Page<Auction> auctions = auctionRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
         
-        return auctions.map(auction -> {
-            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
-            return AuctionResponse.from(auction, images);
-        });
+        return createAuctionResponsePage(auctions);
     }
     
     /**

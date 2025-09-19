@@ -16,8 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -211,6 +211,19 @@ public class AutoBidService {
      */
     private void executeAutoBid(Bid autoBidConfig, BigDecimal bidAmount, Auction auction) {
         try {
+            // null 안전성 검증
+            if (autoBidConfig == null) {
+                log.error("❌ executeAutoBid: autoBidConfig가 null입니다");
+                return;
+            }
+            if (autoBidConfig.getBidder() == null) {
+                log.error("❌ executeAutoBid: 입찰자 정보가 null입니다 - 자동입찰 ID: {}", autoBidConfig.getId());
+                return;
+            }
+
+            log.info("🚀 자동입찰 실행 시작 - 입찰자: {}, 금액: {}원",
+                autoBidConfig.getBidder().getId(), bidAmount);
+
             // 자동입찰 실행 (트리거된 입찰은 isAutoBid=false로 구분)
             Bid newAutoBid = Bid.builder()
                     .auction(auction)
@@ -402,11 +415,220 @@ public class AutoBidService {
     
     /**
      * 사용자의 활성 자동입찰 조회
-     * 
+     *
      * @param bidderId 입찰자 ID
      * @return 활성 자동입찰 목록
      */
     public List<Bid> getActiveAutoBidsForBidder(Long bidderId) {
         return bidRepository.findActiveAutoBidsByBidderId(bidderId);
+    }
+
+    /**
+     * 자동입찰 설정 시 즉시 경쟁 실행
+     * 새로운 자동입찰이 설정될 때 기존 자동입찰자들과 즉시 경쟁하여 최종 결과를 도출
+     *
+     * @param auctionId 경매 ID
+     * @param newAutoBidderId 새로 자동입찰을 설정한 사용자 ID
+     * @return 경쟁 결과 처리 여부
+     */
+    @Transactional
+    public boolean processImmediateAutoBidCompetition(Long auctionId, Long newAutoBidderId) {
+        try {
+            log.info("🚀 자동입찰 설정 시 즉시 경쟁 시작 - 경매 ID: {}, 새 자동입찰자: {}", auctionId, newAutoBidderId);
+
+            // 경매 정보 조회
+            Auction auction = auctionRepository.findById(auctionId)
+                    .orElse(null);
+
+            if (auction == null || !auction.isActive()) {
+                log.warn("비활성 경매에 대한 자동입찰 경쟁 시도 - 경매 ID: {}", auctionId);
+                return false;
+            }
+
+            // 해당 경매의 모든 활성 자동입찰자들 조회 (단순화된 쿼리 결과)
+            List<Bid> rawActiveAutoBids = bidRepository.findActiveAutoBidsByAuctionId(auctionId);
+            log.info("📋 원시 자동입찰 설정 수: {} - 경매 ID: {}", rawActiveAutoBids.size(), auctionId);
+
+            // 원시 데이터 상세 로그
+            for (int i = 0; i < rawActiveAutoBids.size(); i++) {
+                Bid rawBid = rawActiveAutoBids.get(i);
+                if (rawBid.getBidder() != null) {
+                    log.info("📄 원시 {}위: 사용자 {} (최대: {}원, ID: {}, 생성시간: {})",
+                        i+1, rawBid.getBidder().getId(), rawBid.getMaxAutoBidAmount(), rawBid.getId(), rawBid.getBidTime());
+                } else {
+                    log.warn("⚠️ 원시 {}위: 입찰자 정보가 null - ID: {}", i+1, rawBid.getId());
+                }
+            }
+
+            // 사용자별 최신 자동입찰만 필터링 (동일 사용자의 중복 설정 제거)
+            Map<Long, Bid> latestByUser = new HashMap<>();
+            for (Bid bid : rawActiveAutoBids) {
+                if (bid.getBidder() != null) {
+                    Long userId = bid.getBidder().getId();
+                    Bid existing = latestByUser.get(userId);
+
+                    if (existing == null) {
+                        log.info("✅ 사용자 {} 첫 자동입찰 등록 - ID: {}, 최대: {}원", userId, bid.getId(), bid.getMaxAutoBidAmount());
+                        latestByUser.put(userId, bid);
+                    } else if (bid.getId() > existing.getId()) {
+                        log.info("🔄 사용자 {} 자동입찰 업데이트 - 기존 ID: {} → 새로운 ID: {}, 최대: {}원 → {}원",
+                            userId, existing.getId(), bid.getId(), existing.getMaxAutoBidAmount(), bid.getMaxAutoBidAmount());
+                        latestByUser.put(userId, bid);
+                    } else {
+                        log.info("❌ 사용자 {} 구 자동입찰 제외 - ID: {}, 최대: {}원 (최신: ID {})",
+                            userId, bid.getId(), bid.getMaxAutoBidAmount(), existing.getId());
+                    }
+                }
+            }
+
+            List<Bid> activeAutoBids = new ArrayList<>(latestByUser.values());
+            // 최대금액 순으로 정렬 (높은 순)
+            activeAutoBids.sort((a, b) -> b.getMaxAutoBidAmount().compareTo(a.getMaxAutoBidAmount()));
+
+            log.info("📋 필터링된 활성 자동입찰자 수: {} - 경매 ID: {}", activeAutoBids.size(), auctionId);
+
+            // 최종 자동입찰자 정보 로그
+            for (int i = 0; i < activeAutoBids.size(); i++) {
+                Bid autoBid = activeAutoBids.get(i);
+                log.info("🎯 최종 {}위: 사용자 {} (최대: {}원, ID: {})",
+                    i+1, autoBid.getBidder().getId(), autoBid.getMaxAutoBidAmount(), autoBid.getId());
+            }
+
+            if (activeAutoBids.size() < 2) {
+                log.info("자동입찰자가 2명 미만이므로 경쟁 없음 - 현재 자동입찰자: {}", activeAutoBids.size());
+                return false;
+            }
+
+            // 현재가 조회
+            BigDecimal currentPrice = auction.getCurrentPrice();
+            log.info("📊 현재가: {}원", currentPrice);
+
+            // 스마트 자동입찰 경쟁 실행 (딜레이 없이 즉시)
+            processSmartAutoBiddingImmediate(activeAutoBids, currentPrice, auction);
+
+            return true;
+
+        } catch (Exception e) {
+            log.error("자동입찰 즉시 경쟁 처리 중 오류 발생 - 경매 ID: {}", auctionId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 즉시 실행되는 스마트 자동입찰 처리 (딜레이 없음)
+     * 자동입찰 설정 시점에 바로 경쟁을 실행하여 최종 결과를 도출
+     * 핵심: 현재 최고입찰자가 아닌 자동입찰자가 즉시 입찰해서 경쟁 트리거
+     */
+    private void processSmartAutoBiddingImmediate(List<Bid> activeAutoBids, BigDecimal currentPrice, Auction auction) {
+        // 현재가보다 높은 최대금액을 가진 자동입찰자만 필터링
+        final BigDecimal finalCurrentPrice = currentPrice;
+        List<Bid> eligibleBids = activeAutoBids.stream()
+                .filter(autoBid -> autoBid.getMaxAutoBidAmount().compareTo(finalCurrentPrice) > 0)
+                .toList();
+
+        if (eligibleBids.isEmpty()) {
+            log.info("🚫 모든 자동입찰자의 최대금액이 현재가({})보다 낮아 경쟁 불가", currentPrice);
+            return;
+        }
+
+        // 현재 최고입찰자 확인
+        Bid currentHighestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auction.getId()).orElse(null);
+        Long currentHighestBidderId = null;
+
+        if (currentHighestBid != null) {
+            if (currentHighestBid.getBidder() != null) {
+                currentHighestBidderId = currentHighestBid.getBidder().getId();
+                log.info("📊 현재 최고입찰자: {} (입찰ID: {}), 현재가: {}원",
+                    currentHighestBidderId, currentHighestBid.getId(), currentPrice);
+            } else {
+                log.warn("⚠️ 현재 최고입찰의 입찰자 정보가 null - 입찰ID: {}", currentHighestBid.getId());
+            }
+        } else {
+            log.info("📊 현재 최고입찰자: 없음, 현재가: {}원", currentPrice);
+        }
+
+        if (eligibleBids.size() == 1) {
+            Bid singleBidder = eligibleBids.get(0);
+            // 혼자라도 현재 최고입찰자가 아니면 입찰 실행
+            if (currentHighestBidderId == null || !currentHighestBidderId.equals(singleBidder.getBidder().getId())) {
+                BigDecimal nextBidAmount = calculateNextAutoBidAmount(currentPrice, 0);
+                // 최대금액 초과 방지
+                if (nextBidAmount.compareTo(singleBidder.getMaxAutoBidAmount()) > 0) {
+                    nextBidAmount = singleBidder.getMaxAutoBidAmount();
+                }
+                log.info("🚀 단독 자동입찰자 {} 입찰 실행: {}원", singleBidder.getBidder().getId(), nextBidAmount);
+                executeAutoBid(singleBidder, nextBidAmount, auction);
+            } else {
+                log.info("💤 단독 자동입찰자가 이미 최고입찰자이므로 입찰 생략");
+            }
+            return;
+        }
+
+        // 최고금액별로 정렬 (내림차순)
+        eligibleBids.sort((a, b) -> b.getMaxAutoBidAmount().compareTo(a.getMaxAutoBidAmount()));
+
+        log.info("🏁 즉시 자동입찰 경쟁 시작 - 경쟁자: {}명", eligibleBids.size());
+        for (int i = 0; i < eligibleBids.size(); i++) {
+            Bid bidder = eligibleBids.get(i);
+            if (bidder != null && bidder.getBidder() != null) {
+                log.info("🔥 {}위: 입찰자 {} (최대: {}원)", i+1, bidder.getBidder().getId(), bidder.getMaxAutoBidAmount());
+            } else {
+                log.warn("⚠️ {}위: 입찰자 정보가 null - 자동입찰 ID: {}", i+1, bidder != null ? bidder.getId() : "null");
+            }
+        }
+
+        // 현재 최고입찰자가 아닌 자동입찰자부터 입찰 시작 (체이닝)
+        boolean hasActivity = false;
+        BigDecimal updatedCurrentPrice = currentPrice;
+        Long updatedCurrentHighestBidderId = currentHighestBidderId;
+
+        // 현재 최고입찰자가 자동입찰자가 아닌 경우, 최고 자동입찰자부터 입찰
+        // 현재 최고입찰자가 자동입찰자인 경우, 그 다음 자동입찰자부터 입찰
+        for (Bid autoBidder : eligibleBids) {
+            // null 안전성 검증
+            if (autoBidder == null || autoBidder.getBidder() == null) {
+                log.warn("⚠️ 자동입찰자 정보가 null - 건너뛰기");
+                continue;
+            }
+
+            if (updatedCurrentHighestBidderId == null || !updatedCurrentHighestBidderId.equals(autoBidder.getBidder().getId())) {
+                // 이 자동입찰자는 현재 최고입찰자가 아니므로 입찰 가능
+                BigDecimal targetBidAmount = calculateCompetitiveBidAmount(updatedCurrentPrice, autoBidder.getMaxAutoBidAmount(), eligibleBids);
+
+                if (targetBidAmount.compareTo(updatedCurrentPrice) > 0 && targetBidAmount.compareTo(autoBidder.getMaxAutoBidAmount()) <= 0) {
+                    log.info("⚡ 자동입찰자 {} 경쟁 입찰 실행: {}원", autoBidder.getBidder().getId(), targetBidAmount);
+                    executeAutoBid(autoBidder, targetBidAmount, auction);
+                    hasActivity = true;
+                    // 입찰 후 현재가와 최고입찰자 업데이트
+                    updatedCurrentPrice = targetBidAmount;
+                    updatedCurrentHighestBidderId = autoBidder.getBidder().getId();
+                    break; // 한 명씩 입찰하여 자연스러운 경쟁 유도
+                }
+            }
+        }
+
+        if (!hasActivity) {
+            log.info("💤 모든 자동입찰자가 이미 경쟁 완료 상태이므로 추가 입찰 없음");
+        }
+    }
+
+    /**
+     * 경쟁적 입찰 금액 계산 - 다른 자동입찰자들을 고려하여 적절한 입찰가 결정
+     */
+    private BigDecimal calculateCompetitiveBidAmount(BigDecimal currentPrice, BigDecimal maxAmount, List<Bid> competitors) {
+        // 현재가 + 최소증가분부터 시작
+        BigDecimal baseBidAmount = calculateNextAutoBidAmount(currentPrice, 0);
+
+        // 나보다 높은 최대금액을 가진 경쟁자가 있다면, 전략적 입찰
+        boolean hasHigherCompetitor = competitors.stream()
+                .anyMatch(competitor -> competitor.getMaxAutoBidAmount().compareTo(maxAmount) > 0);
+
+        if (hasHigherCompetitor) {
+            // 경쟁자가 있으면 좀 더 공격적으로 입찰 (최대금액까지)
+            return maxAmount;
+        } else {
+            // 경쟁자가 없으면 최소한만 입찰
+            return baseBidAmount.compareTo(maxAmount) > 0 ? maxAmount : baseBidAmount;
+        }
     }
 }
