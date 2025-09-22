@@ -227,6 +227,45 @@ class AutoBidIntegrationTest {
     }
     
     @Test
+    @DisplayName("즉시 경쟁: 두 자동입찰자 최종 결과만 저장 (B:80,000, A:81,000)")
+    void shouldPersistOnlyFinalTwoBidsOnImmediateCompetition() {
+        // Given: 현재가 65,000원으로 설정
+        auction.updateCurrentPrice(new java.math.BigDecimal("65000"));
+        auctionRepository.save(auction);
+
+        // B 사용자가 먼저 자동입찰 설정: 최대 80,000
+        bidService.setupAutoBid(bidder1.getId(), auction.getId(), new java.math.BigDecimal("80000"));
+
+        // A 사용자가 후에 자동입찰 설정: 최대 81,000 (즉시 경쟁 트리거)
+        bidService.setupAutoBid(bidder2.getId(), auction.getId(), new java.math.BigDecimal("81000"));
+
+        // Then: 입찰 내역에는 최종 두 건만 있어야 함: B(80,000), A(81,000)
+        List<Bid> allBids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId(), org.springframework.data.domain.Pageable.unpaged()).getContent();
+
+        // 실제 입찰 레코드만 필터 (설정 레코드 bidAmount=0 제외)
+        List<Bid> actualBids = allBids.stream()
+                .filter(b -> b.getBidAmount() != null && b.getBidAmount().compareTo(java.math.BigDecimal.ZERO) > 0)
+                .toList();
+
+        // 최종 상위 2개만 확인
+        assertThat(actualBids.size()).isGreaterThanOrEqualTo(2);
+        Bid top = actualBids.get(0);
+        Bid second = actualBids.get(1);
+
+        // 최고가는 A(81,000)
+        assertThat(top.getBidder().getId()).isEqualTo(bidder2.getId());
+        assertThat(top.getBidAmount()).isEqualTo(new java.math.BigDecimal("81000"));
+
+        // 그 다음은 B(80,000)
+        assertThat(second.getBidder().getId()).isEqualTo(bidder1.getId());
+        assertThat(second.getBidAmount()).isEqualTo(new java.math.BigDecimal("80000"));
+
+        // 경매 현재가도 81,000으로 갱신되었는지 확인
+        Auction updated = auctionRepository.findById(auction.getId()).get();
+        assertThat(updated.getCurrentPrice()).isEqualTo(new java.math.BigDecimal("81000"));
+    }
+    
+    @Test
     @DisplayName("유효하지 않은 퍼센티지로 자동입찰 설정시 예외 발생 테스트")
     void shouldThrowExceptionForInvalidPercentage() {
         // Given: 2% 증가율로 설정 (5% 미만이므로 예외 발생해야 함)
