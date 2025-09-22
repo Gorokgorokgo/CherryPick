@@ -128,11 +128,11 @@ class WebSocketIntegrationTest {
         BlockingQueue<AuctionUpdateMessage> client2Queue = new LinkedBlockingQueue<>();
         
         // 첫 번째 클라이언트
-        StompSession session1 = stompClient.connect(wsUrl, new StompSessionHandlerAdapter()).get(5, TimeUnit.SECONDS);
+StompSession session1 = stompClient.connect(wsUrl, new StompSessionHandlerAdapter() {}).get(5, TimeUnit.SECONDS);
         session1.subscribe("/topic/auctions/1", createFrameHandler(client1Queue));
         
         // 두 번째 클라이언트
-        StompSession session2 = stompClient.connect(wsUrl, new StompSessionHandlerAdapter()).get(5, TimeUnit.SECONDS);
+StompSession session2 = stompClient.connect(wsUrl, new StompSessionHandlerAdapter() {}).get(5, TimeUnit.SECONDS);
         session2.subscribe("/topic/auctions/1", createFrameHandler(client2Queue));
 
         // When: 메시지 브로드캐스트
@@ -178,7 +178,7 @@ class WebSocketIntegrationTest {
         // Given: 경매 1번만 구독한 클라이언트
         BlockingQueue<AuctionUpdateMessage> messageQueue = new LinkedBlockingQueue<>();
         
-        StompSession session = stompClient.connect(wsUrl, new StompSessionHandlerAdapter()).get(5, TimeUnit.SECONDS);
+StompSession session = stompClient.connect(wsUrl, new StompSessionHandlerAdapter() {}).get(5, TimeUnit.SECONDS);
         session.subscribe("/topic/auctions/1", createFrameHandler(messageQueue));
 
         // When: 경매 2번으로 메시지 전송
@@ -213,7 +213,7 @@ class WebSocketIntegrationTest {
         // Given: 경매 구독
         BlockingQueue<AuctionUpdateMessage> messageQueue = new LinkedBlockingQueue<>();
         
-        StompSession session = stompClient.connect(wsUrl, new StompSessionHandlerAdapter()).get(5, TimeUnit.SECONDS);
+StompSession session = stompClient.connect(wsUrl, new StompSessionHandlerAdapter() {}).get(5, TimeUnit.SECONDS);
         session.subscribe("/topic/auctions/1", createFrameHandler(messageQueue));
 
         // When: 경매 종료 메시지 전송
