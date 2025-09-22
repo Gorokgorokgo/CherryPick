@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@lombok.Builder(toBuilder = true)
 public class Auction extends BaseEntity {
 
     @Id
@@ -134,6 +135,53 @@ public class Auction extends BaseEntity {
             productCondition,
             purchaseDate,
             null // winner는 null로 시작
+        );
+    }
+
+    // 하위호환 오버로드 (productCondition, purchaseDate 없이)
+    public static Auction createAuction(
+            User seller,
+            String title,
+            String description,
+            Category category,
+            BigDecimal startPrice,
+            BigDecimal hopePrice,
+            BigDecimal reservePrice,
+            Integer auctionTimeHours,
+            RegionScope regionScope,
+            String regionCode,
+            String regionName
+    ) {
+        return createAuction(
+            seller, title, description, category,
+            startPrice, hopePrice, reservePrice,
+            auctionTimeHours, regionScope, regionCode, regionName,
+            5, (String) null
+        );
+    }
+
+    // 하위호환 오버로드 (마지막 인자를 LocalDate로 받음)
+    public static Auction createAuction(
+            User seller,
+            String title,
+            String description,
+            Category category,
+            BigDecimal startPrice,
+            BigDecimal hopePrice,
+            BigDecimal reservePrice,
+            Integer auctionTimeHours,
+            RegionScope regionScope,
+            String regionCode,
+            String regionName,
+            Integer productCondition,
+            java.time.LocalDate purchaseDate
+    ) {
+        return createAuction(
+            seller, title, description, category,
+            startPrice, hopePrice, reservePrice,
+            auctionTimeHours, regionScope, regionCode, regionName,
+            productCondition,
+            purchaseDate != null ? purchaseDate.toString() : null
         );
     }
 

@@ -12,10 +12,13 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AuctionRepository extends JpaRepository<Auction, Long> {
@@ -125,4 +128,9 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     @Modifying
     @Query(value = "UPDATE auctions SET end_at = :endTime WHERE id = :auctionId", nativeQuery = true)
     int updateAuctionEndTime(@Param("auctionId") Long auctionId, @Param("endTime") LocalDateTime endTime);
+
+    // 동시성 보장을 위한 경매 행 잠금
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Auction a WHERE a.id = :id")
+    Optional<Auction> findByIdForUpdate(@Param("id") Long id);
 }
