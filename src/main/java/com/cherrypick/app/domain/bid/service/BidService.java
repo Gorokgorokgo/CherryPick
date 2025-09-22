@@ -38,6 +38,7 @@ public class BidService {
     private final WebSocketMessagingService webSocketMessagingService;
     private final AutoBidService autoBidService;
     
+    
     /**
      * 입찰하기 (개정된 비즈니스 모델)
      * 
@@ -62,8 +63,8 @@ public class BidService {
         // 요청 데이터 유효성 검증
         request.validate();
         
-        // 경매 정보 조회 및 유효성 검증
-        Auction auction = auctionRepository.findById(request.getAuctionId())
+        // 경매 정보 조회 및 유효성 검증 (행 잠금으로 동시성 보장)
+        Auction auction = auctionRepository.findByIdForUpdate(request.getAuctionId())
                 .orElseThrow(EntityNotFoundException::auction);
         
         validateAuctionForBidding(auction);
@@ -160,9 +161,17 @@ public class BidService {
             bidder.getNickname() != null ? bidder.getNickname() : "익명" + bidder.getId()
         );
         
-        // 자동입찰 트리거 (모든 입찰에 대해 적용)
-        log.info("🚀 자동입찰 서비스 호출 중 - 경매 ID: {}, 입찰가: {}", auction.getId(), request.getBidAmount());
-        autoBidService.processAutoBidsForAuction(auction.getId(), request.getBidAmount());
+        // 자동입찰 즉시 경쟁 시뮬레이션 (최종 두 건만 저장)
+        log.info("🚀 자동입찰 즉시 경쟁 실행 - 경매 ID: {}, 현재가: {}", auction.getId(), auction.getCurrentPrice());
+        try {
+            if (autoBidService != null) {
+                autoBidService.processCompetitionAfterNewBid(auction.getId());
+            } else {
+                log.debug("autoBidService is null (test constructor) - 경쟁 시뮬레이션 생략");
+            }
+        } catch (Exception e) {
+            log.error("자동입찰 즉시 경쟁 실행 실패 - auctionId={}, error={}", auction.getId(), e.getMessage(), e);
+        }
         
         return BidResponse.from(savedBid, true);
     }
@@ -228,7 +237,7 @@ public class BidService {
         BigDecimal startPrice = auction.getStartPrice();
 
         // 첫 입찰 여부 확인 (현재가 = 시작가인 경우)
-        boolean isFirstBid = currentPrice.compareTo(startPrice) == 0;
+        boolean isFirstBid = (startPrice != null) && currentPrice.compareTo(startPrice) == 0;
 
         // 1. 최소 입찰 단위 검증
         validateMinimumBidUnit(currentPrice, bidAmount, isFirstBid, startPrice);
@@ -392,7 +401,15 @@ public class BidService {
 
         Bid saved = bidRepository.save(autoBidConfig);
 
-        // 자동입찰 설정 후 즉시 경쟁 로직 실행
+        // 1) 즉시 최소 입찰 트리거 (현재가 + 최소증가분)
+        try {
+            boolean triggered = autoBidService.triggerImmediateBidOnSetup(auctionId, userId);
+            log.info("⚡ 즉시 최소 입찰 트리거 결과: {}", triggered);
+        } catch (Exception e) {
+            log.error("⚠️ 즉시 최소 입찰 트리거 중 오류 - 경매 ID: {}, 사용자 ID: {}", auctionId, userId, e);
+        }
+
+        // 2) 자동입찰 설정 후 즉시 경쟁 로직 실행
         try {
             log.info("🚀 자동입찰 설정 완료 - 즉시 경쟁 로직 시작: 경매 ID: {}, 사용자 ID: {}, 최대 금액: {}",
                 auctionId, userId, maxAutoBidAmount);
