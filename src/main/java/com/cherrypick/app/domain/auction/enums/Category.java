@@ -2,6 +2,7 @@ package com.cherrypick.app.domain.auction.enums;
 
 public enum Category {
     // 전자제품/디지털
+    ELECTRONICS,        // 구 버전 호환용 상위 카테고리 (호환성 유지)
     MOBILE_DEVICES,     // 스마트폰/태블릿
     COMPUTERS,          // 컴퓨터/노트북
     AUDIO,              // 오디오/이어폰
