@@ -50,6 +50,16 @@ public class OAuthService {
         }
     }
 
+    // 테스트/하위호환용 오버로드: redirectUri 미지정시 서버 설정 기본값 사용
+    public SocialUserInfo getSocialUserInfo(SocialAccount.SocialProvider provider, String code, String state) {
+        String defaultRedirectUri = switch (provider) {
+            case GOOGLE -> oAuthConfig.getGoogleRedirectUri();
+            case KAKAO -> oAuthConfig.getKakaoRedirectUri();
+            case NAVER -> oAuthConfig.getNaverRedirectUri();
+        };
+        return getSocialUserInfo(provider, code, state, defaultRedirectUri);
+    }
+
     private String getAccessToken(SocialAccount.SocialProvider provider, String code, String redirectUri) {
         Map<String, String> tokenRequest = new HashMap<>();
         tokenRequest.put("code", code);
