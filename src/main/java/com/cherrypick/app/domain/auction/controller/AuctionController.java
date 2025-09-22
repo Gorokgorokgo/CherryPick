@@ -4,6 +4,7 @@ import com.cherrypick.app.domain.auction.dto.AuctionResponse;
 import com.cherrypick.app.domain.auction.dto.AuctionSearchRequest;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
 import com.cherrypick.app.domain.auction.service.AuctionService;
+import com.cherrypick.app.domain.auction.service.AuctionBookmarkService;
 import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
@@ -34,6 +35,7 @@ public class AuctionController {
     
     private final AuctionService auctionService;
     private final UserService userService;
+    private final AuctionBookmarkService bookmarkService;
     
     @Operation(summary = "경매 등록", 
                description = """
@@ -357,8 +359,72 @@ public class AuctionController {
     @PatchMapping("/test/force-end/{id}")
     public ResponseEntity<AuctionResponse> forceEndAuction(
             @Parameter(description = "경매 ID") @PathVariable Long id) {
-        
+
         AuctionResponse auction = auctionService.forceEndAuction(id);
         return ResponseEntity.ok(auction);
+    }
+
+    // ================== 북마크 관련 API ==================
+
+    @Operation(summary = "북마크 토글",
+               description = "경매를 북마크에 추가하거나 제거합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "북마크 토글 성공"),
+            @ApiResponse(responseCode = "404", description = "경매 또는 사용자를 찾을 수 없음")
+    })
+    @PostMapping("/{id}/bookmark")
+    public ResponseEntity<Map<String, Object>> toggleBookmark(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
+        Map<String, Object> result = bookmarkService.toggleBookmark(id, userId);
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "북마크 수 조회",
+               description = "특정 경매의 총 북마크 수를 조회합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "북마크 수 조회 성공"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @GetMapping("/{id}/bookmark-count")
+    public ResponseEntity<Map<String, Object>> getBookmarkCount(
+            @Parameter(description = "경매 ID") @PathVariable Long id) {
+
+        long count = bookmarkService.getBookmarkCount(id);
+        return ResponseEntity.ok(Map.of("bookmarkCount", count));
+    }
+
+    @Operation(summary = "북마크 상태 조회",
+               description = "사용자가 특정 경매를 북마크했는지 여부를 조회합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "북마크 상태 조회 성공"),
+            @ApiResponse(responseCode = "404", description = "경매 또는 사용자를 찾을 수 없음")
+    })
+    @GetMapping("/{id}/bookmark-status")
+    public ResponseEntity<Map<String, Object>> getBookmarkStatus(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
+        boolean isBookmarked = bookmarkService.isBookmarked(id, userId);
+        return ResponseEntity.ok(Map.of("isBookmarked", isBookmarked));
+    }
+
+    @Operation(summary = "북마크 정보 조회",
+               description = "특정 경매의 북마크 수와 사용자의 북마크 상태를 함께 조회합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "북마크 정보 조회 성공"),
+            @ApiResponse(responseCode = "404", description = "경매 또는 사용자를 찾을 수 없음")
+    })
+    @GetMapping("/{id}/bookmark-info")
+    public ResponseEntity<Map<String, Object>> getBookmarkInfo(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
+        Map<String, Object> info = bookmarkService.getBookmarkInfo(id, userId);
+        return ResponseEntity.ok(info);
     }
 }
