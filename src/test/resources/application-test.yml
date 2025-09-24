@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cherrypick
+    username: postgres
+    password: password123
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: cp_test
+        hbm2ddl.create_namespaces: true
+  flyway:
+    enabled: false
