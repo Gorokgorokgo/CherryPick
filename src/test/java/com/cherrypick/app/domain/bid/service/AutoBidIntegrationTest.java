@@ -351,4 +351,40 @@ class AutoBidIntegrationTest {
         assertThat(autoBidService.calculateNextAutoBidAmount(new BigDecimal("55175"), 6))
                 .isEqualTo(new BigDecimal("58500")); // 55,175 * 1.06 = 58,485.5 → 58,500
     }
+
+    @Test
+    @DisplayName("[규칙검증] 시작가 11,800 / A 자동 15,000 이후 B 수동 13,000 → A 자동 14,000")
+    void rule_start11800_Auto15000_then_BManual13000_expect_Auto14000() {
+        // Given: 경매 시작가 11,800으로 재설정
+        auction = auctionRepository.findById(auction.getId()).get();
+        auction.updateCurrentPrice(new BigDecimal("11800"));
+        auctionRepository.save(auction);
+
+        // A: 자동입찰 최대 15,000 설정 → 첫 입찰(시작가) 즉시 11,800 저장되어야 함
+        bidService.setupAutoBid(bidder1.getId(), auction.getId(), new BigDecimal("15000"));
+
+        // When: B가 수동으로 13,000 입찰
+        PlaceBidRequest manual = new PlaceBidRequest();
+        manual.setAuctionId(auction.getId());
+        manual.setBidAmount(new BigDecimal("13000"));
+        manual.setIsAutoBid(false);
+        bidService.placeBid(manualBidder.getId(), manual);
+
+        // Then: 커밋 후 자동입찰이 즉시 트리거되어 A가 14,000으로 올려야 함
+        await().atMost(3, java.util.concurrent.TimeUnit.SECONDS).untilAsserted(() -> {
+            var bids = bidRepository.findByAuctionIdOrderByBidAmountDesc(
+                    auction.getId(), org.springframework.data.domain.Pageable.unpaged()).getContent();
+
+            // 실제 입찰만 필터
+            var actualBids = bids.stream()
+                    .filter(b -> b.getBidAmount() != null && b.getBidAmount().compareTo(BigDecimal.ZERO) > 0)
+                    .toList();
+
+            // 최고 입찰 검증: A 14,000
+            Bid highest = actualBids.get(0);
+            assertThat(highest.getBidAmount()).isEqualByComparingTo(new BigDecimal("14000"));
+            assertThat(highest.getBidder().getId()).isEqualTo(bidder1.getId());
+            assertThat(highest.getIsAutoBid()).isTrue();
+        });
+    }
 }
