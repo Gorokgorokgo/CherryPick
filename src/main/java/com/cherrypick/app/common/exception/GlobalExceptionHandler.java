@@ -21,6 +21,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import jakarta.persistence.LockTimeoutException;
+import org.hibernate.exception.LockAcquisitionException;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -215,6 +219,21 @@ public class GlobalExceptionHandler {
         
         ErrorResponse response = ErrorResponse.of(ErrorCode.INVALID_INPUT_VALUE, request.getRequestURI());
         return ResponseEntity.badRequest().body(response);
+    }
+    
+    /**
+     * 동시성/락 관련 예외 처리: 충돌로 간주하고 409 반환
+     */
+    @ExceptionHandler({
+            CannotAcquireLockException.class,
+            PessimisticLockingFailureException.class,
+            LockTimeoutException.class,
+            LockAcquisitionException.class
+    })
+    protected ResponseEntity<ErrorResponse> handleLockingExceptions(Exception e, HttpServletRequest request) {
+        log.warn("Concurrency/locking conflict at {}: {}", request.getRequestURI(), e.getClass().getSimpleName());
+        ErrorResponse response = ErrorResponse.of(ErrorCode.CONCURRENCY_CONFLICT, request.getRequestURI());
+        return ResponseEntity.status(ErrorCode.CONCURRENCY_CONFLICT.getHttpStatus()).body(response);
     }
     
     /**
