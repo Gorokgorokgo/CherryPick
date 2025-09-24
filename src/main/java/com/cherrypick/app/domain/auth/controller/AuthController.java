@@ -243,4 +243,29 @@ public class AuthController {
         AuthResponse response = authService.checkEmail(request.getEmail());
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/logout")
+    @Operation(summary = "로그아웃",
+               description = """
+                   현재 사용자를 로그아웃 처리합니다.
+                   
+                   JWT 토큰 기반 시스템이므로 서버에서 특별한 처리 없이
+                   클라이언트에서 토큰 삭제로 로그아웃이 처리됩니다.
+                   
+                   **응답 예시:**
+                   ```json
+                   {
+                     "message": "로그아웃이 완료되었습니다"
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "로그아웃 성공")
+    })
+    public ResponseEntity<AuthResponse> logout() {
+        // JWT는 stateless이므로 서버에서 특별한 처리 없이 성공 응답만 반환
+        // 실제 토큰 무효화는 클라이언트에서 토큰 삭제로 처리
+        AuthResponse response = new AuthResponse("로그아웃이 완료되었습니다");
+        return ResponseEntity.ok(response);
+    }
 }
