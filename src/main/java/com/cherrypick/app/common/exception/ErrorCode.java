@@ -17,6 +17,7 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR("C006", "내부 서버 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
     BAD_REQUEST("C007", "잘못된 요청입니다.", HttpStatus.BAD_REQUEST),
     FORBIDDEN("C008", "접근이 금지되었습니다.", HttpStatus.FORBIDDEN),
+    CONCURRENCY_CONFLICT("C009", "다른 입찰이 먼저 처리되었습니다. 다시 시도해주세요.", HttpStatus.CONFLICT),
     
     // 인증/인가
     UNAUTHORIZED("A001", "인증이 필요합니다.", HttpStatus.UNAUTHORIZED),
