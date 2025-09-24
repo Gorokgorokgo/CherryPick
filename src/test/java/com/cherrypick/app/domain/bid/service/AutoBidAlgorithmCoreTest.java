@@ -74,7 +74,7 @@ class AutoBidAlgorithmCoreTest {
         given(auctionRepository.findByIdForUpdate(1L)).willReturn(Optional.of(auction));
         given(auctionRepository.findById(1L)).willReturn(Optional.of(auction));
         // 현재 최고입찰 없음(초기)
-        given(bidRepository.findTopByAuctionIdOrderByBidAmountDesc(1L)).willReturn(Optional.empty());
+        given(bidRepository.findTopActualByAuctionIdOrderByBidAmountDesc(1L)).willReturn(Optional.empty());
     }
 
     @Test
@@ -139,7 +139,7 @@ class AutoBidAlgorithmCoreTest {
         auc.updateCurrentPrice(new BigDecimal("50000"));
 
         given(auctionRepository.findByIdForUpdate(2L)).willReturn(Optional.of(auc));
-        given(bidRepository.findTopByAuctionIdOrderByBidAmountDesc(2L)).willReturn(Optional.empty());
+        given(bidRepository.findTopActualByAuctionIdOrderByBidAmountDesc(2L)).willReturn(Optional.empty());
 
         Bid aOnly = Bid.builder()
                 .id(201L).auction(auc).bidder(a)
@@ -184,7 +184,7 @@ class AutoBidAlgorithmCoreTest {
         );
         // 첫 입찰 상황: current=start, bidCount=0 (생성 직후 상태)
         given(auctionRepository.findByIdForUpdate(3L)).willReturn(Optional.of(auc));
-        given(bidRepository.findTopByAuctionIdOrderByBidAmountDesc(3L)).willReturn(Optional.empty());
+        given(bidRepository.findTopActualByAuctionIdOrderByBidAmountDesc(3L)).willReturn(Optional.empty());
 
         // 설정 레코드(방금 생성된 것으로 가정)
         Bid config = Bid.builder()
