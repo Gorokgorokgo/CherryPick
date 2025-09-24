@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 @DisplayName("입찰 검증 비즈니스 로직 단위 테스트")
 class BidValidationBusinessLogicTest {
 
-    private final BidService bidService = new BidService(null, null, null, null);
+    private final BidService bidService = new BidService(null, null, null, null, null, null);
 
     /**
      * 리플렉션으로 private validateBidAmount 메서드 직접 테스트
