@@ -73,4 +73,20 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
     
     // 특정 경매에서 특정 입찰자의 최신 입찰 조회 (시간순) - Spring Data JPA naming convention 사용
     Optional<Bid> findFirstByAuctionIdAndBidderIdOrderByBidTimeDesc(Long auctionId, Long bidderId);
+
+    // 중복 입찰 금액 방지: 특정 경매에서 특정 금액으로 이미 입찰이 존재하는지 확인 (자동입찰 설정 제외)
+    @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId AND b.bidAmount = :bidAmount AND b.bidAmount > 0 ORDER BY b.bidTime DESC")
+    List<Bid> findByAuctionIdAndBidAmount(@Param("auctionId") Long auctionId, @Param("bidAmount") BigDecimal bidAmount);
+
+    // 중복 입찰 금액 존재 여부 확인 (최적화된 EXISTS 쿼리)
+    @Query("SELECT COUNT(b) > 0 FROM Bid b WHERE b.auction.id = :auctionId AND b.bidAmount = :bidAmount AND b.bidAmount > 0")
+    boolean existsByAuctionIdAndBidAmount(@Param("auctionId") Long auctionId, @Param("bidAmount") BigDecimal bidAmount);
+
+    // 특정 경매의 실제 입찰 건수 조회 (bidAmount > 0인 실제 입찰만)
+    @Query("SELECT COUNT(b) FROM Bid b WHERE b.auction.id = :auctionId AND b.bidAmount > :minAmount")
+    long countByAuctionIdAndBidAmountGreaterThan(@Param("auctionId") Long auctionId, @Param("minAmount") BigDecimal minAmount);
+
+    // 실제 최고입찰 1건 조회 (설정 레코드 제외: bidAmount > 0)
+    @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId AND b.bidAmount > 0 ORDER BY b.bidAmount DESC")
+    Optional<Bid> findTopActualByAuctionIdOrderByBidAmountDesc(@Param("auctionId") Long auctionId);
 }

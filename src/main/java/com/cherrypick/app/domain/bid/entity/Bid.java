@@ -18,6 +18,15 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Bid extends BaseEntity {
+    /*
+     * 동시성 이슈 방지를 위한 데이터베이스 제약조건 필요:
+     * CREATE UNIQUE INDEX idx_unique_auction_bid_amount
+     * ON bids (auction_id, bid_amount)
+     * WHERE bid_amount > 0;
+     *
+     * 이 제약조건은 같은 경매에서 같은 금액으로 중복 입찰을 원천 차단합니다.
+     * bid_amount > 0 조건으로 자동입찰 설정(bid_amount = 0)은 제외됩니다.
+     */
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
