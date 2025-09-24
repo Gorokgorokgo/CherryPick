@@ -78,9 +78,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
-    // Focus test execution on core algorithm tests per TDD guide
+    // Run integration tests that verify end-to-end bidding and auto-bid behavior
     filter {
-        includeTestsMatching 'com.cherrypick.app.domain.bid.service.AutoBidAlgorithmCoreTest'
+        includeTestsMatching 'com.cherrypick.app.domain.bid.service.*IntegrationTest*'
     }
 }
 
