@@ -58,7 +58,7 @@ class BidServiceTest {
     private PointLockRepository pointLockRepository;
     
     @Mock
-    private com.cherrypick.app.domain.common.service.WebSocketMessagingService webSocketMessagingService;
+    private com.cherrypick.app.domain.websocket.service.WebSocketMessagingService webSocketMessagingService;
     
     @InjectMocks
     private BidService bidService;
