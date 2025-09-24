@@ -14,12 +14,16 @@ import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.bid.event.ManualBidCompletedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -37,6 +41,7 @@ public class BidService {
     private final UserRepository userRepository;
     private final WebSocketMessagingService webSocketMessagingService;
     private final AutoBidService autoBidService;
+    private final ApplicationEventPublisher eventPublisher;
     
     
     /**
@@ -78,27 +83,61 @@ public class BidService {
             throw new BusinessException(ErrorCode.SELF_BID_NOT_ALLOWED);
         }
         
-        // 입찰 금액 유효성 검증
-        validateBidAmount(auction, request.getBidAmount());
+        // 입찰 금액 유효성 검증 (초기 단계: 100원 단위만 우선 검증, 최소금액은 이후 보정)
+        log.info("🔍 입찰 금액 유효성 1단계 - 경매 ID: {}, 현재가: {}원, 요청 입찰 금액: {}원",
+                auction.getId(), auction.getCurrentPrice(), request.getBidAmount());
+        if (request.getBidAmount().remainder(BigDecimal.valueOf(100)).compareTo(BigDecimal.ZERO) != 0) {
+            throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT,
+                    "입찰가는 100원 단위로 입력해주세요.");
+        }
 
-        // 중복 입찰 방지 (같은 사용자가 동일한 금액으로 중복 입찰하는 것 방지)
+        // 중복 입찰 방지 로직 개선
+
+        // 1) 같은 사용자의 연속 입찰 제한 (동일 금액 재입찰 방지)
+        // → 보정된 금액과 비교를 위해 위치를 뒤로 이동 (effective 계산 후)
+
+        // 트랜잭션 내 최종 현재가 재확인 (동시성 보장)
+        auction = auctionRepository.findByIdForUpdate(request.getAuctionId())
+                .orElseThrow(EntityNotFoundException::auction);
+
+        // 최종 입찰 금액(effective) 결정: 수동입찰의 경우 최신 최소금액/시작가로 보정
+        BigDecimal effectiveBidAmount = request.getBidAmount();
+        if (request.getIsAutoBid() == null || !request.getIsAutoBid()) {
+            BigDecimal latestCurrentPrice = auction.getCurrentPrice();
+            boolean isFirstBid = (auction.getBidCount() == null || auction.getBidCount() == 0)
+                    || (auction.getStartPrice() != null && latestCurrentPrice.compareTo(auction.getStartPrice()) == 0);
+
+            BigDecimal minimumBid;
+            if (isFirstBid) {
+                minimumBid = auction.getStartPrice();
+            } else {
+                BigDecimal minimumIncrement = calculateMinimumIncrement(latestCurrentPrice);
+                minimumBid = latestCurrentPrice.add(minimumIncrement);
+            }
+
+            if (effectiveBidAmount.compareTo(minimumBid) < 0) {
+                log.warn("⚠️ 입력 금액이 최신 최소금액보다 낮음 - 요청: {}원, 현재가: {}원, 최소 필요: {}원 → 보정 적용",
+                        effectiveBidAmount, latestCurrentPrice, minimumBid);
+                effectiveBidAmount = minimumBid;
+            }
+
+            // 보정 후 최대 입찰 제한 검증 (가격대별 상한)
+            validateMaximumBidLimit(latestCurrentPrice, effectiveBidAmount);
+        }
+
+        // 1) 같은 사용자의 연속 입찰 제한 (보정된 금액 기준으로 동일 금액 재입찰 방지)
         Optional<Bid> recentBid = bidRepository.findFirstByAuctionIdAndBidderIdOrderByBidTimeDesc(auction.getId(), userId);
         if (recentBid.isPresent()) {
-            // 최근 3초 이내 모든 입찰 방지 (동시성 문제 해결)
-            if (recentBid.get().getBidTime().isAfter(LocalDateTime.now().minusSeconds(3))) {
-                throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, "너무 빠른 연속 입찰입니다. 잠시 후 다시 시도해주세요.");
-            }
-            // 동일한 금액으로 입찰 방지
-            if (recentBid.get().getBidAmount().equals(request.getBidAmount())) {
+            if (recentBid.get().getBidAmount().equals(effectiveBidAmount)) {
                 throw new BusinessException(ErrorCode.INVALID_BID_AMOUNT, "동일한 금액으로 연속 입찰할 수 없습니다.");
             }
         }
-        
+
         // 입찰 생성
         Bid bid = Bid.builder()
                 .auction(auction)
                 .bidder(bidder)
-                .bidAmount(request.getBidAmount())
+                .bidAmount(effectiveBidAmount)
                 .isAutoBid(request.getIsAutoBid())
                 .maxAutoBidAmount(request.getMaxAutoBidAmount())
                 .autoBidPercentage(request.getAutoBidPercentage())
@@ -125,7 +164,7 @@ public class BidService {
         
         // 자동입찰 설정이 있는 경우 새로운 자동입찰 레코드 생성
         if (request.getMaxAutoBidAmount() != null && 
-            request.getMaxAutoBidAmount().compareTo(request.getBidAmount()) > 0) {
+            request.getMaxAutoBidAmount().compareTo(effectiveBidAmount) > 0) {
             
             // 새 자동입찰 설정 생성 (금액 0으로 설정하여 입찰 내역과 구분)
             Bid autoBidConfig = Bid.builder()
@@ -146,31 +185,46 @@ public class BidService {
         
         // 경매 현재가 및 입찰수 업데이트
         BigDecimal previousPrice = auction.getCurrentPrice();
-        auction.updateCurrentPrice(request.getBidAmount());
+        auction.updateCurrentPrice(effectiveBidAmount);
         auction.increaseBidCount();
         auctionRepository.save(auction);
         
         log.info("💰 경매 현재가 업데이트 - 경매 ID: {}, 이전가: {}, 입찰가: {}, 업데이트 후: {}", 
-                auction.getId(), previousPrice, request.getBidAmount(), auction.getCurrentPrice());
+                auction.getId(), previousPrice, effectiveBidAmount, auction.getCurrentPrice());
         
         // 실시간 입찰 알림 전송 (WebSocket)
         webSocketMessagingService.notifyNewBid(
             auction.getId(),
-            request.getBidAmount(),
+            effectiveBidAmount,
             auction.getBidCount(),
             bidder.getNickname() != null ? bidder.getNickname() : "익명" + bidder.getId()
         );
         
-        // 자동입찰 즉시 경쟁 시뮬레이션 (최종 두 건만 저장)
-        log.info("🚀 자동입찰 즉시 경쟁 실행 - 경매 ID: {}, 현재가: {}", auction.getId(), auction.getCurrentPrice());
-        try {
-            if (autoBidService != null) {
-                autoBidService.processCompetitionAfterNewBid(auction.getId());
+        // 수동입찰 트랜잭션 커밋 후 자동입찰 처리 보장 (afterCommit 콜백)
+        if (autoBidService != null) {
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                final Long auctionIdForCb = auction.getId();
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            log.info("📢 afterCommit: 수동입찰 후 자동입찰 경쟁 처리 시작 - 경매 ID: {}", auctionIdForCb);
+                            autoBidService.processCompetitionAfterNewBid(auctionIdForCb);
+                        } catch (Exception e) {
+                            log.error("afterCommit 자동입찰 경쟁 처리 실패 - auctionId={}, error={}", auctionIdForCb, e.getMessage(), e);
+                        }
+                    }
+                });
             } else {
-                log.debug("autoBidService is null (test constructor) - 경쟁 시뮬레이션 생략");
+                log.warn("⚠️ 트랜잭션 동기화 비활성 - 즉시 자동입찰 경쟁 처리 실행");
+                try {
+                    autoBidService.processCompetitionAfterNewBid(auction.getId());
+                } catch (Exception e) {
+                    log.error("즉시 자동입찰 경쟁 처리 실패 - auctionId={}, error={}", auction.getId(), e.getMessage(), e);
+                }
             }
-        } catch (Exception e) {
-            log.error("자동입찰 즉시 경쟁 실행 실패 - auctionId={}, error={}", auction.getId(), e.getMessage(), e);
+        } else {
+            log.debug("autoBidService is null (test constructor) - 자동입찰 처리 생략");
         }
         
         return BidResponse.from(savedBid, true);
@@ -401,26 +455,37 @@ public class BidService {
 
         Bid saved = bidRepository.save(autoBidConfig);
 
-        // 1) 즉시 최소 입찰 트리거 (현재가 + 최소증가분)
-        try {
-            boolean triggered = autoBidService.triggerImmediateBidOnSetup(auctionId, userId);
-            log.info("⚡ 즉시 최소 입찰 트리거 결과: {}", triggered);
-        } catch (Exception e) {
-            log.error("⚠️ 즉시 최소 입찰 트리거 중 오류 - 경매 ID: {}, 사용자 ID: {}", auctionId, userId, e);
-        }
-
-        // 2) 자동입찰 설정 후 즉시 경쟁 로직 실행
-        try {
-            log.info("🚀 자동입찰 설정 완료 - 즉시 경쟁 로직 시작: 경매 ID: {}, 사용자 ID: {}, 최대 금액: {}",
+        // 자동입찰 설정 직후 즉시 동작 (비즈니스 로직 문서 요구사항)
+        log.info("🚀 자동입찰 설정 완료 - 즉시 동작 시작: 경매 ID: {}, 사용자 ID: {}, 최대 금액: {}",
                 auctionId, userId, maxAutoBidAmount);
-            boolean competitionResult = autoBidService.processImmediateAutoBidCompetition(auctionId, userId);
-            log.info("✅ 자동입찰 즉시 경쟁 결과: {}", competitionResult ? "성공" : "실패");
+
+        try {
+            // 자동입찰 설정 후 즉시 동작 트리거
+            // - 첫 입찰: 시작가로 즉시 입찰
+            // - 기존 입찰 있음: 경쟁 시뮬레이션 실행
+            boolean triggerResult = autoBidService.triggerImmediateBidOnSetup(auctionId, userId);
+            log.info("🚀 자동입찰 즉시 동작 결과: {}", triggerResult ? "성공" : "실패");
         } catch (Exception e) {
-            log.error("⚠️ 자동입찰 즉시 경쟁 실행 중 오류 발생 - 경매 ID: {}, 사용자 ID: {}", auctionId, userId, e);
-            // 자동입찰 설정은 유지하되, 경쟁 실패는 로그만 남김
+            log.error("⚠️ 자동입찰 즉시 동작 중 오류 발생 - 경매 ID: {}, 사용자 ID: {}", auctionId, userId, e);
+            // 자동입찰 설정은 유지하되, 실행 실패는 로그만 남김
         }
 
         return BidResponse.from(saved, false);
+    }
+
+    /**
+     * 가격대별 최소 증가분 계산
+     */
+    private BigDecimal calculateMinimumIncrement(BigDecimal price) {
+        if (price.compareTo(BigDecimal.valueOf(10000)) < 0) {
+            return BigDecimal.valueOf(500);
+        } else if (price.compareTo(BigDecimal.valueOf(1000000)) < 0) {
+            return BigDecimal.valueOf(1000);
+        } else if (price.compareTo(BigDecimal.valueOf(10000000)) < 0) {
+            return BigDecimal.valueOf(5000);
+        } else {
+            return BigDecimal.valueOf(10000);
+        }
     }
 
     /**
