@@ -2,6 +2,11 @@ package com.cherrypick.app.domain.user.controller;
 
 import com.cherrypick.app.common.exception.AuthenticationFailedException;
 import com.cherrypick.app.config.JwtConfig;
+import com.cherrypick.app.domain.auction.dto.AuctionResponse;
+import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.auction.entity.AuctionImage;
+import com.cherrypick.app.domain.auction.repository.AuctionImageRepository;
+import com.cherrypick.app.domain.auction.service.AuctionBookmarkService;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileImageRequest;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
@@ -21,6 +26,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/api/users")
 @CrossOrigin(origins = "*")
@@ -32,10 +41,20 @@ public class UserController {
     private final ExperienceService experienceService;
     private final JwtConfig jwtConfig;
 
-    public UserController(UserService userService, ExperienceService experienceService, JwtConfig jwtConfig) {
+    // Bookmarks 관련 의존성
+    private final AuctionBookmarkService bookmarkService;
+    private final AuctionImageRepository auctionImageRepository;
+
+    public UserController(UserService userService,
+                          ExperienceService experienceService,
+                          JwtConfig jwtConfig,
+                          AuctionBookmarkService bookmarkService,
+                          AuctionImageRepository auctionImageRepository) {
         this.userService = userService;
         this.experienceService = experienceService;
         this.jwtConfig = jwtConfig;
+        this.bookmarkService = bookmarkService;
+        this.auctionImageRepository = auctionImageRepository;
     }
 
     @GetMapping("/profile")
@@ -93,6 +112,44 @@ public class UserController {
         Long userId = extractUserIdFromRequest(request);
         UserProfileResponse updatedProfile = userService.deleteProfileImage(userId);
         return ResponseEntity.ok(updatedProfile);
+    }
+
+    @GetMapping("/bookmarks")
+    @Operation(summary = "내 북마크 경매 목록", description = "현재 로그인된 사용자의 북마크한 경매 목록을 최신순으로 반환합니다")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "북마크 목록 조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<List<AuctionResponse>> getMyBookmarks(HttpServletRequest request) {
+        Long userId = extractUserIdFromRequest(request);
+
+        // 1) 사용자의 북마크된 경매 목록 조회
+        List<Auction> auctions = bookmarkService.getUserBookmarks(userId);
+        if (auctions.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        // 2) 이미지 벌크 조회 후 경매별로 매핑
+        List<Long> auctionIds = auctions.stream().map(Auction::getId).toList();
+        List<AuctionImage> allImages = auctionImageRepository.findByAuctionIdInOrderByAuctionIdAndSortOrder(auctionIds);
+        Map<Long, List<AuctionImage>> imageMap = allImages.stream()
+                .collect(Collectors.groupingBy(img -> img.getAuction().getId()));
+
+        // 3) 응답 변환 + 북마크 정보 채움
+        List<AuctionResponse> responses = auctions.stream()
+                .map(a -> {
+                    var images = imageMap.getOrDefault(a.getId(), List.of());
+                    var resp = AuctionResponse.from(a, images);
+                    // 사용자의 북마크 목록이므로 true 고정
+                    resp.setBookmarked(true);
+                    // 전체 찜 수
+                    Long count = bookmarkService.getBookmarkCount(a.getId());
+                    resp.setBookmarkCount(count);
+                    return resp;
+                })
+                .toList();
+
+        return ResponseEntity.ok(responses);
     }
 
     private Long extractUserIdFromRequest(HttpServletRequest request) {

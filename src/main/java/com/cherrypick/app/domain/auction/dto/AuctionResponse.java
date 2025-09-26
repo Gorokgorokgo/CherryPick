@@ -48,6 +48,10 @@ public class AuctionResponse {
     // 상품 메타정보
     private Integer productCondition; // 상품 상태 (1-10점)
     private String purchaseDate; // 구매일
+
+    // 북마크 정보 (전역/사용자)
+    private Long bookmarkCount; // 전체 찜 수
+    private boolean isBookmarked; // 현재 사용자 기준 찜 여부
     
     public static AuctionResponse from(Auction auction, List<AuctionImage> images) {
         AuctionResponse response = new AuctionResponse();
@@ -92,6 +96,10 @@ public class AuctionResponse {
             response.setRemainingTimeMs(0L);
             response.setExpired(true);
         }
+        
+        // 북마크 필드는 컨트롤러/서비스에서 채워짐 (기본값)
+        response.setBookmarkCount(null);
+        response.setBookmarked(false);
         
         return response;
     }
