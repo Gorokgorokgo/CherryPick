@@ -88,7 +88,15 @@ public enum ErrorCode {
     ANSWER_ALREADY_EXISTS("Q011", "이미 답변이 등록되어 있습니다.", HttpStatus.CONFLICT),
     ANSWER_AFTER_AUCTION_END("Q012", "경매가 종료된 후에는 답변을 수정하거나 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
     NOT_QUESTION_AUTHOR("Q013", "질문 작성자만 수정하거나 삭제할 수 있습니다.", HttpStatus.FORBIDDEN),
-    NOT_ANSWER_AUTHOR("Q014", "답변 작성자만 수정하거나 삭제할 수 있습니다.", HttpStatus.FORBIDDEN);
+    NOT_ANSWER_AUTHOR("Q014", "답변 작성자만 수정하거나 삭제할 수 있습니다.", HttpStatus.FORBIDDEN),
+
+    // 마이그레이션 시스템
+    MIGRATION_SECURITY_ERROR("M001", "마이그레이션 보안 오류가 발생했습니다.", HttpStatus.FORBIDDEN),
+    MIGRATION_NOT_ELIGIBLE("M002", "마이그레이션 대상이 아닙니다.", HttpStatus.BAD_REQUEST),
+    MIGRATION_PHASE_INVALID("M003", "유효하지 않은 마이그레이션 단계입니다.", HttpStatus.BAD_REQUEST),
+    MIGRATION_ROLLBACK_LIMIT("M004", "일일 롤백 횟수를 초과했습니다.", HttpStatus.BAD_REQUEST),
+    MIGRATION_COOLING_PERIOD("M005", "마이그레이션 쿨링 기간입니다.", HttpStatus.BAD_REQUEST),
+    MIGRATION_SYSTEM_UNSAFE("M006", "마이그레이션 시스템이 안전하지 않습니다.", HttpStatus.SERVICE_UNAVAILABLE);
     
     private final String code;
     private final String message;
