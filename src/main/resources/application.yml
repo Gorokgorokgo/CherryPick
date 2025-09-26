@@ -85,7 +85,16 @@ business:
     promotion:
       enabled: ${PROMOTION_ENABLED:false}  # 프로모션 활성화
       rate: ${PROMOTION_RATE:0.00}  # 프로모션 수수료율
-      end-date: ${PROMOTION_END_DATE:2024-12-31}  # 프로모션 종료일
+      end-date: ${PROMOTION_END_DATE:2026-12-31}  # 프로모션 종료일
+
+# 마이그레이션 시스템 설정
+migration:
+  security:
+    max-rollbacks-per-day: 3
+    cooling-period-hours: 24
+    max-error-rate: 0.05
+    emergency-code-length: 32
+    service-token: ${MIGRATION_SERVICE_TOKEN:valid-service-token}
 
 logging:
   level:
