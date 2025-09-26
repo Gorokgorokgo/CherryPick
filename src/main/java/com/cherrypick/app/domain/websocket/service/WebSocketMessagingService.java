@@ -120,6 +120,22 @@ public class WebSocketMessagingService {
     }
     
     /**
+     * 자동입찰 경쟁 시작 알림
+     */
+    public void notifyAutoBidCompeting(Long auctionId, java.math.BigDecimal currentPrice, Integer bidCount) {
+        AuctionUpdateMessage message = AuctionUpdateMessage.autoBidCompeting(auctionId, currentPrice, bidCount);
+        broadcastToAuction(auctionId, message);
+    }
+
+    /**
+     * 자동입찰 경쟁 결과 알림
+     */
+    public void notifyAutoBidResult(Long auctionId, java.math.BigDecimal currentPrice, Integer bidCount, String winnerNickname) {
+        AuctionUpdateMessage message = AuctionUpdateMessage.autoBidResult(auctionId, currentPrice, bidCount, winnerNickname);
+        broadcastToAuction(auctionId, message);
+    }
+
+    /**
      * 입찰 참여자 수 변경시 실시간 알림
      */
     public void notifyBidCountUpdate(Long auctionId, Integer bidCount) {

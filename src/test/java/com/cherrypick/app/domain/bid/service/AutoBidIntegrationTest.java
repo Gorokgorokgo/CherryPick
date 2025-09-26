@@ -227,6 +227,45 @@ class AutoBidIntegrationTest {
     }
     
     @Test
+    @DisplayName("즉시 경쟁: 두 자동입찰자 최종 결과만 저장 (B:80,000, A:81,000)")
+    void shouldPersistOnlyFinalTwoBidsOnImmediateCompetition() {
+        // Given: 현재가 65,000원으로 설정
+        auction.updateCurrentPrice(new java.math.BigDecimal("65000"));
+        auctionRepository.save(auction);
+
+        // B 사용자가 먼저 자동입찰 설정: 최대 80,000
+        bidService.setupAutoBid(bidder1.getId(), auction.getId(), new java.math.BigDecimal("80000"));
+
+        // A 사용자가 후에 자동입찰 설정: 최대 81,000 (즉시 경쟁 트리거)
+        bidService.setupAutoBid(bidder2.getId(), auction.getId(), new java.math.BigDecimal("81000"));
+
+        // Then: 입찰 내역에는 최종 두 건만 있어야 함: B(80,000), A(81,000)
+        List<Bid> allBids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId(), org.springframework.data.domain.Pageable.unpaged()).getContent();
+
+        // 실제 입찰 레코드만 필터 (설정 레코드 bidAmount=0 제외)
+        List<Bid> actualBids = allBids.stream()
+                .filter(b -> b.getBidAmount() != null && b.getBidAmount().compareTo(java.math.BigDecimal.ZERO) > 0)
+                .toList();
+
+        // 최종 상위 2개만 확인
+        assertThat(actualBids.size()).isGreaterThanOrEqualTo(2);
+        Bid top = actualBids.get(0);
+        Bid second = actualBids.get(1);
+
+        // 최고가는 A(81,000)
+        assertThat(top.getBidder().getId()).isEqualTo(bidder2.getId());
+        assertThat(top.getBidAmount()).isEqualTo(new java.math.BigDecimal("81000"));
+
+        // 그 다음은 B(80,000)
+        assertThat(second.getBidder().getId()).isEqualTo(bidder1.getId());
+        assertThat(second.getBidAmount()).isEqualTo(new java.math.BigDecimal("80000"));
+
+        // 경매 현재가도 81,000으로 갱신되었는지 확인
+        Auction updated = auctionRepository.findById(auction.getId()).get();
+        assertThat(updated.getCurrentPrice()).isEqualTo(new java.math.BigDecimal("81000"));
+    }
+    
+    @Test
     @DisplayName("유효하지 않은 퍼센티지로 자동입찰 설정시 예외 발생 테스트")
     void shouldThrowExceptionForInvalidPercentage() {
         // Given: 2% 증가율로 설정 (5% 미만이므로 예외 발생해야 함)
@@ -311,5 +350,41 @@ class AutoBidIntegrationTest {
         // 나머지 경우들 테스트
         assertThat(autoBidService.calculateNextAutoBidAmount(new BigDecimal("55175"), 6))
                 .isEqualTo(new BigDecimal("58500")); // 55,175 * 1.06 = 58,485.5 → 58,500
+    }
+
+    @Test
+    @DisplayName("[규칙검증] 시작가 11,800 / A 자동 15,000 이후 B 수동 13,000 → A 자동 14,000")
+    void rule_start11800_Auto15000_then_BManual13000_expect_Auto14000() {
+        // Given: 경매 시작가 11,800으로 재설정
+        auction = auctionRepository.findById(auction.getId()).get();
+        auction.updateCurrentPrice(new BigDecimal("11800"));
+        auctionRepository.save(auction);
+
+        // A: 자동입찰 최대 15,000 설정 → 첫 입찰(시작가) 즉시 11,800 저장되어야 함
+        bidService.setupAutoBid(bidder1.getId(), auction.getId(), new BigDecimal("15000"));
+
+        // When: B가 수동으로 13,000 입찰
+        PlaceBidRequest manual = new PlaceBidRequest();
+        manual.setAuctionId(auction.getId());
+        manual.setBidAmount(new BigDecimal("13000"));
+        manual.setIsAutoBid(false);
+        bidService.placeBid(manualBidder.getId(), manual);
+
+        // Then: 커밋 후 자동입찰이 즉시 트리거되어 A가 14,000으로 올려야 함
+        await().atMost(3, java.util.concurrent.TimeUnit.SECONDS).untilAsserted(() -> {
+            var bids = bidRepository.findByAuctionIdOrderByBidAmountDesc(
+                    auction.getId(), org.springframework.data.domain.Pageable.unpaged()).getContent();
+
+            // 실제 입찰만 필터
+            var actualBids = bids.stream()
+                    .filter(b -> b.getBidAmount() != null && b.getBidAmount().compareTo(BigDecimal.ZERO) > 0)
+                    .toList();
+
+            // 최고 입찰 검증: A 14,000
+            Bid highest = actualBids.get(0);
+            assertThat(highest.getBidAmount()).isEqualByComparingTo(new BigDecimal("14000"));
+            assertThat(highest.getBidder().getId()).isEqualTo(bidder1.getId());
+            assertThat(highest.getIsAutoBid()).isTrue();
+        });
     }
 }

@@ -26,7 +26,9 @@ public class AuctionUpdateMessage {
         NEW_BID,           // 새로운 입찰
         AUCTION_ENDED,     // 경매 종료
         AUCTION_EXTENDED,  // 스나이핑 방지 연장11
-        BIDDER_COUNT_CHANGED // 입찰자 수 변경 (별칭)
+        BIDDER_COUNT_CHANGED, // 입찰자 수 변경 (별칭)
+        AUTO_BID_COMPETING, // 자동입찰 경쟁 진행 중
+        AUTO_BID_RESULT     // 자동입찰 경쟁 최종 결과
     }
     
     /**
@@ -125,5 +127,48 @@ public class AuctionUpdateMessage {
                 .bidCount(bidderCount)
                 .timestamp(LocalDateTime.now())
                 .build();
+    }
+
+    /**
+     * 자동입찰 경쟁 진행 메시지
+     */
+    public static AuctionUpdateMessage autoBidCompeting(Long auctionId, BigDecimal currentPrice, Integer bidCount) {
+        return AuctionUpdateMessage.builder()
+                .messageType(MessageType.AUTO_BID_COMPETING)
+                .auctionId(auctionId)
+                .currentPrice(currentPrice)
+                .bidCount(bidCount)
+                .timestamp(LocalDateTime.now())
+                .message("자동입찰 경쟁 중...")
+                .build();
+    }
+
+    /**
+     * 자동입찰 경쟁 결과 메시지
+     */
+    public static AuctionUpdateMessage autoBidResult(Long auctionId, BigDecimal currentPrice, Integer bidCount, String winnerNickname) {
+        return AuctionUpdateMessage.builder()
+                .messageType(MessageType.AUTO_BID_RESULT)
+                .auctionId(auctionId)
+                .currentPrice(currentPrice)
+                .bidCount(bidCount)
+                .highestBidderNickname(winnerNickname)
+                .timestamp(LocalDateTime.now())
+                .message("자동입찰 경쟁 완료")
+                .build();
+    }
+
+    // Lombok Builder 확장: 문자열 타입을 enum으로 변환하는 헬퍼 추가 (테스트 호환)
+    public static class AuctionUpdateMessageBuilder {
+        public AuctionUpdateMessageBuilder messageType(String type) {
+            if (type != null) {
+                this.messageType = MessageType.valueOf(type);
+            }
+            return this;
+        }
+        public AuctionUpdateMessageBuilder messageType(MessageType type) {
+            this.messageType = type;
+            return this;
+        }
     }
 }

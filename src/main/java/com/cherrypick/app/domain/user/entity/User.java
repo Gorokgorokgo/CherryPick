@@ -95,6 +95,33 @@ public class User extends BaseEntity {
     @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
     private Boolean isBirthDatePublic = false;
 
+    // 계정 상태
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT true")
+    private Boolean enabled = true;
+
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
+    private Boolean emailVerified = false;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'USER'")
+    private Role role = Role.USER;
+
+    // 역할 및 권한 메서드
+    public boolean hasRole(String roleName) {
+        return this.role != null && this.role.name().equals(roleName);
+    }
+
+    public boolean isEnabled() {
+        return this.enabled != null && this.enabled;
+    }
+
+    public boolean isEmailVerified() {
+        return this.emailVerified != null && this.emailVerified;
+    }
+
     // 성별 enum
     public enum Gender {
         MALE("남성"),
@@ -104,6 +131,23 @@ public class User extends BaseEntity {
         private final String description;
 
         Gender(String description) {
+            this.description = description;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+    }
+
+    // 역할 enum
+    public enum Role {
+        USER("일반 사용자"),
+        ADMIN("관리자"),
+        SUPER_ADMIN("최고 관리자");
+
+        private final String description;
+
+        Role(String description) {
             this.description = description;
         }
 

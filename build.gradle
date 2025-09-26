@@ -67,12 +67,21 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+
+    // Lombok for tests
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Run integration tests that verify end-to-end bidding and auto-bid behavior
+    filter {
+        includeTestsMatching 'com.cherrypick.app.domain.bid.service.*IntegrationTest*'
+    }
 }
 
 // Standard JVM 설정
