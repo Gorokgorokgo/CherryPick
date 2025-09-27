@@ -7,6 +7,9 @@ import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.entity.AuctionImage;
 import com.cherrypick.app.domain.auction.repository.AuctionImageRepository;
 import com.cherrypick.app.domain.auction.service.AuctionBookmarkService;
+import com.cherrypick.app.domain.auction.service.AuctionService;
+import com.cherrypick.app.domain.bid.dto.response.BidResponse;
+import com.cherrypick.app.domain.bid.service.BidService;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileImageRequest;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
@@ -22,6 +25,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -44,17 +50,25 @@ public class UserController {
     // Bookmarks 관련 의존성
     private final AuctionBookmarkService bookmarkService;
     private final AuctionImageRepository auctionImageRepository;
+    private final AuctionService auctionService;
+
+    // Bids 관련 의존성
+    private final BidService bidService;
 
     public UserController(UserService userService,
                           ExperienceService experienceService,
                           JwtConfig jwtConfig,
                           AuctionBookmarkService bookmarkService,
-                          AuctionImageRepository auctionImageRepository) {
+                          AuctionImageRepository auctionImageRepository,
+                          AuctionService auctionService,
+                          BidService bidService) {
         this.userService = userService;
         this.experienceService = experienceService;
         this.jwtConfig = jwtConfig;
         this.bookmarkService = bookmarkService;
         this.auctionImageRepository = auctionImageRepository;
+        this.auctionService = auctionService;
+        this.bidService = bidService;
     }
 
     @GetMapping("/profile")
@@ -150,6 +164,47 @@ public class UserController {
                 .toList();
 
         return ResponseEntity.ok(responses);
+    }
+
+    @GetMapping("/auctions")
+    @Operation(summary = "내가 등록한 경매 목록", description = "현재 로그인된 사용자가 등록한 경매 목록을 반환합니다")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "목록 조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<List<AuctionResponse>> getMyAuctions(HttpServletRequest request,
+                                                               @RequestParam(required = false, defaultValue = "50") int limit) {
+        Long userId = extractUserIdFromRequest(request);
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, Math.max(1, Math.min(limit, 100)));
+        var page = auctionService.getMyAuctions(userId, pageable);
+        return ResponseEntity.ok(page.getContent());
+    }
+
+    @GetMapping("/me")
+    @Operation(summary = "현재 사용자 정보 조회", description = "현재 로그인된 사용자의 프로필 정보를 반환합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<UserProfileResponse> getMe(HttpServletRequest request) {
+        Long userId = extractUserIdFromRequest(request);
+        UserProfileResponse profile = userService.getUserProfile(userId);
+        return ResponseEntity.ok(profile);
+    }
+
+    @GetMapping("/bids")
+    @Operation(summary = "내 입찰 목록 조회", description = "현재 로그인된 사용자의 입찰 내역을 페이지 형태로 반환합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<Page<BidResponse>> getMyBids(HttpServletRequest request,
+                                                       @RequestParam(defaultValue = "0") int page,
+                                                       @RequestParam(defaultValue = "20") int size) {
+        Long userId = extractUserIdFromRequest(request);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<BidResponse> bids = bidService.getMyBids(userId, pageable);
+        return ResponseEntity.ok(bids);
     }
 
     private Long extractUserIdFromRequest(HttpServletRequest request) {

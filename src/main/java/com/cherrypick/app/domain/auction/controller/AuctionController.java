@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +26,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @Tag(name = "6단계 - 경매 관리", description = "경매 등록, 조회, 검색 | 보증금 10% 자동 차감")
@@ -456,5 +458,66 @@ public class AuctionController {
         Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
         Map<String, Object> info = bookmarkService.getBookmarkInfo(id, userId);
         return ResponseEntity.ok(info);
+    }
+
+    // 요청 DTO: { "auctionIds": [1,2,3] } 형태 지원
+    public static class BatchBookmarkRequest {
+        public List<Long> auctionIds;
+        public List<Long> getAuctionIds() { return auctionIds; }
+        public void setAuctionIds(List<Long> auctionIds) { this.auctionIds = auctionIds; }
+    }
+
+    @Operation(summary = "배치 북마크 정보 조회",
+               description = "여러 경매의 북마크 수와 사용자의 북마크 상태를 한 번에 조회합니다. 최대 20개까지 처리합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "배치 북마크 정보 조회 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (빈 목록 또는 너무 많은 ID)"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    @PostMapping("/batch/bookmark-info")
+    public ResponseEntity<Map<String, Object>> getBatchBookmarkInfo(
+            @RequestBody Object body,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        List<Long> auctionIds = null;
+        if (body instanceof List<?>) {
+            auctionIds = ((List<?>) body).stream()
+                    .filter(o -> o instanceof Number)
+                    .map(o -> ((Number) o).longValue())
+                    .toList();
+        } else if (body instanceof BatchBookmarkRequest req) {
+            auctionIds = req.getAuctionIds();
+        } else if (body instanceof java.util.Map<?,?> map) {
+            Object idsObj = map.get("auctionIds");
+            if (idsObj instanceof List<?>) {
+                auctionIds = ((List<?>) idsObj).stream()
+                        .filter(o -> o instanceof Number)
+                        .map(o -> ((Number) o).longValue())
+                        .toList();
+            }
+        }
+
+        if (auctionIds == null || auctionIds.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", "auctionIds가 비어있습니다.")
+            );
+        }
+        if (auctionIds.size() > 50) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", "최대 50개까지 조회할 수 있습니다.")
+            );
+        }
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        Map<String, Object> batchInfo = bookmarkService.getBatchBookmarkInfo(auctionIds, userId);
+
+        Map<String, Object> response = Map.of(
+            "success", true,
+            "data", batchInfo,
+            "message", "배치 북마크 정보 조회 성공"
+        );
+        return ResponseEntity.ok(response);
     }
 }

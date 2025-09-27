@@ -44,4 +44,9 @@ public interface AuctionBookmarkRepository extends JpaRepository<AuctionBookmark
      * 사용자의 북마크 삭제
      */
     void deleteByAuctionAndUser(Auction auction, User user);
+
+    /**
+     * 사용자의 여러 경매 북마크 상태 배치 조회
+     */
+    List<AuctionBookmark> findByUserAndAuctionIn(User user, List<Auction> auctions);
 }
