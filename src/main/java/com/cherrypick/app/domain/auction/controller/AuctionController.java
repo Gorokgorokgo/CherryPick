@@ -141,8 +141,23 @@ public class AuctionController {
     })
     @GetMapping("/{auctionId}")
     public ResponseEntity<AuctionResponse> getAuctionDetail(
-            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         AuctionResponse response = auctionService.getAuctionDetail(auctionId);
+        // 북마크 정보 채우기
+        try {
+            long count = bookmarkService.getBookmarkCount(auctionId);
+            response.setBookmarkCount(count);
+            if (userDetails != null) {
+                Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+                boolean isBookmarked = bookmarkService.isBookmarked(auctionId, userId);
+                response.setBookmarked(isBookmarked);
+            } else {
+                response.setBookmarked(false);
+            }
+        } catch (Exception e) {
+            // 예외가 발생해도 상세 응답 자체는 반환 (기본값 유지)
+        }
         return ResponseEntity.ok(response);
     }
     
@@ -153,8 +168,23 @@ public class AuctionController {
     })
     @GetMapping("/{auctionId}/info")
     public ResponseEntity<AuctionResponse> getAuctionDetailWithoutViewIncrement(
-            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         AuctionResponse response = auctionService.getAuctionDetailWithoutViewIncrement(auctionId);
+        // 북마크 정보 채우기
+        try {
+            long count = bookmarkService.getBookmarkCount(auctionId);
+            response.setBookmarkCount(count);
+            if (userDetails != null) {
+                Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+                boolean isBookmarked = bookmarkService.isBookmarked(auctionId, userId);
+                response.setBookmarked(isBookmarked);
+            } else {
+                response.setBookmarked(false);
+            }
+        } catch (Exception e) {
+            // 예외 무시하고 기본값 유지
+        }
         return ResponseEntity.ok(response);
     }
     
