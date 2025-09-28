@@ -10,6 +10,8 @@ import com.cherrypick.app.domain.auction.service.AuctionBookmarkService;
 import com.cherrypick.app.domain.auction.service.AuctionService;
 import com.cherrypick.app.domain.bid.dto.response.BidResponse;
 import com.cherrypick.app.domain.bid.service.BidService;
+import com.cherrypick.app.domain.bid.repository.BidRepository;
+import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileImageRequest;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
@@ -54,6 +56,7 @@ public class UserController {
 
     // Bids 관련 의존성
     private final BidService bidService;
+    private final BidRepository bidRepository;
 
     public UserController(UserService userService,
                           ExperienceService experienceService,
@@ -61,7 +64,8 @@ public class UserController {
                           AuctionBookmarkService bookmarkService,
                           AuctionImageRepository auctionImageRepository,
                           AuctionService auctionService,
-                          BidService bidService) {
+                          BidService bidService,
+                          BidRepository bidRepository) {
         this.userService = userService;
         this.experienceService = experienceService;
         this.jwtConfig = jwtConfig;
@@ -69,6 +73,7 @@ public class UserController {
         this.auctionImageRepository = auctionImageRepository;
         this.auctionService = auctionService;
         this.bidService = bidService;
+        this.bidRepository = bidRepository;
     }
 
     @GetMapping("/profile")
@@ -205,6 +210,65 @@ public class UserController {
         Pageable pageable = PageRequest.of(page, size);
         Page<BidResponse> bids = bidService.getMyBids(userId, pageable);
         return ResponseEntity.ok(bids);
+    }
+
+    // 자동입찰 관리용 응답 DTO (프론트 요구 필드 포함)
+    public record AutoBidItemResponse(
+            Long id,
+            Long auctionId,
+            String title,
+            String imageUrl,
+            java.math.BigDecimal maxAutoBidAmount,
+            java.math.BigDecimal currentPrice,
+            Integer bidCount,
+            String auctionStatus,
+            String category,
+            String endTime
+    ) {}
+
+    @GetMapping("/auto-bids")
+    @Operation(summary = "내 자동입찰 목록", description = "현재 로그인 사용자의 활성 자동입찰 목록을 반환합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<List<AutoBidItemResponse>> getMyAutoBids(HttpServletRequest request) {
+        Long userId = extractUserIdFromRequest(request);
+
+        // 1) 활성 자동입찰 설정 조회 (bidAmount=0, ACTIVE)
+        List<Bid> configs = bidRepository.findActiveAutoBidsByBidderId(userId);
+        if (configs.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        // 2) 관련 경매 ID 수집 및 이미지 벌크 조회
+        List<Long> auctionIds = configs.stream().map(b -> b.getAuction().getId()).toList();
+        List<AuctionImage> allImages = auctionImageRepository.findByAuctionIdInOrderByAuctionIdAndSortOrder(auctionIds);
+        Map<Long, List<AuctionImage>> imageMap = allImages.stream()
+                .collect(Collectors.groupingBy(img -> img.getAuction().getId()));
+
+        // 3) 응답 조립 (썸네일은 첫 번째 이미지)
+        List<AutoBidItemResponse> items = configs.stream()
+                .map(b -> {
+                    var auction = b.getAuction();
+                    var images = imageMap.getOrDefault(auction.getId(), List.of());
+                    String imageUrl = images.isEmpty() ? null : images.get(0).getImageUrl();
+                    return new AutoBidItemResponse(
+                            b.getId(),
+                            auction.getId(),
+                            auction.getTitle(),
+                            imageUrl,
+                            b.getMaxAutoBidAmount(),
+                            auction.getCurrentPrice(),
+                            auction.getBidCount(),
+                            auction.getStatus().name(),
+                            auction.getCategory().name(),
+                            auction.getEndAt() != null ? auction.getEndAt().toString() : null
+                    );
+                })
+                .toList();
+
+        return ResponseEntity.ok(items);
     }
 
     private Long extractUserIdFromRequest(HttpServletRequest request) {
