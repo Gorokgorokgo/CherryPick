@@ -34,7 +34,15 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
     /**
      * 특정 경매에서 사용자의 활성 자동입찰 설정 조회
      */
-    Optional<Bid> findByAuctionIdAndBidderIdAndIsAutoBidTrueAndStatus(Long auctionId, Long bidderId, BidStatus status);
+    @Query("SELECT b FROM Bid b WHERE b.auction.id = :auctionId " +
+           "AND b.bidder.id = :bidderId " +
+           "AND b.isAutoBid = true " +
+           "AND b.bidAmount = 0 " +
+           "AND b.status = :status")
+    Optional<Bid> findByAuctionIdAndBidderIdAndIsAutoBidTrueAndStatus(
+            @Param("auctionId") Long auctionId,
+            @Param("bidderId") Long bidderId,
+            @Param("status") BidStatus status);
 
     /**
      * 특정 경매의 모든 활성 자동입찰 설정 조회 (본인 제외)
