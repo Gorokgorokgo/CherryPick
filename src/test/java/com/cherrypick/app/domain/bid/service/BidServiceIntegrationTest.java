@@ -32,6 +32,9 @@ class BidServiceIntegrationTest {
     private BidService bidService;
 
     @Autowired
+    private AutoBidService autoBidService;
+
+    @Autowired
     private AuctionRepository auctionRepository;
 
     @Autowired
@@ -182,5 +185,107 @@ class BidServiceIntegrationTest {
         assertThat(highestBid).isPresent();
         assertThat(highestBid.get().getBidAmount()).isEqualByComparingTo(new BigDecimal("15000"));
         assertThat(highestBid.get().getBidder().getId()).isEqualTo(bidder1.getId());
+    }
+
+    @Test
+    @DisplayName("수동/자동 입찰 통합 - 자동입찰자가 수동입찰에 반응")
+    void manualAndAutoBidIntegration() {
+        // given: bidder1이 최대 50,000원으로 자동입찰 설정
+        autoBidService.setupAutoBid(auction.getId(), bidder1.getId(), new BigDecimal("50000"));
+
+        // 자동입찰 즉시 실행으로 10,000원(시작가)으로 입찰됨
+        Auction updatedAuction = auctionRepository.findById(auction.getId()).get();
+        assertThat(updatedAuction.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("10000"));
+
+        // when: bidder2가 20,000원으로 수동 입찰
+        bidService.placeBid(auction.getId(), bidder2.getId(), new BigDecimal("20000"));
+
+        // then: bidder1의 자동입찰이 반응하여 21,000원으로 자동 입찰 (20,000 + 1,000)
+        updatedAuction = auctionRepository.findById(auction.getId()).get();
+        assertThat(updatedAuction.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("21000"));
+
+        Optional<Bid> highestBid = bidRepository.findTopByAuctionIdAndBidAmountGreaterThanOrderByBidAmountDesc(
+                auction.getId(), BigDecimal.ZERO);
+        assertThat(highestBid).isPresent();
+        assertThat(highestBid.get().getBidAmount()).isEqualByComparingTo(new BigDecimal("21000"));
+        assertThat(highestBid.get().getBidder().getId()).isEqualTo(bidder1.getId());
+        assertThat(highestBid.get().getIsAutoBid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("수동/자동 입찰 통합 - 자동입찰 최대금액 초과 시 반응 안 함")
+    void manualBidExceedsAutoBidMax() {
+        // given: bidder1이 최대 30,000원으로 자동입찰 설정
+        autoBidService.setupAutoBid(auction.getId(), bidder1.getId(), new BigDecimal("30000"));
+
+        // when: bidder2가 40,000원으로 수동 입찰 (자동입찰 최대금액 초과)
+        bidService.placeBid(auction.getId(), bidder2.getId(), new BigDecimal("40000"));
+
+        // then: 자동입찰이 반응하지 않음 (41,000원이 최대금액 30,000원을 초과)
+        Auction updatedAuction = auctionRepository.findById(auction.getId()).get();
+        assertThat(updatedAuction.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("40000"));
+
+        Optional<Bid> highestBid = bidRepository.findTopByAuctionIdAndBidAmountGreaterThanOrderByBidAmountDesc(
+                auction.getId(), BigDecimal.ZERO);
+        assertThat(highestBid).isPresent();
+        assertThat(highestBid.get().getBidder().getId()).isEqualTo(bidder2.getId());
+        assertThat(highestBid.get().getIsAutoBid()).isFalse();
+    }
+
+    @Test
+    @DisplayName("수동/자동 입찰 통합 - 여러 자동입찰자 중 최대금액 높은 사람이 반응")
+    void multipleAutoBiddersReactToManualBid() {
+        // given: 2명이 서로 다른 최대금액으로 자동입찰 설정
+        User bidder3 = User.builder()
+                .email("bidder3@test.com")
+                .nickname("입찰자3")
+                .password("password")
+                .phoneNumber("01011113333")
+                .build();
+        bidder3 = userRepository.save(bidder3);
+
+        // bidder1: 최대 30,000원
+        autoBidService.setupAutoBid(auction.getId(), bidder1.getId(), new BigDecimal("30000"));
+
+        // bidder2: 최대 50,000원 (더 높음)
+        autoBidService.setupAutoBid(auction.getId(), bidder2.getId(), new BigDecimal("50000"));
+        // 자동 입찰 경쟁으로 현재가는 31,000원이 됨 (bidder1 최대 30,000 + 1,000)
+
+        // when: bidder3가 40,000원으로 수동 입찰
+        bidService.placeBid(auction.getId(), bidder3.getId(), new BigDecimal("40000"));
+
+        // then: 최대금액이 더 높은 bidder2가 41,000원으로 반응 (40,000 + 1,000)
+        Auction updatedAuction = auctionRepository.findById(auction.getId()).get();
+        assertThat(updatedAuction.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("41000"));
+
+        Optional<Bid> highestBid = bidRepository.findTopByAuctionIdAndBidAmountGreaterThanOrderByBidAmountDesc(
+                auction.getId(), BigDecimal.ZERO);
+        assertThat(highestBid).isPresent();
+        assertThat(highestBid.get().getBidder().getId()).isEqualTo(bidder2.getId());
+        assertThat(highestBid.get().getIsAutoBid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("수동/자동 입찰 통합 - 입찰 단위 가격 구간별 적용")
+    void autoBidReactionWithDifferentIncrements() {
+        // given: bidder1이 15,000원 수동 입찰 (10,000~100만원 구간, 입찰단위 1,000원)
+        bidService.placeBid(auction.getId(), bidder1.getId(), new BigDecimal("15000"));
+
+        // bidder2가 최대 60,000원으로 자동입찰 설정 (15,000 * 4배 = 60,000, 최대한도 이내)
+        // 즉시 16,000원으로 입찰됨 (15,000 + 1,000)
+        autoBidService.setupAutoBid(auction.getId(), bidder2.getId(), new BigDecimal("60000"));
+
+        // when: bidder1이 25,000원으로 수동 입찰
+        bidService.placeBid(auction.getId(), bidder1.getId(), new BigDecimal("25000"));
+
+        // then: bidder2의 자동입찰이 반응하여 26,000원으로 자동 입찰 (25,000 + 1,000)
+        Auction updatedAuction = auctionRepository.findById(auction.getId()).get();
+        assertThat(updatedAuction.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("26000"));
+
+        Optional<Bid> highestBid = bidRepository.findTopByAuctionIdAndBidAmountGreaterThanOrderByBidAmountDesc(
+                auction.getId(), BigDecimal.ZERO);
+        assertThat(highestBid).isPresent();
+        assertThat(highestBid.get().getBidAmount()).isEqualByComparingTo(new BigDecimal("26000"));
+        assertThat(highestBid.get().getBidder().getId()).isEqualTo(bidder2.getId());
     }
 }

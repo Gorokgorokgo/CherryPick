@@ -218,6 +218,59 @@ public class AutoBidService {
     }
 
     /**
+     * 수동 입찰에 대한 자동 입찰 반응 처리
+     * 활성 자동입찰자 중 최대 금액이 가장 높은 사람이 (수동입찰가 + 입찰단위)로 자동 입찰
+     */
+    @Transactional
+    public void reactToManualBid(Auction auction, BigDecimal manualBidAmount) {
+        log.info("수동 입찰 반응 처리 시작: auctionId={}, manualBidAmount={}",
+                auction.getId(), manualBidAmount);
+
+        // 1. 모든 활성 자동입찰 설정 조회 (수동 입찰자는 제외되지 않음 - 전체 조회)
+        List<Bid> allActiveAutoBids = bidRepository.findActiveAutoBidSettingsExcludingBidder(
+                auction.getId(), -1L, BidStatus.ACTIVE); // -1L: 모든 자동입찰자 조회
+
+        if (allActiveAutoBids.isEmpty()) {
+            log.info("활성 자동입찰 설정 없음 - 반응 없음");
+            return;
+        }
+
+        // 2. 최대 금액이 가장 높은 자동입찰자 찾기
+        Bid highestAutoBid = allActiveAutoBids.stream()
+                .max((a, b) -> a.getMaxAutoBidAmount().compareTo(b.getMaxAutoBidAmount()))
+                .orElse(null);
+
+        if (highestAutoBid == null) {
+            return;
+        }
+
+        BigDecimal maxAmount = highestAutoBid.getMaxAutoBidAmount();
+        BigDecimal increment = validationService.calculateMinimumIncrement(manualBidAmount);
+        BigDecimal nextBidAmount = manualBidAmount.add(increment);
+
+        log.info("최고 자동입찰자: {}, 최대금액: {}, 반응입찰가: {}",
+                highestAutoBid.getBidder().getId(), maxAmount, nextBidAmount);
+
+        // 3. 최대 금액이 충분한지 확인
+        if (nextBidAmount.compareTo(maxAmount) > 0) {
+            log.info("자동입찰 최대 금액({}) 초과 - 반응 안 함", maxAmount);
+            return;
+        }
+
+        // 4. 이미 최고 입찰자인지 확인
+        boolean isAlreadyHighest = bidRepository.isHighestBidder(
+                auction.getId(), highestAutoBid.getBidder().getId());
+        if (isAlreadyHighest) {
+            log.info("이미 최고 입찰자이므로 추가 입찰 안 함");
+            return;
+        }
+
+        // 5. 자동 입찰 실행
+        createAutoBidExecution(auction, highestAutoBid.getBidder(), nextBidAmount, maxAmount);
+        log.info("수동 입찰 반응 완료: {}원으로 자동 입찰", nextBidAmount);
+    }
+
+    /**
      * 내 자동 입찰 설정 조회
      */
     public Optional<BidResponse> getMyAutoBidSetting(Long auctionId, Long bidderId) {

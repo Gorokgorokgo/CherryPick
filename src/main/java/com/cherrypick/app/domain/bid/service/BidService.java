@@ -27,6 +27,7 @@ public class BidService {
     private final BidValidationService validationService;
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
+    private final AutoBidService autoBidService;
 
     /**
      * 내 입찰 내역 조회
@@ -73,7 +74,15 @@ public class BidService {
 
         log.info("경매 업데이트 완료: currentPrice={}, bidCount={}", auction.getCurrentPrice(), auction.getBidCount());
 
-        // 7. 응답 생성
+        // 7. 자동 입찰 반응 처리
+        try {
+            autoBidService.reactToManualBid(auction, bidAmount);
+        } catch (Exception e) {
+            log.error("자동 입찰 반응 처리 중 오류 발생", e);
+            // 수동 입찰은 성공했으므로 오류를 던지지 않고 로깅만 함
+        }
+
+        // 8. 응답 생성
         return BidResponse.from(savedBid, true);
     }
 }
