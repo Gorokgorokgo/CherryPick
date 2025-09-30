@@ -63,7 +63,6 @@ public class AuctionController {
                    ```
                    
                    **중요 사항:**
-                   - 보증금: 희망가의 10% 자동 차감 (예: 희망가 120만원 → 보증금 12만원)
                    - Reserve Price: 최저 내정가 설정 가능 (선택사항, 입찰자에게 비공개)
                    - 가격 범위: 시작가 ≤ Reserve Price ≤ 희망가
                    - 유찰 조건: 최고 입찰가 < Reserve Price시 유찰 처리

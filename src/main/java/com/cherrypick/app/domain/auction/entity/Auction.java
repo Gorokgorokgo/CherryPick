@@ -66,6 +66,16 @@ public class Auction extends BaseEntity {
     @Column(name = "view_count", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
     private Integer viewCount;
 
+    @Column(name = "current_price", nullable = false, precision = 10, scale = 0)
+    private BigDecimal currentPrice;
+
+    @Column(name = "bid_count", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer bidCount;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "winner_id")
+    private User winner;
+
     @Column(name = "start_at", nullable = false)
     private LocalDateTime startAt;
 
@@ -115,6 +125,9 @@ public class Auction extends BaseEntity {
             regionName,
             AuctionStatus.ACTIVE,
             0, // viewCount - DB 기본값
+            startPrice, // currentPrice - 시작가로 초기화
+            0, // bidCount - DB 기본값
+            null, // winner
             now,
             now.plusHours(auctionTimeHours),
             productCondition,
@@ -212,5 +225,37 @@ public class Auction extends BaseEntity {
     public void forceEnd() {
         this.status = AuctionStatus.ENDED;
         this.endAt = LocalDateTime.now();
+    }
+
+    /**
+     * 현재가 업데이트
+     */
+    public void updateCurrentPrice(BigDecimal newPrice) {
+        this.currentPrice = newPrice;
+    }
+
+    /**
+     * 입찰 횟수 증가
+     */
+    public void increaseBidCount() {
+        this.bidCount = (this.bidCount == null ? 0 : this.bidCount) + 1;
+    }
+
+    /**
+     * 낙찰자 설정
+     */
+    public void setWinner(User winner, BigDecimal finalPrice) {
+        this.winner = winner;
+        this.currentPrice = finalPrice;
+        this.status = AuctionStatus.ENDED;
+    }
+
+    /**
+     * 경매 종료 처리
+     */
+    public void endAuction(User winner, BigDecimal finalPrice) {
+        this.winner = winner;
+        this.currentPrice = finalPrice;
+        this.status = finalPrice.compareTo(BigDecimal.ZERO) > 0 ? AuctionStatus.ENDED : AuctionStatus.ENDED;
     }
 }
