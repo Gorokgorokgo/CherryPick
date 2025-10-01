@@ -66,11 +66,14 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
 
     /**
      * 특정 경매에서 특정 사용자가 최고 입찰자인지 확인
+     * 동일 금액일 경우 가장 먼저 입찰한 사람이 최고 입찰자
      */
     @Query("SELECT CASE WHEN COUNT(b) > 0 THEN true ELSE false END FROM Bid b " +
            "WHERE b.auction.id = :auctionId " +
            "AND b.bidder.id = :bidderId " +
-           "AND b.bidAmount = (SELECT MAX(b2.bidAmount) FROM Bid b2 WHERE b2.auction.id = :auctionId AND b2.bidAmount > 0)")
+           "AND b.bidAmount > 0 " +
+           "AND b.id = (SELECT b2.id FROM Bid b2 WHERE b2.auction.id = :auctionId AND b2.bidAmount > 0 " +
+           "ORDER BY b2.bidAmount DESC, b2.bidTime ASC LIMIT 1)")
     boolean isHighestBidder(@Param("auctionId") Long auctionId, @Param("bidderId") Long bidderId);
 
     /**

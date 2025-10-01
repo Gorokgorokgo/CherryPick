@@ -36,8 +36,8 @@ public class AutoBidService {
         log.info("자동 입찰 설정 시작: auctionId={}, bidderId={}, maxAmount={}",
                 auctionId, bidderId, maxAutoBidAmount);
 
-        // 1. 경매 조회
-        Auction auction = auctionRepository.findById(auctionId)
+        // 1. 경매 조회 (비관적 잠금으로 동시성 보장)
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId)
                 .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다"));
 
         // 2. 입찰자 조회

@@ -44,8 +44,8 @@ public class BidService {
     public BidResponse placeBid(Long auctionId, Long bidderId, BigDecimal bidAmount) {
         log.info("수동 입찰 시작: auctionId={}, bidderId={}, bidAmount={}", auctionId, bidderId, bidAmount);
 
-        // 1. 경매 조회
-        Auction auction = auctionRepository.findById(auctionId)
+        // 1. 경매 조회 (비관적 잠금으로 동시성 보장)
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId)
                 .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다"));
 
         // 2. 입찰자 조회
