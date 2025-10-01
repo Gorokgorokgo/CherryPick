@@ -288,4 +288,93 @@ class BidServiceIntegrationTest {
         assertThat(highestBid.get().getBidAmount()).isEqualByComparingTo(new BigDecimal("26000"));
         assertThat(highestBid.get().getBidder().getId()).isEqualTo(bidder2.getId());
     }
+
+    @Test
+    @DisplayName("5명 혼합 입찰 시나리오 - 수동 3명, 자동 2명")
+    void fiveBiddersMixedScenario() {
+        // given: 5명의 입찰자 생성
+        User bidder3 = User.builder()
+                .email("bidder3@test.com")
+                .nickname("입찰자3")
+                .password("password")
+                .phoneNumber("01033334444")
+                .build();
+        bidder3 = userRepository.save(bidder3);
+
+        User bidder4 = User.builder()
+                .email("bidder4@test.com")
+                .nickname("입찰자4")
+                .password("password")
+                .phoneNumber("01044445555")
+                .build();
+        bidder4 = userRepository.save(bidder4);
+
+        User bidder5 = User.builder()
+                .email("bidder5@test.com")
+                .nickname("입찰자5")
+                .password("password")
+                .phoneNumber("01055556666")
+                .build();
+        bidder5 = userRepository.save(bidder5);
+
+        // when & then: 입찰 시나리오
+
+        // 1. bidder1이 10,000원으로 첫 수동 입찰
+        BidResponse bid1 = bidService.placeBid(auction.getId(), bidder1.getId(), new BigDecimal("10000"));
+        assertThat(bid1.getBidAmount()).isEqualByComparingTo(new BigDecimal("10000"));
+        assertThat(bid1.getIsAutoBid()).isFalse();
+
+        // 2. bidder2가 최대 25,000원으로 자동입찰 설정 -> 즉시 11,000원 입찰
+        autoBidService.setupAutoBid(auction.getId(), bidder2.getId(), new BigDecimal("25000"));
+        Auction auction2 = auctionRepository.findById(auction.getId()).get();
+        assertThat(auction2.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("11000"));
+
+        // 3. bidder3가 15,000원으로 수동 입찰
+        bidService.placeBid(auction.getId(), bidder3.getId(), new BigDecimal("15000"));
+
+        // 4. bidder2의 자동입찰이 반응 -> 16,000원 자동 입찰
+        Auction auction3 = auctionRepository.findById(auction.getId()).get();
+        assertThat(auction3.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("16000"));
+
+        // 5. bidder4가 최대 40,000원으로 자동입찰 설정
+        // bidder2와 자동입찰 경쟁 발생 -> bidder2가 25,000원까지 가고, bidder4가 26,000원에서 승리
+        autoBidService.setupAutoBid(auction.getId(), bidder4.getId(), new BigDecimal("40000"));
+        Auction auction4 = auctionRepository.findById(auction.getId()).get();
+        assertThat(auction4.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("26000"));
+
+        Optional<Bid> currentHighest = bidRepository.findTopByAuctionIdAndBidAmountGreaterThanOrderByBidAmountDesc(
+                auction.getId(), BigDecimal.ZERO);
+        assertThat(currentHighest.get().getBidder().getId()).isEqualTo(bidder4.getId());
+        assertThat(currentHighest.get().getIsAutoBid()).isTrue();
+
+        // 6. bidder5가 30,000원으로 수동 입찰
+        bidService.placeBid(auction.getId(), bidder5.getId(), new BigDecimal("30000"));
+
+        // 7. bidder4의 자동입찰이 반응 -> 31,000원 자동 입찰
+        Auction auction5 = auctionRepository.findById(auction.getId()).get();
+        assertThat(auction5.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("31000"));
+
+        // 8. bidder1이 35,000원으로 재입찰
+        bidService.placeBid(auction.getId(), bidder1.getId(), new BigDecimal("35000"));
+
+        // 9. bidder4의 자동입찰이 반응 -> 36,000원 자동 입찰
+        Auction auction6 = auctionRepository.findById(auction.getId()).get();
+        assertThat(auction6.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("36000"));
+
+        // 10. bidder3가 45,000원으로 수동 입찰 (bidder4의 최대금액 40,000 초과)
+        bidService.placeBid(auction.getId(), bidder3.getId(), new BigDecimal("45000"));
+
+        // 11. 자동입찰이 반응하지 않음 (최대금액 초과)
+        Auction finalAuction = auctionRepository.findById(auction.getId()).get();
+        assertThat(finalAuction.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("45000"));
+
+        Optional<Bid> finalHighest = bidRepository.findTopByAuctionIdAndBidAmountGreaterThanOrderByBidAmountDesc(
+                auction.getId(), BigDecimal.ZERO);
+        assertThat(finalHighest.get().getBidder().getId()).isEqualTo(bidder3.getId());
+        assertThat(finalHighest.get().getIsAutoBid()).isFalse();
+
+        // 최종 검증: 총 입찰 내역 확인
+        long totalBids = bidRepository.countByAuctionId(auction.getId());
+        assertThat(totalBids).isGreaterThanOrEqualTo(10); // 수동 5개 + 자동 5개 이상
+    }
 }
