@@ -223,11 +223,12 @@ public class UserController {
             Integer bidCount,
             String auctionStatus,
             String category,
-            String endTime
+            String endTime,
+            Boolean isWinning
     ) {}
 
     @GetMapping("/auto-bids")
-    @Operation(summary = "내 자동입찰 목록", description = "현재 로그인 사용자의 활성 자동입찰 목록을 반환합니다.")
+    @Operation(summary = "내 자동입찰 목록", description = "현재 로그인 사용자의 모든 자동입찰 목록(활성+종료)을 반환합니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "조회 성공"),
             @ApiResponse(responseCode = "401", description = "인증 실패")
@@ -235,8 +236,8 @@ public class UserController {
     public ResponseEntity<List<AutoBidItemResponse>> getMyAutoBids(HttpServletRequest request) {
         Long userId = extractUserIdFromRequest(request);
 
-        // 1) 활성 자동입찰 설정 조회 (bidAmount=0, ACTIVE)
-        List<Bid> configs = bidRepository.findActiveAutoBidsByBidderId(userId);
+        // 1) 모든 자동입찰 설정 조회 (bidAmount=0, 활성+종료 모두)
+        List<Bid> configs = bidRepository.findAllAutoBidsByBidderId(userId);
         if (configs.isEmpty()) {
             return ResponseEntity.ok(List.of());
         }
@@ -253,6 +254,10 @@ public class UserController {
                     var auction = b.getAuction();
                     var images = imageMap.getOrDefault(auction.getId(), List.of());
                     String imageUrl = images.isEmpty() ? null : images.get(0).getImageUrl();
+
+                    // 최고 입찰자 여부 확인
+                    boolean isWinning = bidRepository.isHighestBidder(auction.getId(), userId);
+
                     return new AutoBidItemResponse(
                             b.getId(),
                             auction.getId(),
@@ -263,7 +268,8 @@ public class UserController {
                             auction.getBidCount(),
                             auction.getStatus().name(),
                             auction.getCategory().name(),
-                            auction.getEndAt() != null ? auction.getEndAt().toString() : null
+                            auction.getEndAt() != null ? auction.getEndAt().toString() : null,
+                            isWinning
                     );
                 })
                 .toList();

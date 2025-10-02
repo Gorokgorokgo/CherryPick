@@ -100,4 +100,12 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
            "AND b.bidAmount = 0 " +
            "AND b.status = 'ACTIVE'")
     List<Bid> findActiveAutoBidsByBidderId(@Param("bidderId") Long bidderId);
+
+    /**
+     * 사용자의 모든 자동입찰 설정 목록 조회 (활성 + 종료)
+     */
+    @Query("SELECT b FROM Bid b WHERE b.bidder.id = :bidderId " +
+           "AND b.isAutoBid = true " +
+           "AND b.bidAmount = 0")
+    List<Bid> findAllAutoBidsByBidderId(@Param("bidderId") Long bidderId);
 }
