@@ -13,7 +13,17 @@ public enum NotificationType {
      * 낙찰 알림 (구매자용)
      */
     AUCTION_WON("낙찰 알림"),
-    
+
+    /**
+     * 경매 낙찰 (판매자용)
+     */
+    AUCTION_SOLD("경매 낙찰"),
+
+    /**
+     * 경매 유찰
+     */
+    AUCTION_NOT_SOLD("경매 유찰"),
+
     /**
      * 연결 서비스 결제 요청 (판매자용)
      */

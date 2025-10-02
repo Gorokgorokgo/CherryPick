@@ -8,9 +8,13 @@ import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.connection.dto.response.ConnectionResponse;
 import com.cherrypick.app.domain.connection.service.ConnectionServiceImpl;
+import com.cherrypick.app.domain.notification.event.AuctionNotSoldNotificationEvent;
+import com.cherrypick.app.domain.notification.event.AuctionSoldNotificationEvent;
+import com.cherrypick.app.domain.notification.event.AuctionWonNotificationEvent;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +38,7 @@ public class AuctionSchedulerService {
     private final ConnectionServiceImpl connectionService;
     private final WebSocketMessagingService webSocketMessagingService;
     private final BusinessConfig businessConfig;
+    private final ApplicationEventPublisher applicationEventPublisher;
     
     /**
      * 경매 종료 처리 스케줄러
@@ -101,7 +106,7 @@ public class AuctionSchedulerService {
         // 1. 경매 상태를 종료로 변경하고 낙찰자 설정
         auction.endAuction(winningBid.getBidder(), finalPrice);
         auctionRepository.save(auction);
-        
+
         // 2. 연결 서비스 자동 생성 (PENDING 상태)
         try {
             ConnectionResponse connectionResponse = connectionService.createConnection(
@@ -111,19 +116,38 @@ public class AuctionSchedulerService {
         } catch (Exception e) {
             log.error("경매 {} 연결 서비스 생성 실패", auction.getId(), e);
         }
-        
+
         // 3. 실시간 낙찰 알림 전송
-        String winnerNickname = winningBid.getBidder().getNickname() != null ? 
-            winningBid.getBidder().getNickname() : 
+        String winnerNickname = winningBid.getBidder().getNickname() != null ?
+            winningBid.getBidder().getNickname() :
             "익명" + winningBid.getBidder().getId();
-            
+
         webSocketMessagingService.notifyAuctionEnded(
-            auction.getId(), 
-            finalPrice, 
+            auction.getId(),
+            finalPrice,
             winnerNickname
         );
-        
-        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}", 
+
+        // 4. 낙찰 알림 이벤트 발행 (구매자에게)
+        applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
+            this,
+            winningBid.getBidder().getId(),
+            auction.getId(),
+            auction.getTitle(),
+            finalPrice.longValue()
+        ));
+
+        // 5. 판매자에게 낙찰 알림 이벤트 발행
+        applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
+            this,
+            auction.getSeller().getId(),
+            auction.getId(),
+            auction.getTitle(),
+            finalPrice.longValue(),
+            winnerNickname
+        ));
+
+        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}",
                 auction.getId(), finalPrice.intValue(), winnerNickname);
     }
     
@@ -134,14 +158,26 @@ public class AuctionSchedulerService {
         // 경매 상태를 Reserve Price 미달로 변경
         auction.endAuction(null, BigDecimal.ZERO);
         auctionRepository.save(auction);
-        
+
+        // 최고 입찰 조회 (유찰이지만 입찰자가 있을 수 있음)
+        Optional<Bid> highestBidOpt = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auction.getId());
+
         // 실시간 유찰 알림 전송
         webSocketMessagingService.notifyAuctionEnded(
-            auction.getId(), 
-            BigDecimal.ZERO, 
+            auction.getId(),
+            BigDecimal.ZERO,
             "유찰"
         );
-        
+
+        // 유찰 알림 이벤트 발행 (판매자에게)
+        applicationEventPublisher.publishEvent(new AuctionNotSoldNotificationEvent(
+            this,
+            auction.getSeller().getId(),
+            auction.getId(),
+            auction.getTitle(),
+            highestBidOpt.orElse(null)
+        ));
+
         log.info("경매 {} 유찰 처리 완료", auction.getId());
     }
     

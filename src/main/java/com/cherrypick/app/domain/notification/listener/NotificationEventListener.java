@@ -144,6 +144,8 @@ public class NotificationEventListener {
         return switch (type) {
             case NEW_BID -> setting.getBidNotification();
             case AUCTION_WON -> setting.getWinningNotification();
+            case AUCTION_SOLD -> setting.getWinningNotification(); // 판매자용 낙찰 알림
+            case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();
             case NEW_MESSAGE -> setting.getMessageNotification();
