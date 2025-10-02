@@ -38,6 +38,18 @@ public class BidService {
     }
 
     /**
+     * 특정 경매의 입찰 내역 조회 (금액 높은 순)
+     */
+    public Page<BidResponse> getAuctionBids(Long auctionId, Pageable pageable) {
+        Page<Bid> bids = bidRepository.findByAuctionIdAndBidAmountGreaterThanOrderByBidAmountDesc(
+            auctionId,
+            BigDecimal.ZERO,
+            pageable
+        );
+        return bids.map(bid -> BidResponse.from(bid, false));
+    }
+
+    /**
      * 수동 입찰 처리
      */
     @Transactional
