@@ -5,11 +5,14 @@ import com.cherrypick.app.domain.auction.entity.AuctionImage;
 import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 @Getter
@@ -30,8 +33,14 @@ public class AuctionResponse {
     private AuctionStatus status;
     private Integer viewCount;
     private Integer bidCount;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "Asia/Seoul")
     private LocalDateTime startAt;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "Asia/Seoul")
     private LocalDateTime endAt;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "Asia/Seoul")
     private LocalDateTime createdAt;
     
     // 판매자 정보
@@ -52,6 +61,10 @@ public class AuctionResponse {
     // 북마크 정보 (전역/사용자)
     private Long bookmarkCount; // 전체 찜 수
     private boolean isBookmarked; // 현재 사용자 기준 찜 여부
+
+    // 서버 시간 (클라이언트 시계 보정용)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
+    private LocalDateTime serverTime; // 응답 생성 시점의 서버 시간 (UTC)
     
     public static AuctionResponse from(Auction auction, List<AuctionImage> images) {
         AuctionResponse response = new AuctionResponse();
@@ -100,7 +113,10 @@ public class AuctionResponse {
         // 북마크 필드는 컨트롤러/서비스에서 채워짐 (기본값)
         response.setBookmarkCount(null);
         response.setBookmarked(false);
-        
+
+        // 서버 시간 설정 (클라이언트 시계 보정용)
+        response.setServerTime(LocalDateTime.now(java.time.ZoneOffset.UTC));
+
         return response;
     }
 }

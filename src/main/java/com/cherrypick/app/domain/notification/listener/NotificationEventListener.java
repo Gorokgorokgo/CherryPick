@@ -46,14 +46,40 @@ public class NotificationEventListener {
     }
 
     /**
-     * 낙찰 알림 이벤트 처리
+     * 낙찰 알림 이벤트 처리 (구매자용)
      */
     @Async
     @EventListener
     @Transactional
     public void handleAuctionWonNotification(AuctionWonNotificationEvent event) {
-        log.info("낙찰 알림 이벤트 수신. buyerId: {}, auctionId: {}, finalPrice: {}",
+        log.info("낙찰 알림 이벤트 수신 (구매자). buyerId: {}, auctionId: {}, finalPrice: {}",
                 event.getTargetUserId(), event.getResourceId(), event.getFinalPrice());
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 낙찰 알림 이벤트 처리 (판매자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionSoldNotification(AuctionSoldNotificationEvent event) {
+        log.info("경매 낙찰 알림 이벤트 수신 (판매자). sellerId: {}, auctionId: {}, finalPrice: {}, winner: {}",
+                event.getTargetUserId(), event.getResourceId(), event.getFinalPrice(), event.getWinnerNickname());
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 유찰 알림 이벤트 처리 (판매자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionNotSoldNotification(AuctionNotSoldNotificationEvent event) {
+        log.info("경매 유찰 알림 이벤트 수신 (판매자). sellerId: {}, auctionId: {}, hasHighestBid: {}",
+                event.getTargetUserId(), event.getResourceId(), event.getHighestBid() != null);
 
         processNotificationEvent(event);
     }
