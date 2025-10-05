@@ -11,7 +11,10 @@ import com.cherrypick.app.domain.connection.service.ConnectionServiceImpl;
 import com.cherrypick.app.domain.notification.event.AuctionNotSoldNotificationEvent;
 import com.cherrypick.app.domain.notification.event.AuctionSoldNotificationEvent;
 import com.cherrypick.app.domain.notification.event.AuctionWonNotificationEvent;
+import com.cherrypick.app.domain.notification.event.AuctionEndedForParticipantEvent;
+import com.cherrypick.app.domain.notification.event.AuctionNotSoldForHighestBidderEvent;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -23,6 +26,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 경매 스케줄러 서비스
@@ -147,8 +152,12 @@ public class AuctionSchedulerService {
             winnerNickname
         ));
 
-        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}",
-                auction.getId(), finalPrice.intValue(), winnerNickname);
+        // 6. 모든 입찰 참여자에게 경매 종료 알림 발행 (낙찰자 제외)
+        notifyAllParticipants(auction, winningBid.getBidder().getId(), finalPrice.longValue(), true);
+
+        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}, 참여자 {}명에게 알림 전송",
+                auction.getId(), finalPrice.intValue(), winnerNickname,
+                bidRepository.countDistinctBiddersByAuctionId(auction.getId()) - 1);
     }
     
     /**
@@ -178,7 +187,59 @@ public class AuctionSchedulerService {
             highestBidOpt.orElse(null)
         ));
 
-        log.info("경매 {} 유찰 처리 완료", auction.getId());
+        // 최고 입찰자가 있는 경우 유찰 알림 발행
+        if (highestBidOpt.isPresent()) {
+            Bid highestBid = highestBidOpt.get();
+            applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
+                this,
+                highestBid.getBidder().getId(),
+                auction.getId(),
+                auction.getTitle(),
+                highestBid.getBidAmount().longValue()
+            ));
+
+            // 다른 참여자들에게도 유찰 알림
+            notifyAllParticipants(auction, highestBid.getBidder().getId(), 0L, false);
+        }
+
+        log.info("경매 {} 유찰 처리 완료 - 참여자 {}명에게 알림 전송",
+                auction.getId(),
+                highestBidOpt.isPresent() ? bidRepository.countDistinctBiddersByAuctionId(auction.getId()) : 0);
+    }
+
+    /**
+     * 모든 입찰 참여자에게 경매 종료 알림 발행
+     *
+     * @param auction 종료된 경매
+     * @param excludeUserId 제외할 사용자 ID (낙찰자 또는 최고 입찰자)
+     * @param finalPrice 낙찰가 (낙찰 시) 또는 0 (유찰 시)
+     * @param wasSuccessful 낙찰 성공 여부
+     */
+    private void notifyAllParticipants(Auction auction, Long excludeUserId, Long finalPrice, boolean wasSuccessful) {
+        // 해당 경매의 모든 입찰자 조회 (중복 제거)
+        List<Bid> allBids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId());
+
+        // 중복 제거 및 제외 대상 필터링
+        Set<Long> notifiedUserIds = allBids.stream()
+                .map(bid -> bid.getBidder().getId())
+                .filter(userId -> !userId.equals(excludeUserId)) // 낙찰자/최고입찰자 제외
+                .filter(userId -> !userId.equals(auction.getSeller().getId())) // 판매자 제외
+                .collect(Collectors.toSet());
+
+        // 각 참여자에게 알림 이벤트 발행
+        for (Long participantId : notifiedUserIds) {
+            applicationEventPublisher.publishEvent(new AuctionEndedForParticipantEvent(
+                this,
+                participantId,
+                auction.getId(),
+                auction.getTitle(),
+                finalPrice,
+                wasSuccessful
+            ));
+        }
+
+        log.debug("경매 {} 참여자 {}명에게 종료 알림 발행 (낙찰: {})",
+                auction.getId(), notifiedUserIds.size(), wasSuccessful);
     }
     
     /**

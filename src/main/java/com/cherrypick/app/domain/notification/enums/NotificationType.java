@@ -20,9 +20,14 @@ public enum NotificationType {
     AUCTION_SOLD("경매 낙찰"),
 
     /**
-     * 경매 유찰
+     * 경매 유찰 (판매자용)
      */
     AUCTION_NOT_SOLD("경매 유찰"),
+
+    /**
+     * 경매 종료 (일반 참여자용)
+     */
+    AUCTION_ENDED("경매 종료"),
 
     /**
      * 연결 서비스 결제 요청 (판매자용)

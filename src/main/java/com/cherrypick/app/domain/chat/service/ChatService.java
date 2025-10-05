@@ -3,6 +3,7 @@ package com.cherrypick.app.domain.chat.service;
 import com.cherrypick.app.common.exception.EntityNotFoundException;
 import com.cherrypick.app.common.exception.BusinessException;
 import com.cherrypick.app.common.exception.ErrorCode;
+import com.cherrypick.app.domain.chat.dto.request.CreateChatRoomRequest;
 import com.cherrypick.app.domain.chat.dto.request.SendMessageRequest;
 import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
 import com.cherrypick.app.domain.chat.dto.response.ChatRoomListResponse;
@@ -16,6 +17,8 @@ import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.connection.entity.ConnectionService;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -43,10 +46,11 @@ public class ChatService {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final UserRepository userRepository;
+    private final AuctionRepository auctionRepository;
     private final WebSocketMessagingService webSocketMessagingService;
     private final UserOnlineStatusService userOnlineStatusService;
     private final ApplicationEventPublisher eventPublisher;
-    
+
     // 채팅방별 동시성 제어를 위한 Lock 객체 캐시
     private final ConcurrentHashMap<Long, Object> chatRoomLocks = new ConcurrentHashMap<>();
 
@@ -110,34 +114,73 @@ public class ChatService {
     
     /**
      * 경매 낙찰 시 채팅방 생성
-     * 
+     *
      * @param auction 경매 정보
      * @param seller 판매자
      * @param winner 낙찰자
      * @return 생성된 채팅방
      */
     @Transactional
-    public ChatRoom createAuctionChatRoom(com.cherrypick.app.domain.auction.entity.Auction auction, 
+    public ChatRoom createAuctionChatRoom(com.cherrypick.app.domain.auction.entity.Auction auction,
                                          User seller, User winner) {
         // 동일한 경매에 대한 채팅방이 이미 존재하는지 확인
         Optional<ChatRoom> existingRoom = chatRoomRepository
                 .findByAuctionIdAndSellerIdAndBuyerId(auction.getId(), seller.getId(), winner.getId());
-        
+
         if (existingRoom.isPresent()) {
-            log.info("경매 채팅방이 이미 존재합니다. auctionId: {}, sellerId: {}, winnerId: {}", 
+            log.info("경매 채팅방이 이미 존재합니다. auctionId: {}, sellerId: {}, winnerId: {}",
                     auction.getId(), seller.getId(), winner.getId());
             return existingRoom.get();
         }
-        
+
         // 새 채팅방 생성 (경매 기반)
         ChatRoom chatRoom = ChatRoom.createAuctionChatRoom(auction, seller, winner);
-        
+
         ChatRoom savedRoom = chatRoomRepository.save(chatRoom);
-        
-        log.info("경매 채팅방이 생성되었습니다. roomId: {}, auctionId: {}, sellerId: {}, winnerId: {}", 
+
+        log.info("경매 채팅방이 생성되었습니다. roomId: {}, auctionId: {}, sellerId: {}, winnerId: {}",
                 savedRoom.getId(), auction.getId(), seller.getId(), winner.getId());
-        
+
         return savedRoom;
+    }
+
+    /**
+     * 경매 채팅방 생성 (REST API 요청용)
+     *
+     * @param request 채팅방 생성 요청
+     * @param requestUserId 요청한 사용자 ID
+     * @return 채팅방 응답
+     */
+    @Transactional
+    public ChatRoomResponse createAuctionChatRoomFromRequest(CreateChatRoomRequest request, Long requestUserId) {
+        // 경매 조회
+        Auction auction = auctionRepository.findById(request.getAuctionId())
+                .orElseThrow(EntityNotFoundException::auction);
+
+        // 판매자 조회
+        User seller = userRepository.findById(request.getSellerId())
+                .orElseThrow(EntityNotFoundException::user);
+
+        // 구매자 조회
+        User buyer = userRepository.findById(request.getBuyerId())
+                .orElseThrow(EntityNotFoundException::user);
+
+        // 요청자가 판매자 또는 구매자인지 확인
+        if (!requestUserId.equals(seller.getId()) && !requestUserId.equals(buyer.getId())) {
+            log.error("채팅방 생성 권한 없음: requestUserId={}, sellerId={}, buyerId={}",
+                    requestUserId, seller.getId(), buyer.getId());
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        // 채팅방 생성
+        ChatRoom chatRoom = createAuctionChatRoom(auction, seller, buyer);
+
+        // 응답 생성
+        int unreadCount = 0; // 새로 생성된 채팅방이므로 0
+        Long partnerId = requestUserId.equals(seller.getId()) ? buyer.getId() : seller.getId();
+        boolean partnerOnline = userOnlineStatusService.isUserOnline(partnerId);
+
+        return ChatRoomResponse.from(chatRoom, requestUserId, unreadCount, partnerOnline);
     }
     
     /**

@@ -85,6 +85,32 @@ public class NotificationEventListener {
     }
 
     /**
+     * 경매 유찰 알림 이벤트 처리 (최고 입찰자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionNotSoldForHighestBidderNotification(AuctionNotSoldForHighestBidderEvent event) {
+        log.info("경매 유찰 알림 이벤트 수신 (최고 입찰자). bidderId: {}, auctionId: {}, highestBidAmount: {}",
+                event.getTargetUserId(), event.getResourceId(), event.getHighestBidAmount());
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 종료 알림 이벤트 처리 (일반 참여자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionEndedForParticipantNotification(AuctionEndedForParticipantEvent event) {
+        log.info("경매 종료 알림 이벤트 수신 (참여자). participantId: {}, auctionId: {}, wasSuccessful: {}",
+                event.getTargetUserId(), event.getResourceId(), event.isWasSuccessful());
+
+        processNotificationEvent(event);
+    }
+
+    /**
      * 연결 서비스 결제 요청 알림 이벤트 처리
      */
     @Async
@@ -172,6 +198,7 @@ public class NotificationEventListener {
             case AUCTION_WON -> setting.getWinningNotification();
             case AUCTION_SOLD -> setting.getWinningNotification(); // 판매자용 낙찰 알림
             case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림
+            case AUCTION_ENDED -> setting.getBidNotification(); // 경매 종료 알림 (일반 참여자)
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();
             case NEW_MESSAGE -> setting.getMessageNotification();

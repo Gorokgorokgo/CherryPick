@@ -108,4 +108,15 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
            "AND b.isAutoBid = true " +
            "AND b.bidAmount = 0")
     List<Bid> findAllAutoBidsByBidderId(@Param("bidderId") Long bidderId);
+
+    /**
+     * 경매의 고유 입찰자 수 카운트
+     */
+    @Query("SELECT COUNT(DISTINCT b.bidder.id) FROM Bid b WHERE b.auction.id = :auctionId AND b.bidAmount > 0")
+    long countDistinctBiddersByAuctionId(@Param("auctionId") Long auctionId);
+
+    /**
+     * 경매의 모든 입찰 내역 조회 (금액 높은 순)
+     */
+    List<Bid> findByAuctionIdOrderByBidAmountDesc(Long auctionId);
 }

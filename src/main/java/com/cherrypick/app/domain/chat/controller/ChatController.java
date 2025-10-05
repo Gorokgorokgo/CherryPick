@@ -1,5 +1,6 @@
 package com.cherrypick.app.domain.chat.controller;
 
+import com.cherrypick.app.domain.chat.dto.request.CreateChatRoomRequest;
 import com.cherrypick.app.domain.chat.dto.request.SendMessageRequest;
 import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
 import com.cherrypick.app.domain.chat.dto.response.ChatRoomListResponse;
@@ -40,8 +41,31 @@ public class ChatController {
     private final UserService userService;
 
     /**
+     * 채팅방 생성 (경매 낙찰 후)
+     *
+     * @param request 채팅방 생성 요청
+     * @param userDetails 인증된 사용자 정보
+     * @return 생성된 채팅방 정보
+     */
+    @PostMapping("/rooms")
+    @Operation(summary = "채팅방 생성", description = "경매 낙찰 후 판매자와 낙찰자 간 채팅방을 생성합니다")
+    public ResponseEntity<ChatRoomResponse> createChatRoom(
+            @Valid @RequestBody CreateChatRoomRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+
+        log.info("채팅방 생성 요청: auctionId={}, sellerId={}, buyerId={}, requestUserId={}",
+                request.getAuctionId(), request.getSellerId(), request.getBuyerId(), userId);
+
+        ChatRoomResponse chatRoom = chatService.createAuctionChatRoomFromRequest(request, userId);
+
+        return ResponseEntity.ok(chatRoom);
+    }
+
+    /**
      * 내 채팅방 목록 조회
-     * 
+     *
      * @param userDetails 인증된 사용자 정보
      * @param status 채팅방 상태 필터 (optional): active, inactive, closed
      * @return 채팅방 목록
