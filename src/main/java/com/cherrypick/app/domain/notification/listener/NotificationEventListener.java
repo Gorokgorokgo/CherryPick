@@ -235,24 +235,41 @@ public class NotificationEventListener {
      */
     private void sendWebSocketNotification(Long userId, NotificationEvent event) {
         try {
-            String notificationMessage = String.format("[%s] %s: %s",
-                    event.getNotificationType().getDescription(), event.getTitle(), event.getMessage());
-
-            AuctionUpdateMessage wsMessage = AuctionUpdateMessage.builder()
-                    .messageType(AuctionUpdateMessage.MessageType.NEW_BID) // 임시로 NEW_BID 사용
-                    .auctionId(event.getResourceId())
-                    .message(notificationMessage)
-                    .timestamp(LocalDateTime.now())
+            // 프론트엔드 NotificationMessage 형식에 맞춰 JSON 메시지 생성
+            NotificationWebSocketMessage wsNotification = NotificationWebSocketMessage.builder()
+                    .id(String.valueOf(System.currentTimeMillis())) // 임시 ID (실제로는 NotificationHistory의 ID 사용 가능)
+                    .type(event.getNotificationType().name())
+                    .title(event.getTitle())
+                    .message(event.getMessage())
+                    .timestamp(System.currentTimeMillis())
+                    .isRead(false)
+                    .resourceId(event.getResourceId())
                     .build();
 
-            webSocketMessagingService.sendToUser(userId, wsMessage);
+            webSocketMessagingService.sendNotificationToUser(userId, wsNotification);
 
-            log.debug("WebSocket 실시간 알림 발송 성공. userId: {}, type: {}", userId, event.getNotificationType());
+            log.info("✅ WebSocket 실시간 알림 발송 성공. userId: {}, type: {}, resourceId: {}",
+                    userId, event.getNotificationType(), event.getResourceId());
 
         } catch (Exception e) {
-            log.error("WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}",
-                    userId, event.getNotificationType(), e.getMessage());
+            log.error("❌ WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}",
+                    userId, event.getNotificationType(), e.getMessage(), e);
         }
+    }
+
+    /**
+     * WebSocket 알림 메시지 DTO (프론트엔드 NotificationMessage와 동일 구조)
+     */
+    @lombok.Builder
+    @lombok.Getter
+    private static class NotificationWebSocketMessage {
+        private String id;
+        private String type;
+        private String title;
+        private String message;
+        private long timestamp;
+        private boolean isRead;
+        private Long resourceId;
     }
 
     /**
