@@ -8,6 +8,7 @@ import com.cherrypick.app.domain.auth.dto.request.VerifyCodeRequest;
 import com.cherrypick.app.domain.auth.dto.request.PhoneLoginRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
 import com.cherrypick.app.domain.user.entity.User;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 @Transactional
 public class AuthService {
@@ -128,12 +130,8 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(savedUser.getEmail(), savedUser.getId());
-        
-        System.out.println("========================================");
-        System.out.println("🎉 회원가입 완료 - JWT 토큰 발급");
-        System.out.println("사용자: " + savedUser.getNickname() + " (" + savedUser.getEmail() + ")");
-        System.out.println("JWT Token: " + token);
-        System.out.println("========================================");
+
+        log.info("회원가입 완료 - 사용자: {} ({})", savedUser.getNickname(), savedUser.getEmail());
 
         return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname(), "회원가입 성공");
     }
@@ -155,11 +153,7 @@ public class AuthService {
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
         
-        System.out.println("========================================");
-        System.out.println("🔑 로그인 성공 - JWT 토큰 발급");
-        System.out.println("사용자: " + user.getNickname() + " (" + user.getEmail() + ")");
-        System.out.println("JWT Token: " + token);
-        System.out.println("========================================");
+        log.info("로그인 성공 - 사용자: {} ({})", user.getNickname(), user.getEmail());
 
         return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
     }
@@ -184,11 +178,7 @@ public class AuthService {
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
         
-        System.out.println("========================================");
-        System.out.println("📱 전화번호 로그인 성공 - JWT 토큰 발급");
-        System.out.println("사용자: " + user.getNickname() + " (" + user.getPhoneNumber() + ")");
-        System.out.println("JWT Token: " + token);
-        System.out.println("========================================");
+        log.info("전화번호 로그인 성공 - 사용자: {} ({})", user.getNickname(), user.getPhoneNumber());
 
         return new AuthResponse(token, user.getId(), user.getPhoneNumber(), user.getNickname());
     }
