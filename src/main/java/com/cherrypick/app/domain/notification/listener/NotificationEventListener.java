@@ -162,8 +162,13 @@ public class NotificationEventListener {
 
             // 알림 설정 확인
             NotificationSetting setting = getOrCreateNotificationSetting(user);
-            if (!isNotificationEnabled(setting, event.getNotificationType())) {
-                log.info("알림이 비활성화되어 있습니다. userId: {}, type: {}",
+            boolean isEnabled = isNotificationEnabled(setting, event.getNotificationType());
+            log.info("🔔 알림 설정 확인. userId: {}, type: {}, enabled: {}, bidNotification: {}, winningNotification: {}",
+                    user.getId(), event.getNotificationType(), isEnabled,
+                    setting.getBidNotification(), setting.getWinningNotification());
+
+            if (!isEnabled) {
+                log.warn("❌ 알림이 비활성화되어 있습니다. userId: {}, type: {}",
                         user.getId(), event.getNotificationType());
                 return;
             }
@@ -195,8 +200,8 @@ public class NotificationEventListener {
     private boolean isNotificationEnabled(NotificationSetting setting, com.cherrypick.app.domain.notification.enums.NotificationType type) {
         return switch (type) {
             case NEW_BID -> setting.getBidNotification();
-            case AUCTION_WON -> setting.getWinningNotification();
-            case AUCTION_SOLD -> setting.getWinningNotification(); // 판매자용 낙찰 알림
+            case AUCTION_WON -> setting.getWinningNotification(); // 구매자용 낙찰 알림
+            case AUCTION_SOLD -> setting.getBidNotification(); // 판매자용 낙찰 알림 (입찰 관련 알림으로 처리)
             case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림
             case AUCTION_ENDED -> setting.getBidNotification(); // 경매 종료 알림 (일반 참여자)
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
