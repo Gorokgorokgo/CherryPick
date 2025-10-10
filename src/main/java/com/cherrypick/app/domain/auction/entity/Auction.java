@@ -258,4 +258,21 @@ public class Auction extends BaseEntity {
         this.currentPrice = finalPrice;
         this.status = finalPrice.compareTo(BigDecimal.ZERO) > 0 ? AuctionStatus.ENDED : AuctionStatus.ENDED;
     }
+
+    /**
+     * 경매 종료 시간 조정 (개발/테스트용)
+     * @param minutes 조정할 분 (양수: 시간 추가, 음수: 시간 감소)
+     */
+    public void adjustEndTime(int minutes) {
+        this.endAt = this.endAt.plusMinutes(minutes);
+    }
+
+    /**
+     * 종료된 경매를 재활성화 (개발/테스트용)
+     * @param hours 재활성화 후 진행할 시간 (시간)
+     */
+    public void reactivateAuction(int hours) {
+        this.status = AuctionStatus.ACTIVE;
+        this.endAt = LocalDateTime.now().plusHours(hours);
+    }
 }

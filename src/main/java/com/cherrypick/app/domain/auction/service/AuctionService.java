@@ -18,12 +18,16 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.cherrypick.app.domain.notification.event.AuctionWonNotificationEvent;
+import com.cherrypick.app.domain.notification.event.AuctionSoldNotificationEvent;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -43,7 +47,8 @@ public class AuctionService {
     private final UserRepository userRepository;
     private final com.cherrypick.app.domain.chat.service.ChatService chatService;
     private final com.cherrypick.app.domain.bid.repository.BidRepository bidRepository;
-    
+    private final ApplicationEventPublisher applicationEventPublisher;
+
     @PersistenceContext
     private EntityManager entityManager;
     
@@ -396,23 +401,91 @@ public class AuctionService {
     }
     
     /**
-     * 경매 강제 종료
+     * 경매 시간 조정 (개발/테스트용)
+     * @param auctionId 경매 ID
+     * @param minutes 조정할 분 (양수: 시간 추가, 음수: 시간 감소)
+     * @return 조정된 경매 정보
      */
     @Transactional
-    public AuctionResponse forceEndAuction(Long auctionId) {
-        log.info("경매 ID {} 강제 종료 요청됨", auctionId);
-        
+    public AuctionResponse adjustAuctionTime(Long auctionId, int minutes) {
+        log.info("경매 ID {} 시간 조정 요청: {}분", auctionId, minutes);
+
         // 경매 조회
         Auction auction = auctionRepository.findById(auctionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
-        
+
+        // 시간 조정
+        auction.adjustEndTime(minutes);
+        Auction savedAuction = auctionRepository.save(auction);
+
+        log.info("경매 시간 조정 완료: ID={}, 새 종료시간={}", auctionId, savedAuction.getEndAt());
+
+        // 이미지 정보와 함께 반환
+        List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+        return AuctionResponse.from(savedAuction, images);
+    }
+
+    /**
+     * 종료된 경매 재활성화 (개발/테스트용 또는 재등록 API)
+     */
+    @Transactional
+    public AuctionResponse reactivateAuction(Long auctionId, int hours) {
+        log.info("경매 ID {} 재활성화 요청: {}시간", auctionId, hours);
+
+        // 경매 조회
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
+
+        // 재활성화
+        auction.reactivateAuction(hours);
+        Auction savedAuction = auctionRepository.save(auction);
+
+        log.info("경매 재활성화 완료: ID={}, 새 종료시간={}, 상태={}", auctionId, savedAuction.getEndAt(), savedAuction.getStatus());
+
+        // 이미지 정보와 함께 반환
+        List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+        return AuctionResponse.from(savedAuction, images);
+    }
+
+    /**
+     * 경매 강제 종료
+     */
+    /**
+     * 개발자 옵션: 모든 경매 조회 (상태 무관)
+     */
+    public Page<AuctionResponse> getAllAuctionsForDev(Pageable pageable) {
+        log.info("개발자 옵션: 모든 경매 조회 - page={}, size={}", pageable.getPageNumber(), pageable.getPageSize());
+
+        // 상태 필터 없이 모든 경매 조회 (최신순 정렬)
+        Pageable sortedPageable = PageRequest.of(
+            pageable.getPageNumber(),
+            pageable.getPageSize(),
+            Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
+        Page<Auction> auctions = auctionRepository.findAll(sortedPageable);
+
+        return auctions.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            return AuctionResponse.from(auction, images);
+        });
+    }
+
+    @Transactional
+    public AuctionResponse forceEndAuction(Long auctionId) {
+        log.info("경매 ID {} 강제 종료 요청됨", auctionId);
+
+        // 경매 조회
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
+
         // 이미 종료된 경매인지 확인
         if (auction.isEnded()) {
             log.warn("이미 종료된 경매입니다: ID={}", auctionId);
             List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
             return AuctionResponse.from(auction, images);
         }
-        
+
         // 최고 입찰자를 낙찰자로 설정
         log.info("최고 입찰자 조회 시작: 경매ID={}", auctionId);
         Optional<com.cherrypick.app.domain.bid.entity.Bid> highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
@@ -441,19 +514,49 @@ public class AuctionService {
         
         log.info("경매 강제 종료 완료: ID={}, 상태={}", auctionId, savedAuction.getStatus());
         
-        // 낙찰자가 있으면 채팅방 자동 생성
+        // 낙찰자가 있으면 채팅방 자동 생성 및 알림 발송
         if (savedAuction.getWinner() != null) {
             try {
                 chatService.createAuctionChatRoom(savedAuction, savedAuction.getSeller(), savedAuction.getWinner());
-                log.info("경매 종료 후 채팅방 생성 완료: 경매ID={}, 판매자={}, 낙찰자={}", 
+                log.info("경매 종료 후 채팅방 생성 완료: 경매ID={}, 판매자={}, 낙찰자={}",
                         savedAuction.getId(), savedAuction.getSeller().getId(), savedAuction.getWinner().getId());
             } catch (Exception e) {
                 log.error("채팅방 생성 실패: 경매ID={}, 오류={}", savedAuction.getId(), e.getMessage(), e);
             }
+
+            // 낙찰 알림 발송 (구매자에게)
+            String winnerNickname = savedAuction.getWinner().getNickname() != null ?
+                    savedAuction.getWinner().getNickname() :
+                    "익명" + savedAuction.getWinner().getId();
+
+            Long finalPrice = savedAuction.getCurrentPrice().longValue();
+
+            applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
+                    this,
+                    savedAuction.getWinner().getId(),
+                    savedAuction.getId(),
+                    savedAuction.getTitle(),
+                    finalPrice
+            ));
+            log.info("✅ 낙찰 알림 이벤트 발행 완료 (구매자): userId={}, auctionId={}, finalPrice={}",
+                    savedAuction.getWinner().getId(), savedAuction.getId(), finalPrice);
+
+            // 판매자에게 낙찰 알림 발송
+            applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
+                    this,
+                    savedAuction.getSeller().getId(),
+                    savedAuction.getId(),
+                    savedAuction.getTitle(),
+                    finalPrice,
+                    winnerNickname
+            ));
+            log.info("✅ 낙찰 알림 이벤트 발행 완료 (판매자): userId={}, auctionId={}, finalPrice={}",
+                    savedAuction.getSeller().getId(), savedAuction.getId(), finalPrice);
+
         } else {
             log.info("낙찰자가 없어 채팅방을 생성하지 않습니다: 경매ID={}", savedAuction.getId());
         }
-        
+
         List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(savedAuction.getId());
         return AuctionResponse.from(savedAuction, images);
     }
