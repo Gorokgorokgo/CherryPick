@@ -11,14 +11,16 @@ public class AuctionWonNotificationEvent extends NotificationEvent {
 
     private final String auctionTitle;
     private final Long finalPrice;
+    private final Long chatRoomId;
 
     public AuctionWonNotificationEvent(Object source, Long buyerId, Long auctionId,
-                                     String auctionTitle, Long finalPrice) {
+                                     String auctionTitle, Long finalPrice, Long chatRoomId) {
         super(source, NotificationType.AUCTION_WON, buyerId,
               "낙찰되었습니다! 🎉",
-              String.format("'%s' 경매에서 %,d원에 낙찰되었습니다. 판매자의 연결 서비스 결제를 기다려주세요.", auctionTitle, finalPrice),
+              String.format("'%s' 경매에서 %,d원에 낙찰되었습니다. 판매자와 채팅을 시작해주세요.", auctionTitle, finalPrice),
               auctionId);
         this.auctionTitle = auctionTitle;
         this.finalPrice = finalPrice;
+        this.chatRoomId = chatRoomId;
     }
 }

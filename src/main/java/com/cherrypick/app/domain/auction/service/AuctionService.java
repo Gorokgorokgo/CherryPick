@@ -516,10 +516,13 @@ public class AuctionService {
         
         // 낙찰자가 있으면 채팅방 자동 생성 및 알림 발송
         if (savedAuction.getWinner() != null) {
+            Long chatRoomId = null;
             try {
-                chatService.createAuctionChatRoom(savedAuction, savedAuction.getSeller(), savedAuction.getWinner());
-                log.info("경매 종료 후 채팅방 생성 완료: 경매ID={}, 판매자={}, 낙찰자={}",
-                        savedAuction.getId(), savedAuction.getSeller().getId(), savedAuction.getWinner().getId());
+                com.cherrypick.app.domain.chat.entity.ChatRoom chatRoom = chatService.createAuctionChatRoom(
+                        savedAuction, savedAuction.getSeller(), savedAuction.getWinner());
+                chatRoomId = chatRoom.getId();
+                log.info("경매 종료 후 채팅방 생성 완료: 경매ID={}, 판매자={}, 낙찰자={}, 채팅방ID={}",
+                        savedAuction.getId(), savedAuction.getSeller().getId(), savedAuction.getWinner().getId(), chatRoomId);
             } catch (Exception e) {
                 log.error("채팅방 생성 실패: 경매ID={}, 오류={}", savedAuction.getId(), e.getMessage(), e);
             }
@@ -536,10 +539,11 @@ public class AuctionService {
                     savedAuction.getWinner().getId(),
                     savedAuction.getId(),
                     savedAuction.getTitle(),
-                    finalPrice
+                    finalPrice,
+                    chatRoomId
             ));
-            log.info("✅ 낙찰 알림 이벤트 발행 완료 (구매자): userId={}, auctionId={}, finalPrice={}",
-                    savedAuction.getWinner().getId(), savedAuction.getId(), finalPrice);
+            log.info("✅ 낙찰 알림 이벤트 발행 완료 (구매자): userId={}, auctionId={}, finalPrice={}, chatRoomId={}",
+                    savedAuction.getWinner().getId(), savedAuction.getId(), finalPrice, chatRoomId);
 
             // 판매자에게 낙찰 알림 발송
             applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
@@ -548,10 +552,11 @@ public class AuctionService {
                     savedAuction.getId(),
                     savedAuction.getTitle(),
                     finalPrice,
-                    winnerNickname
+                    winnerNickname,
+                    chatRoomId
             ));
-            log.info("✅ 낙찰 알림 이벤트 발행 완료 (판매자): userId={}, auctionId={}, finalPrice={}",
-                    savedAuction.getSeller().getId(), savedAuction.getId(), finalPrice);
+            log.info("✅ 낙찰 알림 이벤트 발행 완료 (판매자): userId={}, auctionId={}, finalPrice={}, chatRoomId={}",
+                    savedAuction.getSeller().getId(), savedAuction.getId(), finalPrice, chatRoomId);
 
         } else {
             log.info("낙찰자가 없어 채팅방을 생성하지 않습니다: 경매ID={}", savedAuction.getId());

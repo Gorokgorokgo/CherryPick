@@ -139,7 +139,8 @@ public class AuctionSchedulerService {
             winningBid.getBidder().getId(),
             auction.getId(),
             auction.getTitle(),
-            finalPrice.longValue()
+            finalPrice.longValue(),
+            null  // chatRoomId는 자동 스케줄러에서는 생성하지 않음
         ));
 
         // 5. 판매자에게 낙찰 알림 이벤트 발행
@@ -149,7 +150,8 @@ public class AuctionSchedulerService {
             auction.getId(),
             auction.getTitle(),
             finalPrice.longValue(),
-            winnerNickname
+            winnerNickname,
+            null  // chatRoomId는 자동 스케줄러에서는 생성하지 않음
         ));
 
         // 6. 모든 입찰 참여자에게 경매 종료 알림 발행 (낙찰자 제외)

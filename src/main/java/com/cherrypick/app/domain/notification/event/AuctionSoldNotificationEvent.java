@@ -12,9 +12,11 @@ public class AuctionSoldNotificationEvent extends NotificationEvent {
     private final String auctionTitle;
     private final Long finalPrice;
     private final String winnerNickname;
+    private final Long chatRoomId;
 
     public AuctionSoldNotificationEvent(Object source, Long sellerId, Long auctionId,
-                                        String auctionTitle, Long finalPrice, String winnerNickname) {
+                                        String auctionTitle, Long finalPrice, String winnerNickname,
+                                        Long chatRoomId) {
         super(source, NotificationType.AUCTION_SOLD, sellerId,
               "축하합니다! 경매가 낙찰되었습니다! 🎉",
               String.format("'%s' 경매가 %,d원에 낙찰되었습니다. 낙찰자(%s)님과의 거래를 시작해주세요.",
@@ -23,5 +25,6 @@ public class AuctionSoldNotificationEvent extends NotificationEvent {
         this.auctionTitle = auctionTitle;
         this.finalPrice = finalPrice;
         this.winnerNickname = winnerNickname;
+        this.chatRoomId = chatRoomId;
     }
 }

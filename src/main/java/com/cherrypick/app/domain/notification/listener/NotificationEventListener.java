@@ -240,6 +240,14 @@ public class NotificationEventListener {
      */
     private void sendWebSocketNotification(Long userId, NotificationEvent event) {
         try {
+            // chatRoomId 추출 (경매 낙찰 알림인 경우)
+            Long chatRoomId = null;
+            if (event instanceof AuctionSoldNotificationEvent) {
+                chatRoomId = ((AuctionSoldNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof AuctionWonNotificationEvent) {
+                chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
+            }
+
             // 프론트엔드 NotificationMessage 형식에 맞춰 JSON 메시지 생성
             NotificationWebSocketMessage wsNotification = NotificationWebSocketMessage.builder()
                     .id(String.valueOf(System.currentTimeMillis())) // 임시 ID (실제로는 NotificationHistory의 ID 사용 가능)
@@ -249,12 +257,13 @@ public class NotificationEventListener {
                     .timestamp(System.currentTimeMillis())
                     .isRead(false)
                     .resourceId(event.getResourceId())
+                    .chatRoomId(chatRoomId)
                     .build();
 
             webSocketMessagingService.sendNotificationToUser(userId, wsNotification);
 
-            log.info("✅ WebSocket 실시간 알림 발송 성공. userId: {}, type: {}, resourceId: {}",
-                    userId, event.getNotificationType(), event.getResourceId());
+            log.info("✅ WebSocket 실시간 알림 발송 성공. userId: {}, type: {}, resourceId: {}, chatRoomId: {}",
+                    userId, event.getNotificationType(), event.getResourceId(), chatRoomId);
 
         } catch (Exception e) {
             log.error("❌ WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}",
@@ -275,6 +284,7 @@ public class NotificationEventListener {
         private long timestamp;
         private boolean isRead;
         private Long resourceId;
+        private Long chatRoomId;
     }
 
     /**
