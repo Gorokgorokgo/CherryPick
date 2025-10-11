@@ -46,14 +46,66 @@ public class NotificationEventListener {
     }
 
     /**
-     * 낙찰 알림 이벤트 처리
+     * 낙찰 알림 이벤트 처리 (구매자용)
      */
     @Async
     @EventListener
     @Transactional
     public void handleAuctionWonNotification(AuctionWonNotificationEvent event) {
-        log.info("낙찰 알림 이벤트 수신. buyerId: {}, auctionId: {}, finalPrice: {}",
+        log.info("낙찰 알림 이벤트 수신 (구매자). buyerId: {}, auctionId: {}, finalPrice: {}",
                 event.getTargetUserId(), event.getResourceId(), event.getFinalPrice());
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 낙찰 알림 이벤트 처리 (판매자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionSoldNotification(AuctionSoldNotificationEvent event) {
+        log.info("경매 낙찰 알림 이벤트 수신 (판매자). sellerId: {}, auctionId: {}, finalPrice: {}, winner: {}",
+                event.getTargetUserId(), event.getResourceId(), event.getFinalPrice(), event.getWinnerNickname());
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 유찰 알림 이벤트 처리 (판매자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionNotSoldNotification(AuctionNotSoldNotificationEvent event) {
+        log.info("경매 유찰 알림 이벤트 수신 (판매자). sellerId: {}, auctionId: {}, hasHighestBid: {}",
+                event.getTargetUserId(), event.getResourceId(), event.getHighestBid() != null);
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 유찰 알림 이벤트 처리 (최고 입찰자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionNotSoldForHighestBidderNotification(AuctionNotSoldForHighestBidderEvent event) {
+        log.info("경매 유찰 알림 이벤트 수신 (최고 입찰자). bidderId: {}, auctionId: {}, highestBidAmount: {}",
+                event.getTargetUserId(), event.getResourceId(), event.getHighestBidAmount());
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 종료 알림 이벤트 처리 (일반 참여자용)
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionEndedForParticipantNotification(AuctionEndedForParticipantEvent event) {
+        log.info("경매 종료 알림 이벤트 수신 (참여자). participantId: {}, auctionId: {}, wasSuccessful: {}",
+                event.getTargetUserId(), event.getResourceId(), event.isWasSuccessful());
 
         processNotificationEvent(event);
     }
@@ -110,8 +162,13 @@ public class NotificationEventListener {
 
             // 알림 설정 확인
             NotificationSetting setting = getOrCreateNotificationSetting(user);
-            if (!isNotificationEnabled(setting, event.getNotificationType())) {
-                log.info("알림이 비활성화되어 있습니다. userId: {}, type: {}",
+            boolean isEnabled = isNotificationEnabled(setting, event.getNotificationType());
+            log.info("🔔 알림 설정 확인. userId: {}, type: {}, enabled: {}, bidNotification: {}, winningNotification: {}",
+                    user.getId(), event.getNotificationType(), isEnabled,
+                    setting.getBidNotification(), setting.getWinningNotification());
+
+            if (!isEnabled) {
+                log.warn("❌ 알림이 비활성화되어 있습니다. userId: {}, type: {}",
                         user.getId(), event.getNotificationType());
                 return;
             }
@@ -143,7 +200,10 @@ public class NotificationEventListener {
     private boolean isNotificationEnabled(NotificationSetting setting, com.cherrypick.app.domain.notification.enums.NotificationType type) {
         return switch (type) {
             case NEW_BID -> setting.getBidNotification();
-            case AUCTION_WON -> setting.getWinningNotification();
+            case AUCTION_WON -> setting.getWinningNotification(); // 구매자용 낙찰 알림
+            case AUCTION_SOLD -> setting.getBidNotification(); // 판매자용 낙찰 알림 (입찰 관련 알림으로 처리)
+            case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림
+            case AUCTION_ENDED -> setting.getBidNotification(); // 경매 종료 알림 (일반 참여자)
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();
             case NEW_MESSAGE -> setting.getMessageNotification();
@@ -180,24 +240,51 @@ public class NotificationEventListener {
      */
     private void sendWebSocketNotification(Long userId, NotificationEvent event) {
         try {
-            String notificationMessage = String.format("[%s] %s: %s",
-                    event.getNotificationType().getDescription(), event.getTitle(), event.getMessage());
+            // chatRoomId 추출 (경매 낙찰 알림인 경우)
+            Long chatRoomId = null;
+            if (event instanceof AuctionSoldNotificationEvent) {
+                chatRoomId = ((AuctionSoldNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof AuctionWonNotificationEvent) {
+                chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
+            }
 
-            AuctionUpdateMessage wsMessage = AuctionUpdateMessage.builder()
-                    .messageType(AuctionUpdateMessage.MessageType.NEW_BID) // 임시로 NEW_BID 사용
-                    .auctionId(event.getResourceId())
-                    .message(notificationMessage)
-                    .timestamp(LocalDateTime.now())
+            // 프론트엔드 NotificationMessage 형식에 맞춰 JSON 메시지 생성
+            NotificationWebSocketMessage wsNotification = NotificationWebSocketMessage.builder()
+                    .id(String.valueOf(System.currentTimeMillis())) // 임시 ID (실제로는 NotificationHistory의 ID 사용 가능)
+                    .type(event.getNotificationType().name())
+                    .title(event.getTitle())
+                    .message(event.getMessage())
+                    .timestamp(System.currentTimeMillis())
+                    .isRead(false)
+                    .resourceId(event.getResourceId())
+                    .chatRoomId(chatRoomId)
                     .build();
 
-            webSocketMessagingService.sendToUser(userId, wsMessage);
+            webSocketMessagingService.sendNotificationToUser(userId, wsNotification);
 
-            log.debug("WebSocket 실시간 알림 발송 성공. userId: {}, type: {}", userId, event.getNotificationType());
+            log.info("✅ WebSocket 실시간 알림 발송 성공. userId: {}, type: {}, resourceId: {}, chatRoomId: {}",
+                    userId, event.getNotificationType(), event.getResourceId(), chatRoomId);
 
         } catch (Exception e) {
-            log.error("WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}",
-                    userId, event.getNotificationType(), e.getMessage());
+            log.error("❌ WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}",
+                    userId, event.getNotificationType(), e.getMessage(), e);
         }
+    }
+
+    /**
+     * WebSocket 알림 메시지 DTO (프론트엔드 NotificationMessage와 동일 구조)
+     */
+    @lombok.Builder
+    @lombok.Getter
+    private static class NotificationWebSocketMessage {
+        private String id;
+        private String type;
+        private String title;
+        private String message;
+        private long timestamp;
+        private boolean isRead;
+        private Long resourceId;
+        private Long chatRoomId;
     }
 
     /**

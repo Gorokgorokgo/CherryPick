@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -110,5 +112,49 @@ public class AuctionBookmarkService {
                 "isBookmarked", isBookmarked,
                 "bookmarkCount", bookmarkCount
         );
+    }
+
+    /**
+     * 여러 경매의 북마크 정보를 배치로 조회
+     */
+    public Map<String, Object> getBatchBookmarkInfo(List<Long> auctionIds, Long userId) {
+        // 사용자 조회
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 유효한 경매만 필터링
+        List<Auction> auctions = auctionRepository.findAllById(auctionIds);
+        Map<Long, Auction> auctionMap = auctions.stream()
+                .collect(Collectors.toMap(Auction::getId, auction -> auction));
+
+        // 배치로 북마크 상태 조회
+        List<AuctionBookmark> userBookmarks = bookmarkRepository.findByUserAndAuctionIn(user, auctions);
+        Map<Long, Boolean> bookmarkStatusMap = userBookmarks.stream()
+                .collect(Collectors.toMap(
+                        bookmark -> bookmark.getAuction().getId(),
+                        bookmark -> true
+                ));
+
+        // 배치로 북마크 수 조회
+        Map<Long, Long> bookmarkCountMap = new HashMap<>();
+        for (Auction auction : auctions) {
+            long count = bookmarkRepository.countByAuction(auction);
+            bookmarkCountMap.put(auction.getId(), count);
+        }
+
+        // 결과 조합
+        Map<String, Object> result = new HashMap<>();
+        for (Long auctionId : auctionIds) {
+            if (auctionMap.containsKey(auctionId)) {
+                Map<String, Object> info = Map.of(
+                        "isBookmarked", bookmarkStatusMap.getOrDefault(auctionId, false),
+                        "bookmarkCount", bookmarkCountMap.getOrDefault(auctionId, 0L)
+                );
+                result.put(auctionId.toString(), info);
+            }
+        }
+
+        log.info("배치 북마크 정보 조회: 사용자 ID = {}, 경매 수 = {}", userId, result.size());
+        return result;
     }
 }

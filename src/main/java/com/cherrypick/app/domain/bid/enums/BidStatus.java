@@ -1,8 +1,7 @@
 package com.cherrypick.app.domain.bid.enums;
 
 public enum BidStatus {
-    ACTIVE,     // 활성 상태
-    CANCELLED,  // 취소됨
-    FAILED,     // 실패 (시스템 오류 등)
-    COMPLETED   // 완료됨 (낙찰 또는 경매 종료)
+    ACTIVE,      // 활성 입찰
+    CANCELLED,   // 취소됨
+    OUTBID       // 다른 사람에게 밀림
 }

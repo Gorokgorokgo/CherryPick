@@ -78,10 +78,6 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
-    // Run integration tests that verify end-to-end bidding and auto-bid behavior
-    filter {
-        includeTestsMatching 'com.cherrypick.app.domain.bid.service.*IntegrationTest*'
-    }
 }
 
 // Standard JVM 설정

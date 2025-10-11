@@ -54,18 +54,35 @@ public class WebSocketMessagingService {
     
     /**
      * 특정 사용자에게만 개인 메시지 전송
-     * 
+     *
      * @param userId 사용자 ID
      * @param message 전송할 메시지
      */
     public void sendToUser(Long userId, AuctionUpdateMessage message) {
         String destination = "/queue/users/" + userId;
-        
+
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, message);
             log.debug("개인 WebSocket 메시지 전송 성공: {} -> {}", destination, message.getMessageType());
         } catch (Exception e) {
             log.error("개인 WebSocket 메시지 전송 실패: {} -> {}", destination, message.getMessageType(), e);
+        }
+    }
+
+    /**
+     * 특정 사용자에게 알림 전송 (알림 전용 엔드포인트)
+     *
+     * @param userId 사용자 ID
+     * @param notification 알림 메시지
+     */
+    public void sendNotificationToUser(Long userId, Object notification) {
+        String destination = "/topic/notifications/" + userId;
+
+        try {
+            webSocketHandler.sendToAuctionSubscribers(destination, notification);
+            log.info("✅ 실시간 알림 전송 성공: userId={}, destination={}", userId, destination);
+        } catch (Exception e) {
+            log.error("❌ 실시간 알림 전송 실패: userId={}, destination={}", userId, destination, e);
         }
     }
     

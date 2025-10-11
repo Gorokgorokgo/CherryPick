@@ -7,6 +7,8 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
+import java.time.ZoneId;
 
 /**
  * 채팅 메시지 응답 DTO
@@ -38,10 +40,10 @@ public class ChatMessageResponse {
     private boolean isRead;
 
     @Schema(description = "읽은 시간")
-    private LocalDateTime readAt;
+    private ZonedDateTime readAt;
 
     @Schema(description = "작성 시간")
-    private LocalDateTime createdAt;
+    private ZonedDateTime createdAt;
 
     @Schema(description = "답장할 메시지 ID")
     private Long replyToMessageId;
@@ -56,6 +58,9 @@ public class ChatMessageResponse {
      * @return ChatMessageResponse
      */
     public static ChatMessageResponse from(ChatMessage message) {
+        // Asia/Seoul timezone으로 명시적 변환
+        ZoneId koreaZone = ZoneId.of("Asia/Seoul");
+
         return ChatMessageResponse.builder()
                 .id(message.getId())
                 .chatRoomId(message.getChatRoom().getId())
@@ -64,8 +69,8 @@ public class ChatMessageResponse {
                 .content(message.getContent())
                 .messageType(message.getMessageType())
                 .isRead(message.isRead())
-                .readAt(message.getReadAt())
-                .createdAt(message.getCreatedAt())
+                .readAt(message.getReadAt() != null ? message.getReadAt().atZone(koreaZone) : null)
+                .createdAt(message.getCreatedAt() != null ? message.getCreatedAt().atZone(koreaZone) : null)
                 .build();
     }
 

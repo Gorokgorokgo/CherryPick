@@ -329,12 +329,51 @@ public class WebSocketHandler extends TextWebSocketHandler {
      * 특정 경매 구독자들에게 메시지 전송 (기존 WebSocketMessagingService와 호환성)
      */
     public void sendToAuctionSubscribers(String destination, Object message) {
-        // destination 형식: "/topic/auctions/123" -> auctionId: "123" 
-        String auctionId = extractAuctionId(destination);
-        if (auctionId != null) {
-            broadcastToAuction(auctionId, message);
+        // destination 형식:
+        // "/topic/auctions/123" -> auctionId: "123"
+        // "/topic/notifications/456" -> userId: "456" (알림용)
+
+        if (destination.startsWith("/topic/notifications/")) {
+            String userId = destination.substring("/topic/notifications/".length());
+            sendToUser(userId, message);
         } else {
-            log.warn("⚠️ 잘못된 destination 형식: {}", destination);
+            String auctionId = extractAuctionId(destination);
+            if (auctionId != null) {
+                broadcastToAuction(auctionId, message);
+            } else {
+                log.warn("⚠️ 잘못된 destination 형식: {}", destination);
+            }
+        }
+    }
+
+    /**
+     * 특정 사용자에게 메시지 전송 (알림용)
+     */
+    public void sendToUser(String userIdStr, Object message) {
+        try {
+            Long userId = Long.parseLong(userIdStr);
+
+            // 해당 사용자의 모든 활성 세션 찾기
+            int sentCount = 0;
+            for (Map.Entry<String, Long> entry : sessionUserMapping.entrySet()) {
+                if (entry.getValue().equals(userId)) {
+                    WebSocketSession session = activeSessions.get(entry.getKey());
+                    if (session != null && session.isOpen()) {
+                        if (sendMessage(session, message)) {
+                            sentCount++;
+                        }
+                    }
+                }
+            }
+
+            if (sentCount > 0) {
+                log.info("📤 사용자 {} 알림 전송 완료: {} 세션", userId, sentCount);
+            } else {
+                log.debug("사용자 {} 활성 세션 없음", userId);
+            }
+
+        } catch (NumberFormatException e) {
+            log.error("잘못된 userId 형식: {}", userIdStr, e);
         }
     }
     

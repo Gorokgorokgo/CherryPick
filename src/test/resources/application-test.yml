@@ -13,3 +13,49 @@ spring:
         hbm2ddl.create_namespaces: true
   flyway:
     enabled: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: test123
+
+jwt:
+  secret: test-jwt-secret-key-for-testing-purpose-only-must-be-at-least-256-bits
+  expiration: 86400000
+
+ncp:
+  object-storage:
+    endpoint: https://kr.object.ncloudstorage.com
+    bucket: test-bucket
+    region: kr-standard
+  credentials:
+    access-key: test-access-key
+    secret-key: test-secret-key
+
+business:
+  commission:
+    rate: 0.03
+    new-user-free-days: 30
+    promotion:
+      enabled: false
+      rate: 0.00
+      end-date: 2026-12-31
+
+migration:
+  security:
+    service-token: test-service-token
+    max-rollbacks-per-day: 3
+    cooling-period-hours: 24
+    max-error-rate: 0.05
+    emergency-code-length: 32
+
+android_google_client_id: test-android-google-client-id
+GOOGLE_CLIENT_ID: test-google-client-id
+GOOGLE_CLIENT_SECRET: test-google-client-secret
+GOOGLE_REDIRECT_URI: http://localhost:3000/auth/google/callback
+KAKAO_CLIENT_ID: test-kakao-client-id
+KAKAO_CLIENT_SECRET: test-kakao-client-secret
+KAKAO_REDIRECT_URI: http://localhost:3000/auth/kakao/callback
+NAVER_CLIENT_ID: test-naver-client-id
+NAVER_CLIENT_SECRET: test-naver-client-secret
+NAVER_REDIRECT_URI: http://localhost:3000/auth/naver/callback

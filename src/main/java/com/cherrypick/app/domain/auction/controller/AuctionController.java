@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +26,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @Tag(name = "6단계 - 경매 관리", description = "경매 등록, 조회, 검색 | 보증금 10% 자동 차감")
@@ -61,7 +63,6 @@ public class AuctionController {
                    ```
                    
                    **중요 사항:**
-                   - 보증금: 희망가의 10% 자동 차감 (예: 희망가 120만원 → 보증금 12만원)
                    - Reserve Price: 최저 내정가 설정 가능 (선택사항, 입찰자에게 비공개)
                    - 가격 범위: 시작가 ≤ Reserve Price ≤ 희망가
                    - 유찰 조건: 최고 입찰가 < Reserve Price시 유찰 처리
@@ -141,8 +142,23 @@ public class AuctionController {
     })
     @GetMapping("/{auctionId}")
     public ResponseEntity<AuctionResponse> getAuctionDetail(
-            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         AuctionResponse response = auctionService.getAuctionDetail(auctionId);
+        // 북마크 정보 채우기
+        try {
+            long count = bookmarkService.getBookmarkCount(auctionId);
+            response.setBookmarkCount(count);
+            if (userDetails != null) {
+                Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+                boolean isBookmarked = bookmarkService.isBookmarked(auctionId, userId);
+                response.setBookmarked(isBookmarked);
+            } else {
+                response.setBookmarked(false);
+            }
+        } catch (Exception e) {
+            // 예외가 발생해도 상세 응답 자체는 반환 (기본값 유지)
+        }
         return ResponseEntity.ok(response);
     }
     
@@ -153,8 +169,23 @@ public class AuctionController {
     })
     @GetMapping("/{auctionId}/info")
     public ResponseEntity<AuctionResponse> getAuctionDetailWithoutViewIncrement(
-            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         AuctionResponse response = auctionService.getAuctionDetailWithoutViewIncrement(auctionId);
+        // 북마크 정보 채우기
+        try {
+            long count = bookmarkService.getBookmarkCount(auctionId);
+            response.setBookmarkCount(count);
+            if (userDetails != null) {
+                Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+                boolean isBookmarked = bookmarkService.isBookmarked(auctionId, userId);
+                response.setBookmarked(isBookmarked);
+            } else {
+                response.setBookmarked(false);
+            }
+        } catch (Exception e) {
+            // 예외 무시하고 기본값 유지
+        }
         return ResponseEntity.ok(response);
     }
     
@@ -351,6 +382,45 @@ public class AuctionController {
         return ResponseEntity.ok(auctions);
     }
     
+    @Operation(summary = "개발자 옵션: 모든 경매 조회", description = "개발/테스트용: 상태와 관계없이 모든 경매를 조회합니다.")
+    @GetMapping("/test/all")
+    public ResponseEntity<Page<AuctionResponse>> getAllAuctionsForDev(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuctionResponse> auctions = auctionService.getAllAuctionsForDev(pageable);
+        return ResponseEntity.ok(auctions);
+    }
+
+    @Operation(summary = "경매 시간 조정", description = "개발/테스트용: 경매 종료 시간을 조정합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "시간 조정 성공"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PatchMapping("/test/adjust-time/{id}")
+    public ResponseEntity<AuctionResponse> adjustAuctionTime(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @Parameter(description = "조정할 분 (양수: 시간 추가, 음수: 시간 감소)") @RequestParam int minutes) {
+
+        AuctionResponse auction = auctionService.adjustAuctionTime(id, minutes);
+        return ResponseEntity.ok(auction);
+    }
+
+    @Operation(summary = "경매 재활성화", description = "테스트용/재등록: 종료된 경매를 재활성화합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "재활성화 성공"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PatchMapping("/test/reactivate/{id}")
+    public ResponseEntity<AuctionResponse> reactivateAuction(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @Parameter(description = "재활성화 후 진행할 시간 (시간 단위)") @RequestParam(defaultValue = "3") int hours) {
+
+        AuctionResponse auction = auctionService.reactivateAuction(id, hours);
+        return ResponseEntity.ok(auction);
+    }
+
     @Operation(summary = "경매 강제 종료", description = "테스트용: 경매를 강제로 종료시킵니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "강제 종료 성공"),
@@ -426,5 +496,66 @@ public class AuctionController {
         Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
         Map<String, Object> info = bookmarkService.getBookmarkInfo(id, userId);
         return ResponseEntity.ok(info);
+    }
+
+    // 요청 DTO: { "auctionIds": [1,2,3] } 형태 지원
+    public static class BatchBookmarkRequest {
+        public List<Long> auctionIds;
+        public List<Long> getAuctionIds() { return auctionIds; }
+        public void setAuctionIds(List<Long> auctionIds) { this.auctionIds = auctionIds; }
+    }
+
+    @Operation(summary = "배치 북마크 정보 조회",
+               description = "여러 경매의 북마크 수와 사용자의 북마크 상태를 한 번에 조회합니다. 최대 20개까지 처리합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "배치 북마크 정보 조회 성공"),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 (빈 목록 또는 너무 많은 ID)"),
+            @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    @PostMapping("/batch/bookmark-info")
+    public ResponseEntity<Map<String, Object>> getBatchBookmarkInfo(
+            @RequestBody Object body,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        List<Long> auctionIds = null;
+        if (body instanceof List<?>) {
+            auctionIds = ((List<?>) body).stream()
+                    .filter(o -> o instanceof Number)
+                    .map(o -> ((Number) o).longValue())
+                    .toList();
+        } else if (body instanceof BatchBookmarkRequest req) {
+            auctionIds = req.getAuctionIds();
+        } else if (body instanceof java.util.Map<?,?> map) {
+            Object idsObj = map.get("auctionIds");
+            if (idsObj instanceof List<?>) {
+                auctionIds = ((List<?>) idsObj).stream()
+                        .filter(o -> o instanceof Number)
+                        .map(o -> ((Number) o).longValue())
+                        .toList();
+            }
+        }
+
+        if (auctionIds == null || auctionIds.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", "auctionIds가 비어있습니다.")
+            );
+        }
+        if (auctionIds.size() > 50) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", "최대 50개까지 조회할 수 있습니다.")
+            );
+        }
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        Map<String, Object> batchInfo = bookmarkService.getBatchBookmarkInfo(auctionIds, userId);
+
+        Map<String, Object> response = Map.of(
+            "success", true,
+            "data", batchInfo,
+            "message", "배치 북마크 정보 조회 성공"
+        );
+        return ResponseEntity.ok(response);
     }
 }

@@ -23,8 +23,7 @@ public class CherrypickApplication {
                 System.setProperty(entry.getKey(), entry.getValue());
             });
         } catch (Exception e) {
-            // .env 파일이 없어도 애플리케이션 실행 계속
-            System.out.println("No .env file found, using system environment variables");
+            // .env 파일이 없어도 애플리케이션 실행 계속 (시스템 환경 변수 사용)
         }
     }
 
