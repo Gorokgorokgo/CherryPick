@@ -55,6 +55,12 @@ public enum ErrorCode {
     INSUFFICIENT_DEPOSIT("AU004", "보증금이 부족합니다.", HttpStatus.BAD_REQUEST),
     INVALID_PRICE_RANGE("AU005", "가격 설정이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
     REGION_INFO_REQUIRED("AU006", "지역 정보가 필요합니다.", HttpStatus.BAD_REQUEST),
+    UNAUTHORIZED_ACCESS("AU007", "해당 경매에 대한 권한이 없습니다.", HttpStatus.FORBIDDEN),
+    AUCTION_HAS_BIDS("AU008", "입찰이 있는 경매는 수정하거나 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    AUCTION_CANNOT_BE_UPDATED("AU009", "종료되었거나 취소된 경매는 수정할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    AUCTION_CANNOT_BE_DELETED("AU010", "종료되었거나 취소된 경매는 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    AUCTION_MODIFY_RESTRICTED_NEAR_END("AU011", "경매 종료 30분 전부터는 경매를 수정할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    AUCTION_DELETE_RESTRICTED_NEAR_END("AU012", "경매 종료 30분 전부터는 경매를 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
     
     // 입찰 시스템
     BID_NOT_FOUND("B001", "입찰을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
@@ -89,6 +95,10 @@ public enum ErrorCode {
     ANSWER_AFTER_AUCTION_END("Q012", "경매가 종료된 후에는 답변을 수정하거나 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
     NOT_QUESTION_AUTHOR("Q013", "질문 작성자만 수정하거나 삭제할 수 있습니다.", HttpStatus.FORBIDDEN),
     NOT_ANSWER_AUTHOR("Q014", "답변 작성자만 수정하거나 삭제할 수 있습니다.", HttpStatus.FORBIDDEN),
+    QNA_MODIFY_RESTRICTED_NEAR_END("Q015", "경매 종료 30분 전부터는 질문/답변을 수정할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    QNA_DELETE_RESTRICTED_NEAR_END("Q016", "경매 종료 30분 전부터는 질문/답변을 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    QUESTION_DELETE_RESTRICTED_HAS_ANSWER("Q017", "답변이 달린 질문은 삭제할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    ANSWER_TIME_LIMIT_EXCEEDED("Q018", "경매 종료 30분 전부터는 답변할 수 없습니다.", HttpStatus.BAD_REQUEST),
 
     // 마이그레이션 시스템
     MIGRATION_SECURITY_ERROR("M001", "마이그레이션 보안 오류가 발생했습니다.", HttpStatus.FORBIDDEN),

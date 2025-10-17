@@ -1,5 +1,7 @@
 package com.cherrypick.app.domain.qna.entity;
 
+import com.cherrypick.app.common.exception.BusinessException;
+import com.cherrypick.app.common.exception.ErrorCode;
 import com.cherrypick.app.domain.common.entity.BaseEntity;
 import com.cherrypick.app.domain.user.entity.User;
 import jakarta.persistence.*;
@@ -62,8 +64,11 @@ public class Answer extends BaseEntity {
      */
     public void updateContent(String newContent) {
         // 경매 종료 30분 전이거나 경매가 종료된 경우 수정 불가
-        if (this.question.isNearAuctionEnd() || this.question.getAuction().isEnded()) {
-            throw new IllegalStateException("경매 종료 30분 전부터는 답변을 수정할 수 없습니다.");
+        if (this.question.isNearAuctionEnd()) {
+            throw new BusinessException(ErrorCode.QNA_MODIFY_RESTRICTED_NEAR_END);
+        }
+        if (this.question.getAuction().isEnded()) {
+            throw new BusinessException(ErrorCode.ANSWER_AFTER_AUCTION_END);
         }
         this.content = newContent;
     }

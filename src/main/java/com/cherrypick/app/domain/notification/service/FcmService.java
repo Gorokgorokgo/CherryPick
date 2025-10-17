@@ -113,14 +113,14 @@ public class FcmService {
      * 낙찰 알림 (구매자용)
      */
     @Transactional
-    public void sendAuctionWonNotification(User buyer, Long auctionId, String auctionTitle, Long finalPrice) {
+    public void sendAuctionWonNotification(User buyer, Long auctionId, String auctionTitle, Long finalPrice, String sellerNickname) {
         NotificationSetting setting = getOrCreateNotificationSetting(buyer);
         if (!setting.getWinningNotification()) {
             return;
         }
 
         String title = "낙찰되었습니다! 🎉";
-        String message = String.format("'%s' 경매에서 %,d원에 낙찰되었습니다. 판매자의 연결 서비스 결제를 기다려주세요.", auctionTitle, finalPrice);
+        String message = String.format("'%s' 경매가 %,d원에 낙찰되었습니다. 판매자(%s)님과의 거래를 시작해주세요.", auctionTitle, finalPrice, sellerNickname);
 
         NotificationHistory notification = NotificationHistory.createNotification(
                 buyer, NotificationType.AUCTION_WON, title, message, auctionId);
@@ -130,6 +130,29 @@ public class FcmService {
 
         // WebSocket 실시간 알림 발송
         sendWebSocketNotification(buyer.getId(), NotificationType.AUCTION_WON, title, message, auctionId);
+    }
+
+    /**
+     * 판매 완료 알림 (판매자용)
+     */
+    @Transactional
+    public void sendAuctionSoldNotification(User seller, Long auctionId, String auctionTitle, Long finalPrice, String buyerNickname) {
+        NotificationSetting setting = getOrCreateNotificationSetting(seller);
+        if (!setting.getBidNotification()) {
+            return;
+        }
+
+        String title = "경매 낙찰 완료! 🎉";
+        String message = String.format("'%s' 경매가 %,d원에 낙찰되었습니다. 낙찰자(%s)님과의 거래를 시작해주세요.", auctionTitle, finalPrice, buyerNickname);
+
+        NotificationHistory notification = NotificationHistory.createNotification(
+                seller, NotificationType.AUCTION_SOLD, title, message, auctionId);
+        notificationHistoryRepository.save(notification);
+
+        sendFcmPush(setting.getFcmToken(), title, message, notification);
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(seller.getId(), NotificationType.AUCTION_SOLD, title, message, auctionId);
     }
     
     /**
@@ -193,24 +216,50 @@ public class FcmService {
      */
     private void sendWebSocketNotification(Long userId, NotificationType type, String title, String message, Long resourceId) {
         try {
-            // 알림 내용을 메시지로 통합
-            String notificationMessage = String.format("[%s] %s: %s", type.getDescription(), title, message);
+            // NotificationType을 MessageType으로 매핑
+            AuctionUpdateMessage.MessageType messageType = mapNotificationTypeToMessageType(type);
 
             // 기존 AuctionUpdateMessage 구조 활용하여 알림 메시지 생성
             AuctionUpdateMessage wsMessage = AuctionUpdateMessage.builder()
-                    .messageType(AuctionUpdateMessage.MessageType.NEW_BID) // 임시로 NEW_BID 사용
+                    .messageType(messageType)
                     .auctionId(resourceId)
-                    .message(notificationMessage)
+                    .message(message)
                     .timestamp(java.time.LocalDateTime.now())
                     .build();
 
             // WebSocket으로 사용자에게 실시간 알림 발송
             webSocketMessagingService.sendToUser(userId, wsMessage);
 
-            log.debug("WebSocket 실시간 알림 발송 성공. userId: {}, type: {}", userId, type);
+            log.debug("WebSocket 실시간 알림 발송 성공. userId: {}, type: {}, messageType: {}", userId, type, messageType);
 
         } catch (Exception e) {
             log.error("WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}", userId, type, e.getMessage());
+        }
+    }
+
+    /**
+     * NotificationType을 AuctionUpdateMessage.MessageType으로 매핑
+     */
+    private AuctionUpdateMessage.MessageType mapNotificationTypeToMessageType(NotificationType type) {
+        switch (type) {
+            case NEW_BID:
+                return AuctionUpdateMessage.MessageType.NEW_BID;
+            case AUCTION_WON:
+                return AuctionUpdateMessage.MessageType.AUCTION_WON;
+            case AUCTION_SOLD:
+                return AuctionUpdateMessage.MessageType.AUCTION_SOLD;
+            case CONNECTION_PAYMENT_REQUEST:
+                return AuctionUpdateMessage.MessageType.CONNECTION_PAYMENT_REQUEST;
+            case CHAT_ACTIVATED:
+                return AuctionUpdateMessage.MessageType.CHAT_ACTIVATED;
+            case TRANSACTION_COMPLETED:
+                return AuctionUpdateMessage.MessageType.TRANSACTION_COMPLETED;
+            case NEW_MESSAGE:
+                return AuctionUpdateMessage.MessageType.NEW_MESSAGE;
+            case PROMOTION:
+                return AuctionUpdateMessage.MessageType.PROMOTION;
+            default:
+                return AuctionUpdateMessage.MessageType.NEW_BID; // 기본값
         }
     }
 

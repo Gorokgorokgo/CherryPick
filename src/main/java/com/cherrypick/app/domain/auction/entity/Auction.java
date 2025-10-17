@@ -69,6 +69,9 @@ public class Auction extends BaseEntity {
     @Column(name = "current_price", nullable = false, precision = 10, scale = 0)
     private BigDecimal currentPrice;
 
+    @Column(name = "last_price_before_end", precision = 10, scale = 0)
+    private BigDecimal lastPriceBeforeEnd;
+
     @Column(name = "bid_count", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
     private Integer bidCount;
 
@@ -126,6 +129,7 @@ public class Auction extends BaseEntity {
             AuctionStatus.ACTIVE,
             0, // viewCount - DB 기본값
             startPrice, // currentPrice - 시작가로 초기화
+            null, // lastPriceBeforeEnd
             0, // bidCount - DB 기본값
             null, // winner
             now,
@@ -223,6 +227,8 @@ public class Auction extends BaseEntity {
      * 경매 강제 종료 (테스트용)
      */
     public void forceEnd() {
+        // 종료 전 현재가를 저장
+        this.lastPriceBeforeEnd = this.currentPrice;
         this.status = AuctionStatus.ENDED;
         this.endAt = LocalDateTime.now();
     }
@@ -245,6 +251,8 @@ public class Auction extends BaseEntity {
      * 낙찰자 설정
      */
     public void setWinner(User winner, BigDecimal finalPrice) {
+        // 종료 전 현재가를 저장
+        this.lastPriceBeforeEnd = this.currentPrice;
         this.winner = winner;
         this.currentPrice = finalPrice;
         this.status = AuctionStatus.ENDED;
@@ -254,6 +262,8 @@ public class Auction extends BaseEntity {
      * 경매 종료 처리
      */
     public void endAuction(User winner, BigDecimal finalPrice) {
+        // 종료 전 현재가를 저장
+        this.lastPriceBeforeEnd = this.currentPrice;
         this.winner = winner;
         this.currentPrice = finalPrice;
         this.status = finalPrice.compareTo(BigDecimal.ZERO) > 0 ? AuctionStatus.ENDED : AuctionStatus.ENDED;
@@ -272,7 +282,46 @@ public class Auction extends BaseEntity {
      * @param hours 재활성화 후 진행할 시간 (시간)
      */
     public void reactivateAuction(int hours) {
+        // 종료 시점의 가격을 복구 (lastPriceBeforeEnd가 있으면 사용, 없으면 currentPrice 사용)
+        BigDecimal priceToRestore = (this.lastPriceBeforeEnd != null && this.lastPriceBeforeEnd.compareTo(BigDecimal.ZERO) > 0)
+            ? this.lastPriceBeforeEnd
+            : this.currentPrice;
+
+        this.startPrice = priceToRestore;
+        this.currentPrice = priceToRestore;
+
+        // 낙찰자 정보 초기화
+        this.winner = null;
+
+        // 상태 재활성화 및 종료 시간 연장
         this.status = AuctionStatus.ACTIVE;
         this.endAt = LocalDateTime.now().plusHours(hours);
+    }
+
+    /**
+     * 경매 제목 수정
+     */
+    public void updateTitle(String newTitle) {
+        if (newTitle == null || newTitle.trim().isEmpty()) {
+            throw new IllegalArgumentException("제목은 비어있을 수 없습니다.");
+        }
+        this.title = newTitle;
+    }
+
+    /**
+     * 경매 설명 수정
+     */
+    public void updateDescription(String newDescription) {
+        if (newDescription == null || newDescription.trim().isEmpty()) {
+            throw new IllegalArgumentException("설명은 비어있을 수 없습니다.");
+        }
+        this.description = newDescription;
+    }
+
+    /**
+     * 경매 삭제 (소프트 삭제)
+     */
+    public void markAsDeleted() {
+        this.status = AuctionStatus.DELETED;
     }
 }

@@ -1,5 +1,7 @@
 package com.cherrypick.app.domain.qna.entity;
 
+import com.cherrypick.app.common.exception.BusinessException;
+import com.cherrypick.app.common.exception.ErrorCode;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.common.entity.BaseEntity;
 import com.cherrypick.app.domain.user.entity.User;
@@ -59,7 +61,7 @@ public class Question extends BaseEntity {
      */
     public void updateContent(String newContent) {
         if (this.isAnswered) {
-            throw new IllegalStateException("답변이 달린 질문은 수정할 수 없습니다.");
+            throw new BusinessException(ErrorCode.ANSWERED_QUESTION_CANNOT_MODIFY);
         }
         this.content = newContent;
     }

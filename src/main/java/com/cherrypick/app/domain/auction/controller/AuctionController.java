@@ -558,4 +558,71 @@ public class AuctionController {
         );
         return ResponseEntity.ok(response);
     }
+
+    @Operation(summary = "경매 수정",
+               description = """
+                   등록한 경매의 제목과 설명을 수정합니다.
+
+                   **수정 가능 조건:**
+                   - 본인이 등록한 경매만 수정 가능
+                   - 입찰이 없는 경매만 수정 가능
+                   - 진행 중인 경매만 수정 가능
+
+                   **수정 가능 항목 (eBay 정책):**
+                   - 제목: 오타 수정, 정보 추가
+                   - 설명: 추가 정보 제공, 상세 설명 보완
+
+                   **수정 불가 항목:**
+                   - 시작가, 희망가, 카테고리, 지역, 이미지 등
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "경매 수정 성공"),
+            @ApiResponse(responseCode = "400", description = "입찰이 있거나 종료된 경매"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (본인 경매 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PutMapping("/{auctionId}")
+    public ResponseEntity<AuctionResponse> updateAuction(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId,
+            @Valid @RequestBody com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest request) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        AuctionResponse response = auctionService.updateAuction(auctionId, userId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "경매 삭제 (소프트 삭제)",
+               description = """
+                   등록한 경매를 삭제합니다. (실제 삭제가 아닌 상태 변경)
+
+                   **삭제 가능 조건:**
+                   - 본인이 등록한 경매만 삭제 가능
+                   - 입찰이 없는 경매만 삭제 가능
+                   - 진행 중인 경매만 삭제 가능
+
+                   **주의사항:**
+                   - 삭제된 경매는 목록에 노출되지 않습니다
+                   - 데이터는 보관되며 관리자만 확인 가능합니다
+                   - 입찰이 있는 경매는 삭제할 수 없습니다
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "경매 삭제 성공"),
+            @ApiResponse(responseCode = "400", description = "입찰이 있거나 종료된 경매"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (본인 경매 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @DeleteMapping("/{auctionId}")
+    public ResponseEntity<Map<String, Object>> deleteAuction(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        auctionService.deleteAuction(auctionId, userId);
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "message", "경매가 삭제되었습니다."
+        ));
+    }
 }

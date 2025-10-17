@@ -28,7 +28,16 @@ public class AuctionUpdateMessage {
         AUCTION_EXTENDED,  // 스나이핑 방지 연장11
         BIDDER_COUNT_CHANGED, // 입찰자 수 변경 (별칭)
         AUTO_BID_COMPETING, // 자동입찰 경쟁 진행 중
-        AUTO_BID_RESULT     // 자동입찰 경쟁 최종 결과
+        AUTO_BID_RESULT,    // 자동입찰 경쟁 최종 결과
+        // 알림 타입
+        AUCTION_WON,       // 낙찰 알림 (구매자용)
+        AUCTION_SOLD,      // 판매 완료 알림 (판매자용)
+        AUCTION_NOT_SOLD,  // 유찰 알림
+        CONNECTION_PAYMENT_REQUEST, // 연결 서비스 결제 요청
+        CHAT_ACTIVATED,    // 채팅 활성화
+        TRANSACTION_COMPLETED, // 거래 완료
+        NEW_MESSAGE,       // 새 메시지
+        PROMOTION          // 프로모션
     }
     
     /**

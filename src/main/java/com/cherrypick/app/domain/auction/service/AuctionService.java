@@ -262,15 +262,39 @@ public class AuctionService {
     private void processSuccessfulAuction(Auction auction, User seller, User winner, BigDecimal finalPrice) {
         // 1. 경매 상태를 낙찰 완료로 변경
         auction.endAuction(winner, finalPrice);
-        
+
         // 2. 연결 서비스 생성 (수수료 결제 후 채팅 연결)
         // ConnectionService connectionService = ConnectionService.createConnection(auction, seller, winner, finalPrice);
         // connectionServiceRepository.save(connectionService);
-        
-        // 3. 낙찰 알림 발송 (별도 서비스에서 처리)
-        // notificationService.sendAuctionWonNotification(auction, winner);
 
-        log.info("경매 낙찰 처리 완료: {} -> {} ({}원), 연결 서비스 대기 중",
+        // 3. 낙찰 알림 발송 - 이벤트 기반
+        // 구매자용 낙찰 알림
+        applicationEventPublisher.publishEvent(
+            new AuctionWonNotificationEvent(
+                this,
+                winner.getId(),
+                auction.getId(),
+                auction.getTitle(),
+                finalPrice.longValue(),
+                seller.getNickname(),
+                null // chatRoomId는 아직 생성되지 않음
+            )
+        );
+
+        // 판매자용 낙찰 알림
+        applicationEventPublisher.publishEvent(
+            new AuctionSoldNotificationEvent(
+                this,
+                seller.getId(),
+                auction.getId(),
+                auction.getTitle(),
+                finalPrice.longValue(),
+                winner.getNickname(),
+                null // chatRoomId는 아직 생성되지 않음
+            )
+        );
+
+        log.info("경매 낙찰 처리 완료: {} -> {} ({}원), 알림 이벤트 발행 완료",
                 auction.getTitle(), winner.getNickname(), finalPrice);
     }
     
@@ -532,20 +556,26 @@ public class AuctionService {
                     savedAuction.getWinner().getNickname() :
                     "익명" + savedAuction.getWinner().getId();
 
+            String sellerNickname = savedAuction.getSeller().getNickname() != null ?
+                    savedAuction.getSeller().getNickname() :
+                    "익명" + savedAuction.getSeller().getId();
+
             Long finalPrice = savedAuction.getCurrentPrice().longValue();
 
+            // 구매자용 낙찰 알림
             applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
                     this,
                     savedAuction.getWinner().getId(),
                     savedAuction.getId(),
                     savedAuction.getTitle(),
                     finalPrice,
+                    sellerNickname,
                     chatRoomId
             ));
-            log.info("✅ 낙찰 알림 이벤트 발행 완료 (구매자): userId={}, auctionId={}, finalPrice={}, chatRoomId={}",
-                    savedAuction.getWinner().getId(), savedAuction.getId(), finalPrice, chatRoomId);
+            log.info("✅ 낙찰 알림 이벤트 발행 완료 (구매자): userId={}, auctionId={}, finalPrice={}, sellerNickname={}, chatRoomId={}",
+                    savedAuction.getWinner().getId(), savedAuction.getId(), finalPrice, sellerNickname, chatRoomId);
 
-            // 판매자에게 낙찰 알림 발송
+            // 판매자용 낙찰 알림
             applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
                     this,
                     savedAuction.getSeller().getId(),
@@ -555,8 +585,8 @@ public class AuctionService {
                     winnerNickname,
                     chatRoomId
             ));
-            log.info("✅ 낙찰 알림 이벤트 발행 완료 (판매자): userId={}, auctionId={}, finalPrice={}, chatRoomId={}",
-                    savedAuction.getSeller().getId(), savedAuction.getId(), finalPrice, chatRoomId);
+            log.info("✅ 낙찰 알림 이벤트 발행 완료 (판매자): userId={}, auctionId={}, finalPrice={}, winnerNickname={}, chatRoomId={}",
+                    savedAuction.getSeller().getId(), savedAuction.getId(), finalPrice, winnerNickname, chatRoomId);
 
         } else {
             log.info("낙찰자가 없어 채팅방을 생성하지 않습니다: 경매ID={}", savedAuction.getId());
@@ -573,5 +603,113 @@ public class AuctionService {
     public void processAuctionEnd(Auction auction) {
         log.info("경매 종료됨: ID={}, 제목={}", auction.getId(), auction.getTitle());
         log.info("프론트엔드에서 타이머가 0초가 되면 자동으로 채팅방이 생성됩니다.");
+    }
+
+    /**
+     * 경매 수정
+     *
+     * 비즈니스 로직:
+     * 1. 경매 존재 확인
+     * 2. 권한 확인 (판매자만 수정 가능)
+     * 3. 수정 가능 상태 확인 (입찰 없음, 경매 진행 중)
+     * 4. 부분 수정 적용 (null이 아닌 필드만 수정)
+     * 5. 이미지 수정 시 기존 이미지 삭제 후 새 이미지 저장
+     *
+     * @param auctionId 경매 ID
+     * @param userId 사용자 ID
+     * @param updateRequest 수정 요청 정보
+     * @return 수정된 경매 정보
+     * @throws BusinessException 권한 없음, 입찰 있음, 종료된 경매 등
+     */
+    @Transactional
+    public AuctionResponse updateAuction(Long auctionId, Long userId, com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest updateRequest) {
+        // 1. 경매 존재 확인
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
+
+        // 2. 권한 확인
+        if (!auction.getSeller().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_ACCESS);
+        }
+
+        // 3. 수정 가능 상태 확인
+        if (auction.getStatus() != AuctionStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.AUCTION_CANNOT_BE_UPDATED);
+        }
+
+        // 경매 종료 30분 전 확인
+        if (auction.getEndAt().minusMinutes(30).isBefore(java.time.LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.AUCTION_MODIFY_RESTRICTED_NEAR_END);
+        }
+
+        // 입찰 확인
+        long bidCount = bidRepository.countByAuctionId(auctionId);
+        if (bidCount > 0) {
+            throw new BusinessException(ErrorCode.AUCTION_HAS_BIDS);
+        }
+
+        // 4. 요청 검증
+        updateRequest.validate();
+
+        // 5. 제목과 설명만 수정 (eBay 정책)
+        if (updateRequest.getTitle() != null && !updateRequest.getTitle().trim().isEmpty()) {
+            auction.updateTitle(updateRequest.getTitle());
+        }
+        if (updateRequest.getDescription() != null && !updateRequest.getDescription().trim().isEmpty()) {
+            auction.updateDescription(updateRequest.getDescription());
+        }
+
+        Auction updatedAuction = auctionRepository.save(auction);
+        List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auctionId);
+
+        log.info("경매 수정 완료: auctionId={}, userId={}", auctionId, userId);
+        return AuctionResponse.from(updatedAuction, images);
+    }
+
+    /**
+     * 경매 삭제 (소프트 삭제)
+     *
+     * 비즈니스 로직:
+     * 1. 경매 존재 확인
+     * 2. 권한 확인 (판매자만 삭제 가능)
+     * 3. 삭제 가능 상태 확인 (입찰 없음, 경매 진행 중)
+     * 4. 상태를 DELETED로 변경 (실제 삭제하지 않음)
+     *
+     * @param auctionId 경매 ID
+     * @param userId 사용자 ID
+     * @throws BusinessException 권한 없음, 입찰 있음, 종료된 경매 등
+     */
+    @Transactional
+    public void deleteAuction(Long auctionId, Long userId) {
+        // 1. 경매 존재 확인
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
+
+        // 2. 권한 확인
+        if (!auction.getSeller().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_ACCESS);
+        }
+
+        // 3. 삭제 가능 상태 확인
+        if (auction.getStatus() != AuctionStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.AUCTION_CANNOT_BE_DELETED);
+        }
+
+        // 경매 종료 30분 전 확인
+        if (auction.getEndAt().minusMinutes(30).isBefore(java.time.LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.AUCTION_DELETE_RESTRICTED_NEAR_END);
+        }
+
+        // 입찰 확인
+        long bidCount = bidRepository.countByAuctionId(auctionId);
+        if (bidCount > 0) {
+            throw new BusinessException(ErrorCode.AUCTION_HAS_BIDS);
+        }
+
+        // 4. 소프트 삭제 (상태 변경)
+        auction.markAsDeleted();
+        auctionRepository.save(auction);
+
+        log.info("경매 삭제 완료 (소프트 삭제): auctionId={}, userId={}", auctionId, userId);
     }
 }

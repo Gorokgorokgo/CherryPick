@@ -121,11 +121,11 @@ class AuctionSchedulerServiceTest {
 
         // 알림 이벤트 발행 (스케줄러 로직 시뮬레이션)
         eventPublisher.publishEvent(new AuctionWonNotificationEvent(
-            this, buyer1.getId(), auction.getId(), auction.getTitle(), finalPrice.longValue()
+            this, buyer1.getId(), auction.getId(), auction.getTitle(), finalPrice.longValue(), null
         ));
         eventPublisher.publishEvent(new AuctionSoldNotificationEvent(
             this, seller.getId(), auction.getId(), auction.getTitle(),
-            finalPrice.longValue(), buyer1.getNickname()
+            finalPrice.longValue(), buyer1.getNickname(), null
         ));
 
         // Then: 경매 상태 검증
