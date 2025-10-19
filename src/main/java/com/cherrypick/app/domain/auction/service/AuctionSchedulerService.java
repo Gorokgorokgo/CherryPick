@@ -221,6 +221,9 @@ public class AuctionSchedulerService {
         // 해당 경매의 모든 입찰자 조회 (중복 제거)
         List<Bid> allBids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId());
 
+        log.info("🔍 경매 {} 참여자 알림 발송 시작 - 전체 입찰 {}건, 낙찰자/판매자 제외할 ID: {}, 판매자 ID: {}",
+                auction.getId(), allBids.size(), excludeUserId, auction.getSeller().getId());
+
         // 중복 제거 및 제외 대상 필터링
         Set<Long> notifiedUserIds = allBids.stream()
                 .map(bid -> bid.getBidder().getId())
@@ -228,8 +231,11 @@ public class AuctionSchedulerService {
                 .filter(userId -> !userId.equals(auction.getSeller().getId())) // 판매자 제외
                 .collect(Collectors.toSet());
 
+        log.info("📋 경매 {} 알림 대상 참여자 목록: {}", auction.getId(), notifiedUserIds);
+
         // 각 참여자에게 알림 이벤트 발행
         for (Long participantId : notifiedUserIds) {
+            log.info("📤 경매 종료 알림 이벤트 발행 (참여자 {})", participantId);
             applicationEventPublisher.publishEvent(new AuctionEndedForParticipantEvent(
                 this,
                 participantId,
@@ -240,7 +246,7 @@ public class AuctionSchedulerService {
             ));
         }
 
-        log.debug("경매 {} 참여자 {}명에게 종료 알림 발행 (낙찰: {})",
+        log.info("✅ 경매 {} 참여자 {}명에게 종료 알림 발행 완료 (낙찰: {})",
                 auction.getId(), notifiedUserIds.size(), wasSuccessful);
     }
     
