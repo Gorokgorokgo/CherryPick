@@ -122,7 +122,7 @@ public class AuctionSchedulerService {
             log.error("경매 {} 연결 서비스 생성 실패", auction.getId(), e);
         }
 
-        // 3. 실시간 낙찰 알림 전송
+        // 3. 실시간 낙찰 알림 전송 (경매 페이지 구독자들에게)
         String winnerNickname = winningBid.getBidder().getNickname() != null ?
             winningBid.getBidder().getNickname() :
             "익명" + winningBid.getBidder().getId();
@@ -134,25 +134,24 @@ public class AuctionSchedulerService {
         );
 
         // 4. 낙찰 알림 이벤트 발행 (구매자에게)
+        String sellerNickname = auction.getSeller().getNickname() != null ?
+            auction.getSeller().getNickname() :
+            "익명" + auction.getSeller().getId();
+
         applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
             this,
             winningBid.getBidder().getId(),
             auction.getId(),
             auction.getTitle(),
             finalPrice.longValue(),
+            sellerNickname,
             null  // chatRoomId는 자동 스케줄러에서는 생성하지 않음
         ));
 
-        // 5. 판매자에게 낙찰 알림 이벤트 발행
-        applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
-            this,
-            auction.getSeller().getId(),
-            auction.getId(),
-            auction.getTitle(),
-            finalPrice.longValue(),
-            winnerNickname,
-            null  // chatRoomId는 자동 스케줄러에서는 생성하지 않음
-        ));
+        // 5. 판매자 낙찰 알림 이벤트 발행 - forceEndAuction에서만 처리하도록 변경
+        // 스케줄러에서는 판매자 알림을 발행하지 않음 (중복 방지)
+        // forceEndAuction 메서드에서 채팅방 ID와 함께 발송
+        log.info("스케줄러: 판매자 알림은 forceEndAuction에서 처리됨 (중복 방지)");
 
         // 6. 모든 입찰 참여자에게 경매 종료 알림 발행 (낙찰자 제외)
         notifyAllParticipants(auction, winningBid.getBidder().getId(), finalPrice.longValue(), true);

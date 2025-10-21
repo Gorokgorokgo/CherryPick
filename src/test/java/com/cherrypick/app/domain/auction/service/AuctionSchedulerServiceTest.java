@@ -119,13 +119,15 @@ class AuctionSchedulerServiceTest {
         auction.endAuction(buyer1, finalPrice);
         auctionRepository.save(auction);
 
-        // 알림 이벤트 발행 (스케줄러 로직 시뮬레이션)
+        // 알림 이벤트 발행 (AuctionSchedulerService가 담당)
+        // 구매자용 알림
         eventPublisher.publishEvent(new AuctionWonNotificationEvent(
-            this, buyer1.getId(), auction.getId(), auction.getTitle(), finalPrice.longValue(), null
+            this, buyer1.getId(), auction.getId(), auction.getTitle(), finalPrice.longValue(), seller.getNickname(), null
         ));
+        
+        // 판매자용 알림 (AuctionSchedulerService에서 단일 발행)
         eventPublisher.publishEvent(new AuctionSoldNotificationEvent(
-            this, seller.getId(), auction.getId(), auction.getTitle(),
-            finalPrice.longValue(), buyer1.getNickname(), null
+            this, seller.getId(), auction.getId(), auction.getTitle(), finalPrice.longValue(), buyer1.getNickname(), null
         ));
 
         // Then: 경매 상태 검증
@@ -134,13 +136,13 @@ class AuctionSchedulerServiceTest {
         assertThat(endedAuction.getWinner()).isEqualTo(buyer1);
         assertThat(endedAuction.getCurrentPrice()).isEqualByComparingTo(finalPrice);
 
-        // Then: 알림 이벤트 발행 검증
+        // Then: 알림 이벤트 발행 검증 (구매자 + 판매자)
         long wonEventCount = applicationEvents.stream(AuctionWonNotificationEvent.class).count();
         long soldEventCount = applicationEvents.stream(AuctionSoldNotificationEvent.class).count();
         assertThat(wonEventCount).isEqualTo(1);
         assertThat(soldEventCount).isEqualTo(1);
 
-        // Then: 이벤트 데이터 검증
+        // Then: 구매자 알림 이벤트 데이터 검증
         AuctionWonNotificationEvent wonEvent = applicationEvents.stream(AuctionWonNotificationEvent.class)
             .findFirst()
             .orElseThrow();
@@ -148,10 +150,13 @@ class AuctionSchedulerServiceTest {
         assertThat(wonEvent.getAuctionTitle()).isEqualTo("아이폰 14 Pro");
         assertThat(wonEvent.getFinalPrice()).isEqualTo(60000L);
 
+        // Then: 판매자 알림 이벤트 데이터 검증
         AuctionSoldNotificationEvent soldEvent = applicationEvents.stream(AuctionSoldNotificationEvent.class)
             .findFirst()
             .orElseThrow();
         assertThat(soldEvent.getTargetUserId()).isEqualTo(seller.getId());
+        assertThat(soldEvent.getAuctionTitle()).isEqualTo("아이폰 14 Pro");
+        assertThat(soldEvent.getFinalPrice()).isEqualTo(60000L);
         assertThat(soldEvent.getWinnerNickname()).isEqualTo(buyer1.getNickname());
     }
 

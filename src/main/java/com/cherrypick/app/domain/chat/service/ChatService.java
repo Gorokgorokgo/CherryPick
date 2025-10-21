@@ -67,7 +67,7 @@ public class ChatService {
                 .findByConnectionServiceId(connectionService.getId());
         
         if (existingRoom.isPresent()) {
-            log.info("채팅방이 이미 존재합니다. connectionId: {}", connectionService.getId());
+            // 채팅방 이미 존재
             return existingRoom.get();
         }
         
@@ -105,8 +105,7 @@ public class ChatService {
             ChatRoom activatedRoom = chatRoom.activateChatRoom();
             chatRoom = chatRoomRepository.save(activatedRoom);
             
-            log.info("채팅방이 활성화되었습니다. roomId: {}, connectionId: {}", 
-                    chatRoom.getId(), connectionService.getId());
+            // 채팅방 활성화 완료
         }
         
         return chatRoom;
@@ -358,7 +357,7 @@ public class ChatService {
                         roomId, userId, e.getMessage());
             }
             
-            log.info("메시지 전송 완료: roomId={}, userId={}, messageId={}", roomId, userId, savedMessage.getId());
+            // 메시지 전송 완료
             
             return response;
         }
@@ -426,7 +425,7 @@ public class ChatService {
         
         int updatedCount = chatMessageRepository.markAllMessagesAsReadInChatRoom(roomId, userId);
         
-        log.info("전체 메시지 읽음 처리: roomId={}, userId={}, updatedCount={}", roomId, userId, updatedCount);
+        // 전체 메시지 읽음 처리
     }
 
     /**
@@ -447,7 +446,7 @@ public class ChatService {
         
         // 채팅방 비활성화 처리 (추후 구현 필요)
         // 현재는 로그만 남김
-        log.info("채팅방 나가기: roomId={}, userId={}", roomId, userId);
+        // 채팅방 나가기
     }
 
     /**

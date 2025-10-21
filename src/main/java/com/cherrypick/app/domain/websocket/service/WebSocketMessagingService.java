@@ -20,7 +20,7 @@ public class WebSocketMessagingService {
     
     @PostConstruct
     public void init() {
-        log.info("🔧 WebSocketMessagingService 초기화 - Handler: {}", webSocketHandler.getClass().getName());
+        // 초기화 완료
     }
     
     /**
@@ -44,11 +44,9 @@ public class WebSocketMessagingService {
         String destination = "/topic/auctions/" + auctionId;
         
         try {
-            log.info("📤 WebSocket 메시지 전송 시도: {} -> {} [HANDLER: {}]", destination, message.getMessageType(), webSocketHandler.getClass().getSimpleName());
             webSocketHandler.sendToAuctionSubscribers(destination, message);
-            log.info("✅ WebSocket 메시지 전송 성공: {} -> {}", destination, message.getMessageType());
         } catch (Exception e) {
-            log.error("❌ WebSocket 메시지 전송 실패: {} -> {}", destination, message.getMessageType(), e);
+            // 메시지 전송 실패 무시
         }
     }
     
@@ -63,9 +61,8 @@ public class WebSocketMessagingService {
 
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, message);
-            log.debug("개인 WebSocket 메시지 전송 성공: {} -> {}", destination, message.getMessageType());
         } catch (Exception e) {
-            log.error("개인 WebSocket 메시지 전송 실패: {} -> {}", destination, message.getMessageType(), e);
+            // 개인 메시지 전송 실패 무시
         }
     }
 
@@ -80,9 +77,8 @@ public class WebSocketMessagingService {
 
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, notification);
-            log.info("✅ 실시간 알림 전송 성공: userId={}, destination={}", userId, destination);
         } catch (Exception e) {
-            log.error("❌ 실시간 알림 전송 실패: userId={}, destination={}", userId, destination, e);
+            // 실시간 알림 전송 실패 무시
         }
     }
     
@@ -97,9 +93,8 @@ public class WebSocketMessagingService {
         
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, message);
-            log.debug("글로벌 WebSocket 메시지 전송 성공: {}", message.getMessageType());
         } catch (Exception e) {
-            log.error("글로벌 WebSocket 메시지 전송 실패: {}", message.getMessageType(), e);
+            // 글로벌 메시지 전송 실패 무시
         }
     }
     
@@ -109,19 +104,14 @@ public class WebSocketMessagingService {
     public void notifyNewBid(Long auctionId, java.math.BigDecimal currentPrice, 
                            Integer bidCount, String bidderNickname) {
         try {
-            log.info("🚀 notifyNewBid 호출됨 [START] - auctionId: {}, currentPrice: {}, bidCount: {}, bidderNickname: {}", 
-                    auctionId, currentPrice, bidCount, bidderNickname);
-            log.info("🔍 사용 중인 Handler: {}", webSocketHandler.getClass().getSimpleName());
-            
             AuctionUpdateMessage message = AuctionUpdateMessage.newBid(
                 auctionId, currentPrice, bidCount, bidderNickname
             );
             
-            log.info("📝 AuctionUpdateMessage 생성 완료: {}", message);
             broadcastToAuction(auctionId, message);
             
         } catch (Exception e) {
-            log.error("❌ notifyNewBid 실행 중 예외 발생 - auctionId: {}", auctionId, e);
+            // notifyNewBid 실행 중 예외 무시
         }
     }
     
@@ -192,9 +182,8 @@ public class WebSocketMessagingService {
         
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, message);
-            log.debug("채팅 메시지 전송 성공: {} -> messageId: {}", destination, message.getId());
         } catch (Exception e) {
-            log.error("채팅 메시지 전송 실패: {} -> messageId: {}", destination, message.getId(), e);
+            // 채팅 메시지 전송 실패 무시
         }
     }
     
@@ -213,9 +202,8 @@ public class WebSocketMessagingService {
         
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, statusMessage);
-            log.debug("채팅방 상태 변경 알림 전송: {} -> status: {}", destination, status);
         } catch (Exception e) {
-            log.error("채팅방 상태 변경 알림 전송 실패: {} -> status: {}", destination, status, e);
+            // 채팅방 상태 변경 알림 전송 실패 무시
         }
     }
     
@@ -232,9 +220,8 @@ public class WebSocketMessagingService {
         
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, statusMessage);
-            log.debug("사용자 온라인 상태 알림 전송: {} -> online: {}", destination, isOnline);
         } catch (Exception e) {
-            log.error("사용자 온라인 상태 알림 전송 실패: {} -> online: {}", destination, isOnline, e);
+            // 사용자 온라인 상태 알림 전송 실패 무시
         }
     }
     
@@ -252,9 +239,8 @@ public class WebSocketMessagingService {
         
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, readEvent);
-            log.debug("메시지 읽음 상태 알림 전송: {} -> messageId: {}", destination, messageId);
         } catch (Exception e) {
-            log.error("메시지 읽음 상태 알림 전송 실패: {} -> messageId: {}", destination, messageId, e);
+            // 메시지 읽음 상태 알림 전송 실패 무시
         }
     }
     
@@ -272,9 +258,8 @@ public class WebSocketMessagingService {
         
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, deliveredEvent);
-            log.debug("메시지 전달됨 상태 알림 전송: {} -> messageId: {}", destination, messageId);
         } catch (Exception e) {
-            log.error("메시지 전달됨 상태 알림 전송 실패: {} -> messageId: {}", destination, messageId, e);
+            // 메시지 전달됨 상태 알림 전송 실패 무시
         }
     }
     
@@ -293,9 +278,8 @@ public class WebSocketMessagingService {
         
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, typingEvent);
-            log.debug("타이핑 상태 알림 전송: {} -> userId: {}, isTyping: {}", destination, userId, isTyping);
         } catch (Exception e) {
-            log.error("타이핑 상태 알림 전송 실패: {} -> userId: {}, isTyping: {}", destination, userId, isTyping, e);
+            // 타이핑 상태 알림 전송 실패 무시
         }
     }
     

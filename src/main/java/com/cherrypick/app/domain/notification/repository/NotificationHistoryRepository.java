@@ -42,4 +42,11 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
      * 특정 리소스 관련 알림 조회
      */
     Page<NotificationHistory> findByUserIdAndResourceIdOrderByCreatedAtDesc(Long userId, Long resourceId, Pageable pageable);
+
+    /**
+     * 사용자의 모든 알림 삭제
+     */
+    @Modifying
+    @Query("DELETE FROM NotificationHistory n WHERE n.user.id = :userId")
+    int deleteAllByUserId(@Param("userId") Long userId);
 }
