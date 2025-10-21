@@ -106,7 +106,14 @@ public enum ErrorCode {
     MIGRATION_PHASE_INVALID("M003", "유효하지 않은 마이그레이션 단계입니다.", HttpStatus.BAD_REQUEST),
     MIGRATION_ROLLBACK_LIMIT("M004", "일일 롤백 횟수를 초과했습니다.", HttpStatus.BAD_REQUEST),
     MIGRATION_COOLING_PERIOD("M005", "마이그레이션 쿨링 기간입니다.", HttpStatus.BAD_REQUEST),
-    MIGRATION_SYSTEM_UNSAFE("M006", "마이그레이션 시스템이 안전하지 않습니다.", HttpStatus.SERVICE_UNAVAILABLE);
+    MIGRATION_SYSTEM_UNSAFE("M006", "마이그레이션 시스템이 안전하지 않습니다.", HttpStatus.SERVICE_UNAVAILABLE),
+
+    // 신고 시스템
+    REPORT_NOT_FOUND("R001", "신고를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    SELF_REPORT_NOT_ALLOWED("R002", "본인의 경매는 신고할 수 없습니다.", HttpStatus.FORBIDDEN),
+    DUPLICATE_REPORT("R003", "이미 신고한 경매입니다.", HttpStatus.CONFLICT),
+    REPORT_DESCRIPTION_REQUIRED("R004", "기타 사유 선택 시 상세 내용을 입력해주세요.", HttpStatus.BAD_REQUEST),
+    REPORT_DESCRIPTION_TOO_LONG("R005", "신고 내용은 500자 이내로 작성해주세요.", HttpStatus.BAD_REQUEST);
     
     private final String code;
     private final String message;
