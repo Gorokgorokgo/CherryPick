@@ -171,8 +171,8 @@ class AuctionServiceTest {
             "2024-01"
         );
     }
-}    @Tes
-t
+
+    @Test
     @DisplayName("통합 테스트: 경매 종료 시 중복 알림 발송 방지 검증")
     void integrationTest_noDuplicateNotifications() {
         // Given: 정상 낙찰 가능한 경매
@@ -205,3 +205,4 @@ t
         assertThat(soldEvents).isEqualTo(0); // 판매자 알림 없음
         assertThat(wonEvents).isEqualTo(1);  // 구매자 알림만 있음
     }
+}
