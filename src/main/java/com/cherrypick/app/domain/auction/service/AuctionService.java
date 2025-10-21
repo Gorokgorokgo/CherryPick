@@ -29,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.cherrypick.app.domain.notification.event.AuctionWonNotificationEvent;
 import com.cherrypick.app.domain.notification.event.AuctionSoldNotificationEvent;
 import com.cherrypick.app.domain.notification.event.AuctionEndedForParticipantEvent;
+import com.cherrypick.app.domain.notification.event.AuctionNotSoldNotificationEvent;
+import com.cherrypick.app.domain.notification.event.AuctionNotSoldForHighestBidderEvent;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -497,21 +499,36 @@ public class AuctionService {
             return AuctionResponse.from(auction, images);
         }
 
-        // 최고 입찰자를 낙찰자로 설정
+        // 최고 입찰자를 낙찰자로 설정 (Reserve Price 확인)
         Optional<com.cherrypick.app.domain.bid.entity.Bid> highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
-        
+
+        boolean isSuccessfulAuction = false;
         if (highestBid.isPresent()) {
-            auction.setWinner(highestBid.get().getBidder(), highestBid.get().getBidAmount());
+            BigDecimal highestBidAmount = highestBid.get().getBidAmount();
+
+            // Reserve Price 확인
+            if (auction.isReservePriceMet(highestBidAmount)) {
+                // Reserve Price 충족 → 낙찰
+                auction.setWinner(highestBid.get().getBidder(), highestBidAmount);
+                isSuccessfulAuction = true;
+            } else {
+                // Reserve Price 미달 → 유찰
+                log.info("경매 {} - Reserve Price 미달로 유찰 처리: 최고입찰가={}, Reserve Price={}",
+                    auctionId, highestBidAmount, auction.getReservePrice());
+                auction.setWinner(null, BigDecimal.ZERO);
+            }
         } else {
+            // 입찰 없음 → 유찰
             log.warn("최고 입찰을 찾을 수 없습니다: 경매ID={}", auctionId);
+            auction.setWinner(null, BigDecimal.ZERO);
         }
-        
+
         // 경매 강제 종료
         auction.forceEnd();
         Auction savedAuction = auctionRepository.save(auction);
-        
+
         // 낙찰자가 있으면 채팅방 자동 생성 및 알림 발송
-        if (savedAuction.getWinner() != null) {
+        if (isSuccessfulAuction && savedAuction.getWinner() != null) {
             Long chatRoomId = null;
             try {
                 com.cherrypick.app.domain.chat.entity.ChatRoom chatRoom = chatService.createAuctionChatRoom(
@@ -551,6 +568,33 @@ public class AuctionService {
             // 다른 참여자들에게 경매 종료 알림 발행 (낙찰자 제외)
             notifyAllParticipants(savedAuction, savedAuction.getWinner().getId(), finalPrice, true);
 
+        } else {
+            // 유찰 처리 - 판매자 및 최고 입찰자에게 유찰 알림
+            log.info("경매 {} 유찰 처리 - forceEndAuction", savedAuction.getId());
+
+            // 판매자용 유찰 알림
+            applicationEventPublisher.publishEvent(new AuctionNotSoldNotificationEvent(
+                this,
+                savedAuction.getSeller().getId(),
+                savedAuction.getId(),
+                savedAuction.getTitle(),
+                highestBid.orElse(null)
+            ));
+
+            // 최고 입찰자가 있으면 유찰 알림 발행
+            if (highestBid.isPresent()) {
+                com.cherrypick.app.domain.bid.entity.Bid highestBidEntity = highestBid.get();
+                applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
+                    this,
+                    highestBidEntity.getBidder().getId(),
+                    savedAuction.getId(),
+                    savedAuction.getTitle(),
+                    highestBidEntity.getBidAmount().longValue()
+                ));
+
+                // 다른 참여자들에게도 유찰 알림
+                notifyAllParticipants(savedAuction, highestBidEntity.getBidder().getId(), 0L, false);
+            }
         }
 
         List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(savedAuction.getId());
