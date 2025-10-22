@@ -20,6 +20,7 @@ public class NotificationHistoryResponse {
     private String title;
     private String message;
     private Long resourceId;
+    private Long chatRoomId;
     private Boolean isRead;
     private Boolean fcmSent;
     private LocalDateTime createdAt;
@@ -36,6 +37,7 @@ public class NotificationHistoryResponse {
                 .title(notification.getTitle())
                 .message(notification.getMessage())
                 .resourceId(notification.getResourceId())
+                .chatRoomId(notification.getChatRoomId())
                 .isRead(notification.getIsRead())
                 .fcmSent(notification.getFcmSent())
                 .createdAt(notification.getCreatedAt())

@@ -44,6 +44,12 @@ public class NotificationHistory extends BaseEntity {
     private Long resourceId;
 
     /**
+     * 채팅방 ID (낙찰 알림 시 사용)
+     */
+    @Column(name = "chat_room_id")
+    private Long chatRoomId;
+
+    /**
      * 읽음 여부
      */
     @Builder.Default
@@ -74,13 +80,34 @@ public class NotificationHistory extends BaseEntity {
             String title,
             String message,
             Long resourceId) {
-        
+
         return NotificationHistory.builder()
                 .user(user)
                 .type(type)
                 .title(title)
                 .message(message)
                 .resourceId(resourceId)
+                .build();
+    }
+
+    /**
+     * 알림 히스토리 생성 (채팅방 ID 포함)
+     */
+    public static NotificationHistory createNotificationWithChatRoom(
+            User user,
+            NotificationType type,
+            String title,
+            String message,
+            Long resourceId,
+            Long chatRoomId) {
+
+        return NotificationHistory.builder()
+                .user(user)
+                .type(type)
+                .title(title)
+                .message(message)
+                .resourceId(resourceId)
+                .chatRoomId(chatRoomId)
                 .build();
     }
 
@@ -97,12 +124,13 @@ public class NotificationHistory extends BaseEntity {
                 .title(this.title)
                 .message(this.message)
                 .resourceId(this.resourceId)
+                .chatRoomId(this.chatRoomId)
                 .isRead(true)
                 .fcmSent(this.fcmSent)
                 .readAt(LocalDateTime.now())
                 .build();
     }
-    
+
     /**
      * FCM 발송 성공 처리
      */
@@ -114,6 +142,7 @@ public class NotificationHistory extends BaseEntity {
                 .title(this.title)
                 .message(this.message)
                 .resourceId(this.resourceId)
+                .chatRoomId(this.chatRoomId)
                 .isRead(this.isRead)
                 .fcmSent(true)
                 .readAt(this.readAt)

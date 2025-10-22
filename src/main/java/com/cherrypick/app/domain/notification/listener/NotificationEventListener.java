@@ -140,10 +140,25 @@ public class NotificationEventListener {
                 return;
             }
 
-            // 알림 히스토리 저장
-            NotificationHistory notification = NotificationHistory.createNotification(
-                    user, event.getNotificationType(), event.getTitle(),
-                    event.getMessage(), event.getResourceId());
+            // chatRoomId 추출 (경매 낙찰 알림인 경우)
+            Long chatRoomId = null;
+            if (event instanceof AuctionSoldNotificationEvent) {
+                chatRoomId = ((AuctionSoldNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof AuctionWonNotificationEvent) {
+                chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
+            }
+
+            // 알림 히스토리 저장 (chatRoomId 포함)
+            NotificationHistory notification;
+            if (chatRoomId != null) {
+                notification = NotificationHistory.createNotificationWithChatRoom(
+                        user, event.getNotificationType(), event.getTitle(),
+                        event.getMessage(), event.getResourceId(), chatRoomId);
+            } else {
+                notification = NotificationHistory.createNotification(
+                        user, event.getNotificationType(), event.getTitle(),
+                        event.getMessage(), event.getResourceId());
+            }
             notificationHistoryRepository.save(notification);
 
             // FCM 푸시 알림 발송 (모의)

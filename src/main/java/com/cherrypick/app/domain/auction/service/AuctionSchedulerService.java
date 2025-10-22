@@ -15,6 +15,8 @@ import com.cherrypick.app.domain.notification.event.AuctionEndedForParticipantEv
 import com.cherrypick.app.domain.notification.event.AuctionNotSoldForHighestBidderEvent;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.chat.entity.ChatRoom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -44,6 +46,7 @@ public class AuctionSchedulerService {
     private final WebSocketMessagingService webSocketMessagingService;
     private final BusinessConfig businessConfig;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ChatService chatService;
     
     /**
      * 경매 종료 처리 스케줄러
@@ -122,6 +125,19 @@ public class AuctionSchedulerService {
             log.error("경매 {} 연결 서비스 생성 실패", auction.getId(), e);
         }
 
+        // 2-1. 채팅방 자동 생성 (낙찰 시 판매자-낙찰자 채팅방)
+        ChatRoom chatRoom = null;
+        try {
+            chatRoom = chatService.createAuctionChatRoom(
+                auction,
+                auction.getSeller(),
+                winningBid.getBidder()
+            );
+            log.info("경매 {} 채팅방 자동 생성 완료: chatRoomId={}", auction.getId(), chatRoom.getId());
+        } catch (Exception e) {
+            log.error("경매 {} 채팅방 생성 실패", auction.getId(), e);
+        }
+
         // 3. 실시간 낙찰 알림 전송 (경매 페이지 구독자들에게)
         String winnerNickname = winningBid.getBidder().getNickname() != null ?
             winningBid.getBidder().getNickname() :
@@ -138,6 +154,8 @@ public class AuctionSchedulerService {
             auction.getSeller().getNickname() :
             "익명" + auction.getSeller().getId();
 
+        Long chatRoomId = chatRoom != null ? chatRoom.getId() : null;
+
         applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
             this,
             winningBid.getBidder().getId(),
@@ -145,19 +163,25 @@ public class AuctionSchedulerService {
             auction.getTitle(),
             finalPrice.longValue(),
             sellerNickname,
-            null  // chatRoomId는 자동 스케줄러에서는 생성하지 않음
+            chatRoomId  // 생성된 채팅방 ID 포함
         ));
 
-        // 5. 판매자 낙찰 알림 이벤트 발행 - forceEndAuction에서만 처리하도록 변경
-        // 스케줄러에서는 판매자 알림을 발행하지 않음 (중복 방지)
-        // forceEndAuction 메서드에서 채팅방 ID와 함께 발송
-        log.info("스케줄러: 판매자 알림은 forceEndAuction에서 처리됨 (중복 방지)");
+        // 5. 판매자 낙찰 알림 이벤트 발행 (채팅방 ID 포함)
+        applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
+            this,
+            auction.getSeller().getId(),
+            auction.getId(),
+            auction.getTitle(),
+            finalPrice.longValue(),
+            winnerNickname,
+            chatRoomId  // 생성된 채팅방 ID 포함
+        ));
 
         // 6. 모든 입찰 참여자에게 경매 종료 알림 발행 (낙찰자 제외)
         notifyAllParticipants(auction, winningBid.getBidder().getId(), finalPrice.longValue(), true);
 
-        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}, 참여자 {}명에게 알림 전송",
-                auction.getId(), finalPrice.intValue(), winnerNickname,
+        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}, 채팅방: {}, 참여자 {}명에게 알림 전송",
+                auction.getId(), finalPrice.intValue(), winnerNickname, chatRoomId,
                 bidRepository.countDistinctBiddersByAuctionId(auction.getId()) - 1);
     }
     
