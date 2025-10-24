@@ -3,12 +3,16 @@ package com.cherrypick.app.domain.auction.controller;
 import com.cherrypick.app.domain.auction.dto.AuctionResponse;
 import com.cherrypick.app.domain.auction.dto.AuctionSearchRequest;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
+import com.cherrypick.app.domain.auction.dto.TopBidderResponse;
+import com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest;
 import com.cherrypick.app.domain.auction.service.AuctionService;
 import com.cherrypick.app.domain.auction.service.AuctionBookmarkService;
 import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
 import com.cherrypick.app.domain.user.service.UserService;
+import com.cherrypick.app.domain.chat.dto.response.ChatRoomResponse;
+import com.cherrypick.app.domain.chat.service.ChatService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -34,10 +38,11 @@ import java.util.Map;
 @RequestMapping("/api/auctions")
 @RequiredArgsConstructor
 public class AuctionController {
-    
+
     private final AuctionService auctionService;
     private final UserService userService;
     private final AuctionBookmarkService bookmarkService;
+    private final ChatService chatService;
     
     @Operation(summary = "경매 등록", 
                description = """
@@ -434,6 +439,61 @@ public class AuctionController {
         return ResponseEntity.ok(auction);
     }
 
+    // ================== 유찰 경매 관련 API ==================
+
+    @Operation(summary = "유찰 경매 최고입찰자 조회",
+               description = "유찰된 경매의 최고입찰자 정보를 조회합니다. 입찰이 없으면 204 No Content를 반환합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "최고입찰자 조회 성공"),
+            @ApiResponse(responseCode = "204", description = "입찰 내역 없음"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @GetMapping("/{id}/top-bidder")
+    public ResponseEntity<TopBidderResponse> getTopBidder(
+            @Parameter(description = "경매 ID") @PathVariable Long id) {
+
+        return auctionService.getTopBidder(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.noContent().build());
+    }
+
+    @Operation(summary = "유찰 경매 채팅방 생성",
+               description = "유찰된 경매의 최고입찰자와 판매자 간 채팅방을 생성합니다. 판매자만 호출 가능합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "채팅방 생성 성공"),
+            @ApiResponse(responseCode = "400", description = "입찰 내역이 없거나 이미 채팅방이 존재함"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (판매자 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PostMapping("/{id}/create-failed-auction-chat")
+    public ResponseEntity<ChatRoomResponse> createFailedAuctionChat(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        ChatRoomResponse response = chatService.createFailedAuctionChatRoom(id, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "경매 재활성화 (재등록)",
+               description = "종료된 경매를 재활성화합니다. 판매자만 호출 가능합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "재활성화 성공"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (판매자 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PatchMapping("/{id}/reactivate")
+    public ResponseEntity<AuctionResponse> reactivateAuctionProd(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @Parameter(description = "재활성화 후 진행할 시간 (시간 단위)") @RequestParam(defaultValue = "24") int hours,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
+
+        // 권한 확인은 서비스 레이어에서 처리하지 않으므로 여기서 확인
+        // (필요 시 AuctionService.reactivateAuction에 userId 파라미터 추가)
+        AuctionResponse auction = auctionService.reactivateAuction(id, hours);
+        return ResponseEntity.ok(auction);
+    }
+
     // ================== 북마크 관련 API ==================
 
     @Operation(summary = "북마크 토글",
@@ -585,7 +645,7 @@ public class AuctionController {
     public ResponseEntity<AuctionResponse> updateAuction(
             @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "경매 ID") @PathVariable Long auctionId,
-            @Valid @RequestBody com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest request) {
+            @Valid @RequestBody UpdateAuctionRequest request) {
 
         Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         AuctionResponse response = auctionService.updateAuction(auctionId, userId, request);

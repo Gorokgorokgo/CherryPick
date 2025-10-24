@@ -3,6 +3,7 @@ package com.cherrypick.app.domain.notification.listener;
 import com.cherrypick.app.domain.notification.entity.NotificationHistory;
 import com.cherrypick.app.domain.notification.entity.NotificationSetting;
 import com.cherrypick.app.domain.notification.event.*;
+import com.cherrypick.app.domain.notification.enums.NotificationType;
 import com.cherrypick.app.domain.notification.repository.NotificationHistoryRepository;
 import com.cherrypick.app.domain.notification.repository.NotificationSettingRepository;
 import com.cherrypick.app.domain.user.entity.User;
@@ -176,12 +177,13 @@ public class NotificationEventListener {
     /**
      * 알림 설정 확인
      */
-    private boolean isNotificationEnabled(NotificationSetting setting, com.cherrypick.app.domain.notification.enums.NotificationType type) {
+    private boolean isNotificationEnabled(NotificationSetting setting, NotificationType type) {
         return switch (type) {
             case NEW_BID -> setting.getBidNotification();
             case AUCTION_WON -> setting.getWinningNotification(); // 구매자용 낙찰 알림
             case AUCTION_SOLD -> setting.getBidNotification(); // 판매자용 낙찰 알림 (입찰 관련 알림으로 처리)
-            case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림
+            case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림 (판매자용)
+            case AUCTION_NOT_SOLD_HIGHEST_BIDDER -> setting.getBidNotification(); // 유찰 알림 (최고 입찰자용)
             case AUCTION_ENDED -> setting.getBidNotification(); // 경매 종료 알림 (일반 참여자)
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();

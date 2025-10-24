@@ -31,6 +31,12 @@ import com.cherrypick.app.domain.notification.event.AuctionSoldNotificationEvent
 import com.cherrypick.app.domain.notification.event.AuctionEndedForParticipantEvent;
 import com.cherrypick.app.domain.notification.event.AuctionNotSoldNotificationEvent;
 import com.cherrypick.app.domain.notification.event.AuctionNotSoldForHighestBidderEvent;
+import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.chat.entity.ChatRoom;
+import com.cherrypick.app.domain.bid.repository.BidRepository;
+import com.cherrypick.app.domain.bid.entity.Bid;
+import com.cherrypick.app.domain.auction.dto.TopBidderResponse;
+import com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -49,8 +55,8 @@ public class AuctionService {
     private final AuctionRepository auctionRepository;
     private final AuctionImageRepository auctionImageRepository;
     private final UserRepository userRepository;
-    private final com.cherrypick.app.domain.chat.service.ChatService chatService;
-    private final com.cherrypick.app.domain.bid.repository.BidRepository bidRepository;
+    private final ChatService chatService;
+    private final BidRepository bidRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
 
     @PersistenceContext
@@ -441,6 +447,23 @@ public class AuctionService {
     }
 
     /**
+     * 유찰 경매의 최고입찰자 조회
+     *
+     * @param auctionId 경매 ID
+     * @return 최고입찰자 정보 (없으면 Optional.empty())
+     */
+    @Transactional(readOnly = true)
+    public Optional<TopBidderResponse> getTopBidder(Long auctionId) {
+        return bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId)
+                .filter(bid -> bid.getBidAmount().compareTo(BigDecimal.ZERO) > 0)
+                .map(bid -> TopBidderResponse.builder()
+                        .userId(bid.getBidder().getId())
+                        .nickname(bid.getBidder().getNickname())
+                        .bidAmount(bid.getBidAmount())
+                        .build());
+    }
+
+    /**
      * 종료된 경매 재활성화 (개발/테스트용 또는 재등록 API)
      */
     @Transactional
@@ -500,7 +523,7 @@ public class AuctionService {
         }
 
         // 최고 입찰자를 낙찰자로 설정 (Reserve Price 확인)
-        Optional<com.cherrypick.app.domain.bid.entity.Bid> highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
+        Optional<Bid> highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
 
         boolean isSuccessfulAuction = false;
         if (highestBid.isPresent()) {
@@ -531,7 +554,7 @@ public class AuctionService {
         if (isSuccessfulAuction && savedAuction.getWinner() != null) {
             Long chatRoomId = null;
             try {
-                com.cherrypick.app.domain.chat.entity.ChatRoom chatRoom = chatService.createAuctionChatRoom(
+                ChatRoom chatRoom = chatService.createAuctionChatRoom(
                         savedAuction, savedAuction.getSeller(), savedAuction.getWinner());
                 chatRoomId = chatRoom.getId();
                 // 채팅방 생성 완료
@@ -569,7 +592,7 @@ public class AuctionService {
             notifyAllParticipants(savedAuction, savedAuction.getWinner().getId(), finalPrice, true);
 
         } else {
-            // 유찰 처리 - 판매자 및 최고 입찰자에게 유찰 알림
+            // 유찰 처리 - 판매자에게만 유찰 알림
             log.info("경매 {} 유찰 처리 - forceEndAuction", savedAuction.getId());
 
             // 판매자용 유찰 알림
@@ -581,18 +604,9 @@ public class AuctionService {
                 highestBid.orElse(null)
             ));
 
-            // 최고 입찰자가 있으면 유찰 알림 발행
+            // 모든 참여자에게 경매 종료 알림 (유찰)
             if (highestBid.isPresent()) {
-                com.cherrypick.app.domain.bid.entity.Bid highestBidEntity = highestBid.get();
-                applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
-                    this,
-                    highestBidEntity.getBidder().getId(),
-                    savedAuction.getId(),
-                    savedAuction.getTitle(),
-                    highestBidEntity.getBidAmount().longValue()
-                ));
-
-                // 다른 참여자들에게도 유찰 알림
+                Bid highestBidEntity = highestBid.get();
                 notifyAllParticipants(savedAuction, highestBidEntity.getBidder().getId(), 0L, false);
             }
         }
@@ -626,7 +640,7 @@ public class AuctionService {
      * @throws BusinessException 권한 없음, 입찰 있음, 종료된 경매 등
      */
     @Transactional
-    public AuctionResponse updateAuction(Long auctionId, Long userId, com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest updateRequest) {
+    public AuctionResponse updateAuction(Long auctionId, Long userId, UpdateAuctionRequest updateRequest) {
         // 1. 경매 존재 확인
         Auction auction = auctionRepository.findById(auctionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
@@ -727,7 +741,7 @@ public class AuctionService {
      */
     private void notifyAllParticipants(Auction auction, Long excludeUserId, Long finalPrice, boolean wasSuccessful) {
         // 해당 경매의 모든 입찰자 조회 (중복 제거)
-        List<com.cherrypick.app.domain.bid.entity.Bid> allBids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId());
+        List<Bid> allBids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId());
 
         // 중복 제거 및 제외 대상 필터링
         Set<Long> notifiedUserIds = allBids.stream()

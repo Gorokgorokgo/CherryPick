@@ -266,7 +266,7 @@ public class Auction extends BaseEntity {
         this.lastPriceBeforeEnd = this.currentPrice;
         this.winner = winner;
         this.currentPrice = finalPrice;
-        this.status = finalPrice.compareTo(BigDecimal.ZERO) > 0 ? AuctionStatus.ENDED : AuctionStatus.ENDED;
+        this.status = finalPrice.compareTo(BigDecimal.ZERO) > 0 ? AuctionStatus.ENDED : AuctionStatus.NO_RESERVE_MET;
     }
 
     /**

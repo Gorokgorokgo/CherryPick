@@ -2,6 +2,7 @@ package com.cherrypick.app.domain.websocket.service;
 
 import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
 import com.cherrypick.app.domain.websocket.dto.AuctionUpdateMessage;
+import com.cherrypick.app.config.WebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,8 +16,8 @@ import jakarta.annotation.PostConstruct;
 @Service
 @RequiredArgsConstructor
 public class WebSocketMessagingService {
-    
-    private final com.cherrypick.app.config.WebSocketHandler webSocketHandler;
+
+    private final WebSocketHandler webSocketHandler;
     
     @PostConstruct
     public void init() {

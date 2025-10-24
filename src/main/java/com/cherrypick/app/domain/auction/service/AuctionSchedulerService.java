@@ -212,9 +212,11 @@ public class AuctionSchedulerService {
             highestBidOpt.orElse(null)
         ));
 
-        // 최고 입찰자가 있는 경우 유찰 알림 발행
+        // 최고 입찰자에게 유찰 알림 (입찰자가 있는 경우)
         if (highestBidOpt.isPresent()) {
             Bid highestBid = highestBidOpt.get();
+
+            // 최고 입찰자에게 유찰 알림
             applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
                 this,
                 highestBid.getBidder().getId(),
@@ -223,13 +225,16 @@ public class AuctionSchedulerService {
                 highestBid.getBidAmount().longValue()
             ));
 
-            // 다른 참여자들에게도 유찰 알림
+            // 다른 참여자들에게 경매 종료 알림 (최고 입찰자 제외)
             notifyAllParticipants(auction, highestBid.getBidder().getId(), 0L, false);
-        }
 
-        log.info("경매 {} 유찰 처리 완료 - 참여자 {}명에게 알림 전송",
-                auction.getId(),
-                highestBidOpt.isPresent() ? bidRepository.countDistinctBiddersByAuctionId(auction.getId()) : 0);
+            log.info("경매 {} 유찰 처리 완료 - 최고 입찰자 {}원, 참여자 {}명에게 알림 전송",
+                    auction.getId(),
+                    highestBid.getBidAmount().longValue(),
+                    bidRepository.countDistinctBiddersByAuctionId(auction.getId()));
+        } else {
+            log.info("경매 {} 유찰 처리 완료 - 입찰자 없음", auction.getId());
+        }
     }
 
     /**

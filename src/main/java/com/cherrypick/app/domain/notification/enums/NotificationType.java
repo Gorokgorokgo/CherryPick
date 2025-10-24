@@ -25,6 +25,11 @@ public enum NotificationType {
     AUCTION_NOT_SOLD("경매 유찰"),
 
     /**
+     * 경매 유찰 (최고 입찰자용)
+     */
+    AUCTION_NOT_SOLD_HIGHEST_BIDDER("경매 유찰 (최고 입찰)"),
+
+    /**
      * 경매 종료 (일반 참여자용)
      */
     AUCTION_ENDED("경매 종료"),

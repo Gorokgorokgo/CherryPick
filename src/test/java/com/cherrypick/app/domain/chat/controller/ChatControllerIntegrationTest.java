@@ -1,5 +1,6 @@
 package com.cherrypick.app.domain.chat.controller;
 
+import com.cherrypick.app.common.exception.BusinessException;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
@@ -209,7 +210,7 @@ class ChatControllerIntegrationTest {
 
         // when & then - 권한 없음 예외 발생
         assertThatThrownBy(() -> chatController.createChatRoom(request, userDetails))
-                .isInstanceOf(com.cherrypick.app.common.exception.BusinessException.class)
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("접근이 금지되었습니다");
     }
 

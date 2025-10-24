@@ -6,6 +6,7 @@ import com.cherrypick.app.domain.auction.enums.RegionScope;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.bid.dto.response.BidResponse;
 import com.cherrypick.app.domain.bid.entity.Bid;
+import com.cherrypick.app.domain.bid.enums.BidStatus;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
@@ -102,7 +103,7 @@ class AutoBidServiceIntegrationTest {
 
         // 자동 입찰 설정 레코드 확인
         Optional<Bid> autoBidSetting = bidRepository.findByAuctionIdAndBidderIdAndIsAutoBidTrueAndStatus(
-                auction.getId(), bidder1.getId(), com.cherrypick.app.domain.bid.enums.BidStatus.ACTIVE);
+                auction.getId(), bidder1.getId(), BidStatus.ACTIVE);
         assertThat(autoBidSetting).isPresent();
         assertThat(autoBidSetting.get().getBidAmount()).isEqualByComparingTo(BigDecimal.ZERO);
 
@@ -152,7 +153,7 @@ class AutoBidServiceIntegrationTest {
 
         // then
         Optional<Bid> autoBidSetting = bidRepository.findByAuctionIdAndBidderIdAndIsAutoBidTrueAndStatus(
-                auction.getId(), bidder1.getId(), com.cherrypick.app.domain.bid.enums.BidStatus.ACTIVE);
+                auction.getId(), bidder1.getId(), BidStatus.ACTIVE);
         assertThat(autoBidSetting).isEmpty();
     }
 
