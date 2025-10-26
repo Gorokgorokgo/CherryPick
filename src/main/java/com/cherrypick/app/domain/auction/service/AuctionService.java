@@ -10,6 +10,7 @@ import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
 import com.cherrypick.app.domain.auction.repository.AuctionImageRepository;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
+import com.cherrypick.app.domain.auction.repository.AuctionBookmarkRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.common.exception.BusinessException;
@@ -40,6 +41,7 @@ import com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,13 +53,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AuctionService {
-    
+
     private final AuctionRepository auctionRepository;
     private final AuctionImageRepository auctionImageRepository;
     private final UserRepository userRepository;
     private final ChatService chatService;
     private final BidRepository bidRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final AuctionBookmarkRepository bookmarkRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -116,19 +119,19 @@ public class AuctionService {
         return AuctionResponse.from(savedAuction, images);
     }
     
-    public Page<AuctionResponse> getActiveAuctions(Pageable pageable) {
+    public Page<AuctionResponse> getActiveAuctions(Pageable pageable, Long userId) {
         Page<Auction> auctions = auctionRepository.findByStatusOrderByCreatedAtDesc(AuctionStatus.ACTIVE, pageable);
 
-        return createAuctionResponsePage(auctions);
+        return createAuctionResponsePage(auctions, userId);
     }
     
-    public Page<AuctionResponse> getAuctionsByCategory(Category category, Pageable pageable) {
+    public Page<AuctionResponse> getAuctionsByCategory(Category category, Pageable pageable, Long userId) {
         Page<Auction> auctions = auctionRepository.findByCategoryAndStatusOrderByCreatedAtDesc(category, AuctionStatus.ACTIVE, pageable);
 
-        return createAuctionResponsePage(auctions);
+        return createAuctionResponsePage(auctions, userId);
     }
     
-    public Page<AuctionResponse> getAuctionsByRegion(RegionScope regionScope, String regionCode, Pageable pageable) {
+    public Page<AuctionResponse> getAuctionsByRegion(RegionScope regionScope, String regionCode, Pageable pageable, Long userId) {
         Page<Auction> auctions;
 
         if (regionScope == RegionScope.NATIONWIDE) {
@@ -137,17 +140,23 @@ public class AuctionService {
             auctions = auctionRepository.findByRegionScopeAndRegionCodeAndStatusOrderByCreatedAtDesc(regionScope, regionCode, AuctionStatus.ACTIVE, pageable);
         }
 
-        return createAuctionResponsePage(auctions);
+        return createAuctionResponsePage(auctions, userId);
     }
     
     public AuctionResponse getAuctionDetail(Long auctionId) {
         Auction auction = auctionRepository.findById(auctionId)
                 .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
-        
+
         // 조회수 증가 로직을 제거 - 별도 API에서 처리하도록 변경
-        
+
         List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auctionId);
-        return AuctionResponse.from(auction, images);
+        AuctionResponse response = AuctionResponse.from(auction, images);
+
+        // 북마크 카운트 설정
+        long bookmarkCount = bookmarkRepository.countByAuction(auction);
+        response.setBookmarkCount(bookmarkCount);
+
+        return response;
     }
     
     /**
@@ -176,7 +185,7 @@ public class AuctionService {
     public Page<AuctionResponse> getMyAuctions(Long userId, Pageable pageable) {
         Page<Auction> auctions = auctionRepository.findBySellerIdOrderByCreatedAtDesc(userId, pageable);
 
-        return createAuctionResponsePage(auctions);
+        return createAuctionResponsePage(auctions, userId);
     }
     
     private List<AuctionImage> saveAuctionImages(Auction auction, List<String> imageUrls) {
@@ -194,7 +203,7 @@ public class AuctionService {
     /**
      * N+1 문제 해결을 위한 헬퍼 메서드 - 경매 목록과 이미지를 효율적으로 조합
      */
-    private Page<AuctionResponse> createAuctionResponsePage(Page<Auction> auctions) {
+    private Page<AuctionResponse> createAuctionResponsePage(Page<Auction> auctions, Long userId) {
         // 경매가 없으면 빈 페이지 반환
         if (auctions.isEmpty()) {
             return auctions.map(auction -> AuctionResponse.from(auction, List.of()));
@@ -211,9 +220,32 @@ public class AuctionService {
         Map<Long, List<AuctionImage>> imageMap = allImages.stream()
                 .collect(Collectors.groupingBy(image -> image.getAuction().getId()));
 
+        // 경매별 북마크 카운트를 한 번에 조회
+        List<Auction> auctionList = auctions.getContent();
+        Map<Long, Long> bookmarkCountMap = auctionList.stream()
+                .collect(Collectors.toMap(
+                        Auction::getId,
+                        auction -> bookmarkRepository.countByAuction(auction)
+                ));
+
+        // 사용자별 북마크 상태를 한 번에 조회
+        Map<Long, Boolean> bookmarkStatusMap = new java.util.HashMap<>();
+        if (userId != null) {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                for (Auction auction : auctionList) {
+                    boolean isBookmarked = bookmarkRepository.existsByAuctionAndUser(auction, user);
+                    bookmarkStatusMap.put(auction.getId(), isBookmarked);
+                }
+            }
+        }
+
         return auctions.map(auction -> {
             List<AuctionImage> images = imageMap.getOrDefault(auction.getId(), List.of());
-            return AuctionResponse.from(auction, images);
+            AuctionResponse response = AuctionResponse.from(auction, images);
+            response.setBookmarkCount(bookmarkCountMap.getOrDefault(auction.getId(), 0L));
+            response.setBookmarked(bookmarkStatusMap.getOrDefault(auction.getId(), false));
+            return response;
         });
     }
     
@@ -299,12 +331,13 @@ public class AuctionService {
     
     /**
      * 통합 검색 기능 - 키워드, 카테고리, 지역, 가격 범위 등 복합 조건 검색
-     * 
+     *
      * @param searchRequest 검색 조건
      * @param pageable 페이지 정보
+     * @param userId 사용자 ID (북마크 상태 조회용)
      * @return 검색 결과
      */
-    public Page<AuctionResponse> searchAuctions(AuctionSearchRequest searchRequest, Pageable pageable) {
+    public Page<AuctionResponse> searchAuctions(AuctionSearchRequest searchRequest, Pageable pageable, Long userId) {
         // 검색 조건 검증
         searchRequest.validatePriceRange();
         
@@ -338,70 +371,70 @@ public class AuctionService {
                 sortedPageable
             );
         }
-        
-        return createAuctionResponsePage(auctions);
+
+        return createAuctionResponsePage(auctions, userId);
     }
-    
+
     /**
      * 키워드 검색 (제목 + 설명)
      */
-    public Page<AuctionResponse> searchByKeyword(String keyword, AuctionStatus status, Pageable pageable) {
+    public Page<AuctionResponse> searchByKeyword(String keyword, AuctionStatus status, Pageable pageable, Long userId) {
         if (keyword == null || keyword.trim().isEmpty()) {
-            return getAuctionsByStatus(status, pageable);
+            return getAuctionsByStatus(status, pageable, userId);
         }
-        
+
         Page<Auction> auctions = auctionRepository.searchByKeyword(keyword.trim(), status, pageable);
-        
-        return createAuctionResponsePage(auctions);
+
+        return createAuctionResponsePage(auctions, userId);
     }
     
     /**
      * 가격 범위로 검색
      */
-    public Page<AuctionResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, 
-                                                   AuctionStatus status, Pageable pageable) {
+    public Page<AuctionResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice,
+                                                   AuctionStatus status, Pageable pageable, Long userId) {
         // 가격 범위 검증
         if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
             throw new IllegalArgumentException("최소 가격은 최대 가격보다 작아야 합니다.");
         }
-        
+
         // 기본값 설정
         if (minPrice == null) minPrice = BigDecimal.ZERO;
         if (maxPrice == null) maxPrice = new BigDecimal("999999999"); // 매우 큰 값
-        
+
         Page<Auction> auctions = auctionRepository.findByPriceRange(minPrice, maxPrice, status, pageable);
-        
-        return createAuctionResponsePage(auctions);
+
+        return createAuctionResponsePage(auctions, userId);
     }
     
     /**
      * 마감 임박 경매 조회 (N시간 이내)
      */
-    public Page<AuctionResponse> getEndingSoonAuctions(int hours, Pageable pageable) {
+    public Page<AuctionResponse> getEndingSoonAuctions(int hours, Pageable pageable, Long userId) {
         LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
         LocalDateTime endTime = now.plusHours(hours);
-        
+
         Page<Auction> auctions = auctionRepository.findEndingSoon(now, endTime, pageable);
-        
-        return createAuctionResponsePage(auctions);
+
+        return createAuctionResponsePage(auctions, userId);
     }
     
     /**
      * 인기 경매 조회 (입찰 수 기준)
      */
-    public Page<AuctionResponse> getPopularAuctions(int minBidCount, AuctionStatus status, Pageable pageable) {
+    public Page<AuctionResponse> getPopularAuctions(int minBidCount, AuctionStatus status, Pageable pageable, Long userId) {
         Page<Auction> auctions = auctionRepository.findByMinBidCount(minBidCount, status, pageable);
-        
-        return createAuctionResponsePage(auctions);
+
+        return createAuctionResponsePage(auctions, userId);
     }
     
     /**
      * 상태별 경매 조회 (기존 getActiveAuctions의 일반화)
      */
-    public Page<AuctionResponse> getAuctionsByStatus(AuctionStatus status, Pageable pageable) {
+    public Page<AuctionResponse> getAuctionsByStatus(AuctionStatus status, Pageable pageable, Long userId) {
         Page<Auction> auctions = auctionRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
-        
-        return createAuctionResponsePage(auctions);
+
+        return createAuctionResponsePage(auctions, userId);
     }
     
     /**
