@@ -135,9 +135,9 @@ class AuctionServiceTest {
 
         // Then: 유찰 처리 검증
         Auction endedAuction = auctionRepository.findById(auction.getId()).orElseThrow();
-        assertThat(endedAuction.getStatus()).isEqualTo(AuctionStatus.ENDED);
+        assertThat(endedAuction.getStatus()).isEqualTo(AuctionStatus.NO_RESERVE_MET);
         assertThat(endedAuction.getWinner()).isNull();
-        assertThat(endedAuction.getCurrentPrice()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(endedAuction.getCurrentPrice()).isEqualByComparingTo(highestBidPrice); // 마지막 입찰가 유지
 
         // Then: 어떤 알림 이벤트도 발행되지 않음 검증
         long soldEventCount = applicationEvents.stream(AuctionSoldNotificationEvent.class).count();
