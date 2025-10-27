@@ -276,7 +276,7 @@ public class AuctionService {
         
         if (auction.hasReservePrice() && !auction.isReservePriceMet(highestBidPrice)) {
             // Reserve Price 미달 - 유찰 처리
-            processFailedAuction(auction, seller);
+            processFailedAuction(auction, seller, highestBidPrice);
         } else {
             // 정상 낙찰 처리
             processSuccessfulAuction(auction, seller, highestBidder, highestBidPrice);
@@ -287,12 +287,20 @@ public class AuctionService {
     
     /**
      * 유찰 처리 (개정된 비즈니스 모델)
+     * @param auction 경매
+     * @param seller 판매자
+     * @param highestBidPrice 최고 입찰가 (없으면 startPrice 유지)
      */
-    private void processFailedAuction(Auction auction, User seller) {
-        // 1. 경매 상태를 유찰로 변경
+    private void processFailedAuction(Auction auction, User seller, BigDecimal highestBidPrice) {
+        // 1. currentPrice를 최고 입찰가로 업데이트 (입찰이 있었다면)
+        if (highestBidPrice != null && highestBidPrice.compareTo(auction.getStartPrice()) > 0) {
+            auction.updateCurrentPrice(highestBidPrice);
+        }
+
+        // 2. 경매 상태를 유찰로 변경 (currentPrice는 유지)
         auction.endAuction(null, BigDecimal.ZERO);
-        
-        // 2. 유찰 알림 발송 (별도 서비스에서 처리)
+
+        // 3. 유찰 알림 발송 (별도 서비스에서 처리)
         // notificationService.sendAuctionFailedNotification(auction);
 
         // 경매 유찰 처리 완료
@@ -571,16 +579,14 @@ public class AuctionService {
                 // Reserve Price 미달 → 유찰
                 log.info("경매 {} - Reserve Price 미달로 유찰 처리: 최고입찰가={}, Reserve Price={}",
                     auctionId, highestBidAmount, auction.getReservePrice());
-                auction.setWinner(null, BigDecimal.ZERO);
+                auction.endAuction(null, BigDecimal.ZERO);  // NO_RESERVE_MET 상태로 설정
             }
         } else {
             // 입찰 없음 → 유찰
             log.warn("최고 입찰을 찾을 수 없습니다: 경매ID={}", auctionId);
-            auction.setWinner(null, BigDecimal.ZERO);
+            auction.endAuction(null, BigDecimal.ZERO);  // NO_RESERVE_MET 상태로 설정
         }
 
-        // 경매 강제 종료
-        auction.forceEnd();
         Auction savedAuction = auctionRepository.save(auction);
 
         // 낙찰자가 있으면 채팅방 자동 생성 및 알림 발송

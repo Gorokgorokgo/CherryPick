@@ -249,24 +249,48 @@ public class Auction extends BaseEntity {
 
     /**
      * 낙찰자 설정
+     * Reserve Price 확인 후 적절한 상태로 설정
      */
     public void setWinner(User winner, BigDecimal finalPrice) {
         // 종료 전 현재가를 저장
         this.lastPriceBeforeEnd = this.currentPrice;
-        this.winner = winner;
         this.currentPrice = finalPrice;
-        this.status = AuctionStatus.ENDED;
+
+        // Reserve Price 확인
+        if (this.hasReservePrice() && !this.isReservePriceMet(finalPrice)) {
+            // Reserve Price 미달 - 유찰
+            this.status = AuctionStatus.NO_RESERVE_MET;
+            this.winner = null; // 유찰 시 낙찰자 제거
+        } else {
+            // Reserve Price 충족 또는 Reserve Price 없음 - 낙찰
+            this.winner = winner;
+            this.status = AuctionStatus.ENDED;
+        }
     }
 
     /**
      * 경매 종료 처리
+     *
+     * 비즈니스 로직:
+     * - 낙찰(finalPrice > 0): currentPrice를 finalPrice로 업데이트
+     * - 유찰(finalPrice = 0): currentPrice를 유지 (마지막 입찰가 보존)
      */
     public void endAuction(User winner, BigDecimal finalPrice) {
         // 종료 전 현재가를 저장
         this.lastPriceBeforeEnd = this.currentPrice;
         this.winner = winner;
-        this.currentPrice = finalPrice;
-        this.status = finalPrice.compareTo(BigDecimal.ZERO) > 0 ? AuctionStatus.ENDED : AuctionStatus.NO_RESERVE_MET;
+
+        // 유찰인 경우 currentPrice를 유지 (0원으로 덮어쓰지 않음)
+        if (finalPrice.compareTo(BigDecimal.ZERO) > 0) {
+            this.currentPrice = finalPrice;
+            this.status = AuctionStatus.ENDED;
+        } else {
+            // 유찰: currentPrice는 그대로 유지 (마지막 입찰가)
+            this.status = AuctionStatus.NO_RESERVE_MET;
+        }
+
+        // 종료 시간을 현재 시간으로 설정
+        this.endAt = LocalDateTime.now();
     }
 
     /**
