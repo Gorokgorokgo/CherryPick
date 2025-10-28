@@ -28,6 +28,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import com.cherrypick.app.domain.websocket.event.TypingEvent;
+import com.cherrypick.app.domain.bid.entity.Bid;
+import com.cherrypick.app.domain.bid.repository.BidRepository;
+import com.cherrypick.app.domain.auction.entity.Auction;
 
 import java.util.List;
 import java.util.Optional;
@@ -50,6 +53,7 @@ public class ChatService {
     private final WebSocketMessagingService webSocketMessagingService;
     private final UserOnlineStatusService userOnlineStatusService;
     private final ApplicationEventPublisher eventPublisher;
+    private final BidRepository bidRepository;
 
     // 채팅방별 동시성 제어를 위한 Lock 객체 캐시
     private final ConcurrentHashMap<Long, Object> chatRoomLocks = new ConcurrentHashMap<>();
@@ -67,7 +71,7 @@ public class ChatService {
                 .findByConnectionServiceId(connectionService.getId());
         
         if (existingRoom.isPresent()) {
-            log.info("채팅방이 이미 존재합니다. connectionId: {}", connectionService.getId());
+            // 채팅방 이미 존재
             return existingRoom.get();
         }
         
@@ -105,8 +109,7 @@ public class ChatService {
             ChatRoom activatedRoom = chatRoom.activateChatRoom();
             chatRoom = chatRoomRepository.save(activatedRoom);
             
-            log.info("채팅방이 활성화되었습니다. roomId: {}, connectionId: {}", 
-                    chatRoom.getId(), connectionService.getId());
+            // 채팅방 활성화 완료
         }
         
         return chatRoom;
@@ -121,8 +124,7 @@ public class ChatService {
      * @return 생성된 채팅방
      */
     @Transactional
-    public ChatRoom createAuctionChatRoom(com.cherrypick.app.domain.auction.entity.Auction auction,
-                                         User seller, User winner) {
+    public ChatRoom createAuctionChatRoom(Auction auction, User seller, User winner) {
         // 동일한 경매에 대한 채팅방이 이미 존재하는지 확인
         Optional<ChatRoom> existingRoom = chatRoomRepository
                 .findByAuctionIdAndSellerIdAndBuyerId(auction.getId(), seller.getId(), winner.getId());
@@ -142,6 +144,68 @@ public class ChatService {
                 savedRoom.getId(), auction.getId(), seller.getId(), winner.getId());
 
         return savedRoom;
+    }
+
+    /**
+     * 유찰 경매용 채팅방 생성 (최고입찰자와 판매자)
+     *
+     * @param auctionId 경매 ID
+     * @param sellerId 판매자 ID (요청자)
+     * @return 채팅방 응답
+     */
+    @Transactional
+    public ChatRoomResponse createFailedAuctionChatRoom(Long auctionId, Long sellerId) {
+        // 경매 조회
+        Auction auction = auctionRepository.findById(auctionId)
+                .orElseThrow(EntityNotFoundException::auction);
+
+        // 판매자 조회 및 권한 확인
+        User seller = userRepository.findById(sellerId)
+                .orElseThrow(EntityNotFoundException::user);
+
+        if (!auction.getSeller().getId().equals(sellerId)) {
+            log.error("유찰 경매 채팅방 생성 권한 없음: requestUserId={}, auctionSellerId={}",
+                    sellerId, auction.getSeller().getId());
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        // 최고입찰자 조회
+        Optional<Bid> topBidOpt =
+                bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
+
+        if (topBidOpt.isEmpty() || topBidOpt.get().getBidAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            log.error("최고입찰자를 찾을 수 없습니다: auctionId={}", auctionId);
+            throw new BusinessException(ErrorCode.BID_NOT_FOUND);
+        }
+
+        User buyer = topBidOpt.get().getBidder();
+
+        // 기존 채팅방 확인
+        Optional<ChatRoom> existingRoom = chatRoomRepository.findByAuctionIdAndSellerIdAndBuyerId(
+                auctionId, sellerId, buyer.getId());
+
+        if (existingRoom.isPresent()) {
+            ChatRoom chatRoom = existingRoom.get();
+            int unreadCount = getUnreadCount(chatRoom.getId(), sellerId);
+            boolean partnerOnline = userOnlineStatusService.isUserOnline(buyer.getId());
+            return ChatRoomResponse.from(chatRoom, sellerId, unreadCount, partnerOnline);
+        }
+
+        // 새 채팅방 생성
+        ChatRoom chatRoom = createAuctionChatRoom(auction, seller, buyer);
+
+        log.info("유찰 경매 채팅방이 생성되었습니다. roomId: {}, auctionId: {}, sellerId: {}, buyerId: {}",
+                chatRoom.getId(), auctionId, sellerId, buyer.getId());
+
+        return ChatRoomResponse.from(chatRoom, sellerId, 0,
+                userOnlineStatusService.isUserOnline(buyer.getId()));
+    }
+
+    /**
+     * 채팅방의 읽지 않은 메시지 개수 조회
+     */
+    private int getUnreadCount(Long chatRoomId, Long userId) {
+        return chatMessageRepository.countUnreadMessagesByChatRoomIdAndUserId(chatRoomId, userId);
     }
 
     /**
@@ -358,7 +422,7 @@ public class ChatService {
                         roomId, userId, e.getMessage());
             }
             
-            log.info("메시지 전송 완료: roomId={}, userId={}, messageId={}", roomId, userId, savedMessage.getId());
+            // 메시지 전송 완료
             
             return response;
         }
@@ -426,7 +490,7 @@ public class ChatService {
         
         int updatedCount = chatMessageRepository.markAllMessagesAsReadInChatRoom(roomId, userId);
         
-        log.info("전체 메시지 읽음 처리: roomId={}, userId={}, updatedCount={}", roomId, userId, updatedCount);
+        // 전체 메시지 읽음 처리
     }
 
     /**
@@ -447,7 +511,7 @@ public class ChatService {
         
         // 채팅방 비활성화 처리 (추후 구현 필요)
         // 현재는 로그만 남김
-        log.info("채팅방 나가기: roomId={}, userId={}", roomId, userId);
+        // 채팅방 나가기
     }
 
     /**

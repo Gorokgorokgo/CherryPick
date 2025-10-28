@@ -3,6 +3,7 @@ package com.cherrypick.app.domain.notification.listener;
 import com.cherrypick.app.domain.notification.entity.NotificationHistory;
 import com.cherrypick.app.domain.notification.entity.NotificationSetting;
 import com.cherrypick.app.domain.notification.event.*;
+import com.cherrypick.app.domain.notification.enums.NotificationType;
 import com.cherrypick.app.domain.notification.repository.NotificationHistoryRepository;
 import com.cherrypick.app.domain.notification.repository.NotificationSettingRepository;
 import com.cherrypick.app.domain.user.entity.User;
@@ -39,9 +40,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleNewBidNotification(NewBidNotificationEvent event) {
-        log.info("새로운 입찰 알림 이벤트 수신. sellerId: {}, auctionId: {}, bidAmount: {}",
-                event.getTargetUserId(), event.getResourceId(), event.getBidAmount());
-
         processNotificationEvent(event);
     }
 
@@ -52,9 +50,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleAuctionWonNotification(AuctionWonNotificationEvent event) {
-        log.info("낙찰 알림 이벤트 수신 (구매자). buyerId: {}, auctionId: {}, finalPrice: {}",
-                event.getTargetUserId(), event.getResourceId(), event.getFinalPrice());
-
         processNotificationEvent(event);
     }
 
@@ -65,9 +60,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleAuctionSoldNotification(AuctionSoldNotificationEvent event) {
-        log.info("경매 낙찰 알림 이벤트 수신 (판매자). sellerId: {}, auctionId: {}, finalPrice: {}, winner: {}",
-                event.getTargetUserId(), event.getResourceId(), event.getFinalPrice(), event.getWinnerNickname());
-
         processNotificationEvent(event);
     }
 
@@ -78,9 +70,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleAuctionNotSoldNotification(AuctionNotSoldNotificationEvent event) {
-        log.info("경매 유찰 알림 이벤트 수신 (판매자). sellerId: {}, auctionId: {}, hasHighestBid: {}",
-                event.getTargetUserId(), event.getResourceId(), event.getHighestBid() != null);
-
         processNotificationEvent(event);
     }
 
@@ -91,9 +80,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleAuctionNotSoldForHighestBidderNotification(AuctionNotSoldForHighestBidderEvent event) {
-        log.info("경매 유찰 알림 이벤트 수신 (최고 입찰자). bidderId: {}, auctionId: {}, highestBidAmount: {}",
-                event.getTargetUserId(), event.getResourceId(), event.getHighestBidAmount());
-
         processNotificationEvent(event);
     }
 
@@ -104,9 +90,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleAuctionEndedForParticipantNotification(AuctionEndedForParticipantEvent event) {
-        log.info("경매 종료 알림 이벤트 수신 (참여자). participantId: {}, auctionId: {}, wasSuccessful: {}",
-                event.getTargetUserId(), event.getResourceId(), event.isWasSuccessful());
-
         processNotificationEvent(event);
     }
 
@@ -117,9 +100,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleConnectionPaymentRequestNotification(ConnectionPaymentRequestNotificationEvent event) {
-        log.info("연결 서비스 결제 요청 알림 이벤트 수신. sellerId: {}, connectionId: {}",
-                event.getTargetUserId(), event.getResourceId());
-
         processNotificationEvent(event);
     }
 
@@ -130,9 +110,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleChatActivatedNotification(ChatActivatedNotificationEvent event) {
-        log.info("채팅 활성화 알림 이벤트 수신. buyerId: {}, chatRoomId: {}",
-                event.getTargetUserId(), event.getResourceId());
-
         processNotificationEvent(event);
     }
 
@@ -143,10 +120,6 @@ public class NotificationEventListener {
     @EventListener
     @Transactional
     public void handleTransactionCompletedNotification(TransactionCompletedNotificationEvent event) {
-        log.info("거래 완료 알림 이벤트 수신. userId: {}, connectionId: {}, isSeller: {}",
-                event.getTargetUserId(), event.getResourceId(),
-                ((TransactionCompletedNotificationEvent) event).isSeller());
-
         processNotificationEvent(event);
     }
 
@@ -163,20 +136,30 @@ public class NotificationEventListener {
             // 알림 설정 확인
             NotificationSetting setting = getOrCreateNotificationSetting(user);
             boolean isEnabled = isNotificationEnabled(setting, event.getNotificationType());
-            log.info("🔔 알림 설정 확인. userId: {}, type: {}, enabled: {}, bidNotification: {}, winningNotification: {}",
-                    user.getId(), event.getNotificationType(), isEnabled,
-                    setting.getBidNotification(), setting.getWinningNotification());
 
             if (!isEnabled) {
-                log.warn("❌ 알림이 비활성화되어 있습니다. userId: {}, type: {}",
-                        user.getId(), event.getNotificationType());
                 return;
             }
 
-            // 알림 히스토리 저장
-            NotificationHistory notification = NotificationHistory.createNotification(
-                    user, event.getNotificationType(), event.getTitle(),
-                    event.getMessage(), event.getResourceId());
+            // chatRoomId 추출 (경매 낙찰 알림인 경우)
+            Long chatRoomId = null;
+            if (event instanceof AuctionSoldNotificationEvent) {
+                chatRoomId = ((AuctionSoldNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof AuctionWonNotificationEvent) {
+                chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
+            }
+
+            // 알림 히스토리 저장 (chatRoomId 포함)
+            NotificationHistory notification;
+            if (chatRoomId != null) {
+                notification = NotificationHistory.createNotificationWithChatRoom(
+                        user, event.getNotificationType(), event.getTitle(),
+                        event.getMessage(), event.getResourceId(), chatRoomId);
+            } else {
+                notification = NotificationHistory.createNotification(
+                        user, event.getNotificationType(), event.getTitle(),
+                        event.getMessage(), event.getResourceId());
+            }
             notificationHistoryRepository.save(notification);
 
             // FCM 푸시 알림 발송 (모의)
@@ -184,9 +167,6 @@ public class NotificationEventListener {
 
             // WebSocket 실시간 알림 발송
             sendWebSocketNotification(user.getId(), event);
-
-            log.info("알림 발송 완료. userId: {}, type: {}, resourceId: {}",
-                    user.getId(), event.getNotificationType(), event.getResourceId());
 
         } catch (Exception e) {
             log.error("알림 이벤트 처리 중 오류 발생. event: {}, error: {}",
@@ -197,12 +177,13 @@ public class NotificationEventListener {
     /**
      * 알림 설정 확인
      */
-    private boolean isNotificationEnabled(NotificationSetting setting, com.cherrypick.app.domain.notification.enums.NotificationType type) {
+    private boolean isNotificationEnabled(NotificationSetting setting, NotificationType type) {
         return switch (type) {
             case NEW_BID -> setting.getBidNotification();
             case AUCTION_WON -> setting.getWinningNotification(); // 구매자용 낙찰 알림
             case AUCTION_SOLD -> setting.getBidNotification(); // 판매자용 낙찰 알림 (입찰 관련 알림으로 처리)
-            case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림
+            case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림 (판매자용)
+            case AUCTION_NOT_SOLD_HIGHEST_BIDDER -> setting.getBidNotification(); // 유찰 알림 (최고 입찰자용)
             case AUCTION_ENDED -> setting.getBidNotification(); // 경매 종료 알림 (일반 참여자)
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();
@@ -217,21 +198,18 @@ public class NotificationEventListener {
      */
     private void sendFcmNotification(String fcmToken, String title, String message, NotificationHistory notification) {
         if (fcmToken == null || fcmToken.isEmpty()) {
-            log.debug("FCM 토큰이 없어 푸시 알림을 건너뜁니다. notificationId: {}", notification.getId());
             return;
         }
 
         try {
             // TODO: 실제 FCM SDK 연동
-            log.info("FCM 푸시 발송 (모의): token={}, title={}, message={}",
-                    fcmToken.substring(0, Math.min(10, fcmToken.length())) + "...", title, message);
 
             // 발송 성공 처리
             NotificationHistory updatedNotification = notification.markFcmSent();
             notificationHistoryRepository.save(updatedNotification);
 
         } catch (Exception e) {
-            log.error("FCM 푸시 발송 실패. notificationId: {}, error: {}", notification.getId(), e.getMessage());
+            // FCM 푸시 발송 실패 무시
         }
     }
 
@@ -262,12 +240,8 @@ public class NotificationEventListener {
 
             webSocketMessagingService.sendNotificationToUser(userId, wsNotification);
 
-            log.info("✅ WebSocket 실시간 알림 발송 성공. userId: {}, type: {}, resourceId: {}, chatRoomId: {}",
-                    userId, event.getNotificationType(), event.getResourceId(), chatRoomId);
-
         } catch (Exception e) {
-            log.error("❌ WebSocket 실시간 알림 발송 실패. userId: {}, type: {}, error: {}",
-                    userId, event.getNotificationType(), e.getMessage(), e);
+            // WebSocket 실시간 알림 발송 실패 무시
         }
     }
 
@@ -276,6 +250,8 @@ public class NotificationEventListener {
      */
     @lombok.Builder
     @lombok.Getter
+    @lombok.AllArgsConstructor
+    @lombok.NoArgsConstructor
     private static class NotificationWebSocketMessage {
         private String id;
         private String type;

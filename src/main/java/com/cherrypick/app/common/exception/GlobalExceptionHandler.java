@@ -214,10 +214,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     protected ResponseEntity<ErrorResponse> handleIllegalArgumentException(
             IllegalArgumentException e, HttpServletRequest request) {
-        
+
         log.warn("IllegalArgumentException at {}: {}", request.getRequestURI(), e.getMessage());
-        
+
         ErrorResponse response = ErrorResponse.of(ErrorCode.INVALID_INPUT_VALUE, request.getRequestURI());
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    /**
+     * IllegalStateException 처리 (레거시 코드 호환성)
+     * 새 코드는 BusinessException 사용 권장
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    protected ResponseEntity<ErrorResponse> handleIllegalStateException(
+            IllegalStateException e, HttpServletRequest request) {
+
+        log.warn("IllegalStateException at {}: {}", request.getRequestURI(), e.getMessage());
+
+        ErrorResponse response = ErrorResponse.of(ErrorCode.BAD_REQUEST, request.getRequestURI());
         return ResponseEntity.badRequest().body(response);
     }
     

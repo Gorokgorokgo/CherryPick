@@ -69,6 +69,9 @@ public class Auction extends BaseEntity {
     @Column(name = "current_price", nullable = false, precision = 10, scale = 0)
     private BigDecimal currentPrice;
 
+    @Column(name = "last_price_before_end", precision = 10, scale = 0)
+    private BigDecimal lastPriceBeforeEnd;
+
     @Column(name = "bid_count", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
     private Integer bidCount;
 
@@ -126,6 +129,7 @@ public class Auction extends BaseEntity {
             AuctionStatus.ACTIVE,
             0, // viewCount - DB 기본값
             startPrice, // currentPrice - 시작가로 초기화
+            null, // lastPriceBeforeEnd
             0, // bidCount - DB 기본값
             null, // winner
             now,
@@ -223,6 +227,8 @@ public class Auction extends BaseEntity {
      * 경매 강제 종료 (테스트용)
      */
     public void forceEnd() {
+        // 종료 전 현재가를 저장
+        this.lastPriceBeforeEnd = this.currentPrice;
         this.status = AuctionStatus.ENDED;
         this.endAt = LocalDateTime.now();
     }
@@ -243,20 +249,48 @@ public class Auction extends BaseEntity {
 
     /**
      * 낙찰자 설정
+     * Reserve Price 확인 후 적절한 상태로 설정
      */
     public void setWinner(User winner, BigDecimal finalPrice) {
-        this.winner = winner;
+        // 종료 전 현재가를 저장
+        this.lastPriceBeforeEnd = this.currentPrice;
         this.currentPrice = finalPrice;
-        this.status = AuctionStatus.ENDED;
+
+        // Reserve Price 확인
+        if (this.hasReservePrice() && !this.isReservePriceMet(finalPrice)) {
+            // Reserve Price 미달 - 유찰
+            this.status = AuctionStatus.NO_RESERVE_MET;
+            this.winner = null; // 유찰 시 낙찰자 제거
+        } else {
+            // Reserve Price 충족 또는 Reserve Price 없음 - 낙찰
+            this.winner = winner;
+            this.status = AuctionStatus.ENDED;
+        }
     }
 
     /**
      * 경매 종료 처리
+     *
+     * 비즈니스 로직:
+     * - 낙찰(finalPrice > 0): currentPrice를 finalPrice로 업데이트
+     * - 유찰(finalPrice = 0): currentPrice를 유지 (마지막 입찰가 보존)
      */
     public void endAuction(User winner, BigDecimal finalPrice) {
+        // 종료 전 현재가를 저장
+        this.lastPriceBeforeEnd = this.currentPrice;
         this.winner = winner;
-        this.currentPrice = finalPrice;
-        this.status = finalPrice.compareTo(BigDecimal.ZERO) > 0 ? AuctionStatus.ENDED : AuctionStatus.ENDED;
+
+        // 유찰인 경우 currentPrice를 유지 (0원으로 덮어쓰지 않음)
+        if (finalPrice.compareTo(BigDecimal.ZERO) > 0) {
+            this.currentPrice = finalPrice;
+            this.status = AuctionStatus.ENDED;
+        } else {
+            // 유찰: currentPrice는 그대로 유지 (마지막 입찰가)
+            this.status = AuctionStatus.NO_RESERVE_MET;
+        }
+
+        // 종료 시간을 현재 시간으로 설정
+        this.endAt = LocalDateTime.now();
     }
 
     /**
@@ -272,7 +306,46 @@ public class Auction extends BaseEntity {
      * @param hours 재활성화 후 진행할 시간 (시간)
      */
     public void reactivateAuction(int hours) {
+        // 종료 시점의 가격을 복구 (lastPriceBeforeEnd가 있으면 사용, 없으면 currentPrice 사용)
+        BigDecimal priceToRestore = (this.lastPriceBeforeEnd != null && this.lastPriceBeforeEnd.compareTo(BigDecimal.ZERO) > 0)
+            ? this.lastPriceBeforeEnd
+            : this.currentPrice;
+
+        this.startPrice = priceToRestore;
+        this.currentPrice = priceToRestore;
+
+        // 낙찰자 정보 초기화
+        this.winner = null;
+
+        // 상태 재활성화 및 종료 시간 연장
         this.status = AuctionStatus.ACTIVE;
         this.endAt = LocalDateTime.now().plusHours(hours);
+    }
+
+    /**
+     * 경매 제목 수정
+     */
+    public void updateTitle(String newTitle) {
+        if (newTitle == null || newTitle.trim().isEmpty()) {
+            throw new IllegalArgumentException("제목은 비어있을 수 없습니다.");
+        }
+        this.title = newTitle;
+    }
+
+    /**
+     * 경매 설명 수정
+     */
+    public void updateDescription(String newDescription) {
+        if (newDescription == null || newDescription.trim().isEmpty()) {
+            throw new IllegalArgumentException("설명은 비어있을 수 없습니다.");
+        }
+        this.description = newDescription;
+    }
+
+    /**
+     * 경매 삭제 (소프트 삭제)
+     */
+    public void markAsDeleted() {
+        this.status = AuctionStatus.DELETED;
     }
 }

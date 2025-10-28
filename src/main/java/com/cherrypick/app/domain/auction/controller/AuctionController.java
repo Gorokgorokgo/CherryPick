@@ -3,12 +3,16 @@ package com.cherrypick.app.domain.auction.controller;
 import com.cherrypick.app.domain.auction.dto.AuctionResponse;
 import com.cherrypick.app.domain.auction.dto.AuctionSearchRequest;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
+import com.cherrypick.app.domain.auction.dto.TopBidderResponse;
+import com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest;
 import com.cherrypick.app.domain.auction.service.AuctionService;
 import com.cherrypick.app.domain.auction.service.AuctionBookmarkService;
 import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
 import com.cherrypick.app.domain.user.service.UserService;
+import com.cherrypick.app.domain.chat.dto.response.ChatRoomResponse;
+import com.cherrypick.app.domain.chat.service.ChatService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -34,10 +38,11 @@ import java.util.Map;
 @RequestMapping("/api/auctions")
 @RequiredArgsConstructor
 public class AuctionController {
-    
+
     private final AuctionService auctionService;
     private final UserService userService;
     private final AuctionBookmarkService bookmarkService;
+    private final ChatService chatService;
     
     @Operation(summary = "경매 등록", 
                description = """
@@ -94,11 +99,13 @@ public class AuctionController {
     })
     @GetMapping
     public ResponseEntity<Page<AuctionResponse>> getActiveAuctions(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.getActiveAuctions(pageable);
+        Page<AuctionResponse> auctions = auctionService.getActiveAuctions(pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -109,12 +116,14 @@ public class AuctionController {
     })
     @GetMapping("/category/{category}")
     public ResponseEntity<Page<AuctionResponse>> getAuctionsByCategory(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "경매 카테고리") @PathVariable Category category,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.getAuctionsByCategory(category, pageable);
+        Page<AuctionResponse> auctions = auctionService.getAuctionsByCategory(category, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -125,13 +134,15 @@ public class AuctionController {
     })
     @GetMapping("/region")
     public ResponseEntity<Page<AuctionResponse>> getAuctionsByRegion(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "지역 범위 (NATIONAL, REGIONAL)") @RequestParam RegionScope regionScope,
             @Parameter(description = "지역 코드 (지역별 검색시 필요)") @RequestParam(required = false) String regionCode,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.getAuctionsByRegion(regionScope, regionCode, pageable);
+        Page<AuctionResponse> auctions = auctionService.getAuctionsByRegion(regionScope, regionCode, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -257,6 +268,7 @@ public class AuctionController {
     })
     @GetMapping("/search")
     public ResponseEntity<Page<AuctionResponse>> searchAuctions(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "키워드 (제목, 설명 검색)") @RequestParam(required = false) String keyword,
             @Parameter(description = "카테고리") @RequestParam(required = false) Category category,
             @Parameter(description = "지역 범위") @RequestParam(required = false) RegionScope regionScope,
@@ -269,7 +281,9 @@ public class AuctionController {
             @Parameter(description = "최소 입찰 수") @RequestParam(required = false) Integer minBidCount,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
+
         // 요청 객체 생성
         AuctionSearchRequest searchRequest = new AuctionSearchRequest();
         searchRequest.setKeyword(keyword);
@@ -282,9 +296,9 @@ public class AuctionController {
         searchRequest.setSortBy(sortBy);
         searchRequest.setEndingSoonHours(endingSoonHours);
         searchRequest.setMinBidCount(minBidCount);
-        
+
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.searchAuctions(searchRequest, pageable);
+        Page<AuctionResponse> auctions = auctionService.searchAuctions(searchRequest, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -295,13 +309,15 @@ public class AuctionController {
     })
     @GetMapping("/search/keyword")
     public ResponseEntity<Page<AuctionResponse>> searchByKeyword(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "검색 키워드") @RequestParam String keyword,
             @Parameter(description = "경매 상태") @RequestParam(required = false, defaultValue = "ACTIVE") AuctionStatus status,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.searchByKeyword(keyword, status, pageable);
+        Page<AuctionResponse> auctions = auctionService.searchByKeyword(keyword, status, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -312,14 +328,16 @@ public class AuctionController {
     })
     @GetMapping("/search/price")
     public ResponseEntity<Page<AuctionResponse>> searchByPriceRange(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "최소 가격") @RequestParam(required = false) BigDecimal minPrice,
             @Parameter(description = "최대 가격") @RequestParam(required = false) BigDecimal maxPrice,
             @Parameter(description = "경매 상태") @RequestParam(required = false, defaultValue = "ACTIVE") AuctionStatus status,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.searchByPriceRange(minPrice, maxPrice, status, pageable);
+        Page<AuctionResponse> auctions = auctionService.searchByPriceRange(minPrice, maxPrice, status, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -331,16 +349,18 @@ public class AuctionController {
     })
     @GetMapping("/ending-soon")
     public ResponseEntity<Page<AuctionResponse>> getEndingSoonAuctions(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "시간 (시간 단위, 기본값: 24시간)") @RequestParam(defaultValue = "24") int hours,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
         if (hours <= 0 || hours > 168) { // 최대 1주일
             throw new IllegalArgumentException("시간은 1시간부터 168시간(1주일) 사이여야 합니다.");
         }
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.getEndingSoonAuctions(hours, pageable);
+        Page<AuctionResponse> auctions = auctionService.getEndingSoonAuctions(hours, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -352,17 +372,19 @@ public class AuctionController {
     })
     @GetMapping("/popular")
     public ResponseEntity<Page<AuctionResponse>> getPopularAuctions(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "최소 입찰 수 (기본값: 3)") @RequestParam(defaultValue = "3") int minBidCount,
             @Parameter(description = "경매 상태") @RequestParam(required = false, defaultValue = "ACTIVE") AuctionStatus status,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
         if (minBidCount < 0) {
             throw new IllegalArgumentException("최소 입찰 수는 0 이상이어야 합니다.");
         }
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.getPopularAuctions(minBidCount, status, pageable);
+        Page<AuctionResponse> auctions = auctionService.getPopularAuctions(minBidCount, status, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -373,12 +395,14 @@ public class AuctionController {
     })
     @GetMapping("/status/{status}")
     public ResponseEntity<Page<AuctionResponse>> getAuctionsByStatus(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "경매 상태") @PathVariable AuctionStatus status,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
-        
+
+        Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.getAuctionsByStatus(status, pageable);
+        Page<AuctionResponse> auctions = auctionService.getAuctionsByStatus(status, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
@@ -431,6 +455,61 @@ public class AuctionController {
             @Parameter(description = "경매 ID") @PathVariable Long id) {
 
         AuctionResponse auction = auctionService.forceEndAuction(id);
+        return ResponseEntity.ok(auction);
+    }
+
+    // ================== 유찰 경매 관련 API ==================
+
+    @Operation(summary = "유찰 경매 최고입찰자 조회",
+               description = "유찰된 경매의 최고입찰자 정보를 조회합니다. 입찰이 없으면 204 No Content를 반환합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "최고입찰자 조회 성공"),
+            @ApiResponse(responseCode = "204", description = "입찰 내역 없음"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @GetMapping("/{id}/top-bidder")
+    public ResponseEntity<TopBidderResponse> getTopBidder(
+            @Parameter(description = "경매 ID") @PathVariable Long id) {
+
+        return auctionService.getTopBidder(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.noContent().build());
+    }
+
+    @Operation(summary = "유찰 경매 채팅방 생성",
+               description = "유찰된 경매의 최고입찰자와 판매자 간 채팅방을 생성합니다. 판매자만 호출 가능합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "채팅방 생성 성공"),
+            @ApiResponse(responseCode = "400", description = "입찰 내역이 없거나 이미 채팅방이 존재함"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (판매자 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PostMapping("/{id}/create-failed-auction-chat")
+    public ResponseEntity<ChatRoomResponse> createFailedAuctionChat(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        ChatRoomResponse response = chatService.createFailedAuctionChatRoom(id, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "경매 재활성화 (재등록)",
+               description = "종료된 경매를 재활성화합니다. 판매자만 호출 가능합니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "재활성화 성공"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (판매자 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PatchMapping("/{id}/reactivate")
+    public ResponseEntity<AuctionResponse> reactivateAuctionProd(
+            @Parameter(description = "경매 ID") @PathVariable Long id,
+            @Parameter(description = "재활성화 후 진행할 시간 (시간 단위)") @RequestParam(defaultValue = "24") int hours,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
+
+        // 권한 확인은 서비스 레이어에서 처리하지 않으므로 여기서 확인
+        // (필요 시 AuctionService.reactivateAuction에 userId 파라미터 추가)
+        AuctionResponse auction = auctionService.reactivateAuction(id, hours);
         return ResponseEntity.ok(auction);
     }
 
@@ -557,5 +636,72 @@ public class AuctionController {
             "message", "배치 북마크 정보 조회 성공"
         );
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "경매 수정",
+               description = """
+                   등록한 경매의 제목과 설명을 수정합니다.
+
+                   **수정 가능 조건:**
+                   - 본인이 등록한 경매만 수정 가능
+                   - 입찰이 없는 경매만 수정 가능
+                   - 진행 중인 경매만 수정 가능
+
+                   **수정 가능 항목 (eBay 정책):**
+                   - 제목: 오타 수정, 정보 추가
+                   - 설명: 추가 정보 제공, 상세 설명 보완
+
+                   **수정 불가 항목:**
+                   - 시작가, 희망가, 카테고리, 지역, 이미지 등
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "경매 수정 성공"),
+            @ApiResponse(responseCode = "400", description = "입찰이 있거나 종료된 경매"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (본인 경매 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PutMapping("/{auctionId}")
+    public ResponseEntity<AuctionResponse> updateAuction(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId,
+            @Valid @RequestBody UpdateAuctionRequest request) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        AuctionResponse response = auctionService.updateAuction(auctionId, userId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "경매 삭제 (소프트 삭제)",
+               description = """
+                   등록한 경매를 삭제합니다. (실제 삭제가 아닌 상태 변경)
+
+                   **삭제 가능 조건:**
+                   - 본인이 등록한 경매만 삭제 가능
+                   - 입찰이 없는 경매만 삭제 가능
+                   - 진행 중인 경매만 삭제 가능
+
+                   **주의사항:**
+                   - 삭제된 경매는 목록에 노출되지 않습니다
+                   - 데이터는 보관되며 관리자만 확인 가능합니다
+                   - 입찰이 있는 경매는 삭제할 수 없습니다
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "경매 삭제 성공"),
+            @ApiResponse(responseCode = "400", description = "입찰이 있거나 종료된 경매"),
+            @ApiResponse(responseCode = "403", description = "권한 없음 (본인 경매 아님)"),
+            @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @DeleteMapping("/{auctionId}")
+    public ResponseEntity<Map<String, Object>> deleteAuction(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "경매 ID") @PathVariable Long auctionId) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        auctionService.deleteAuction(auctionId, userId);
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "message", "경매가 삭제되었습니다."
+        ));
     }
 }

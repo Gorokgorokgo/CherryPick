@@ -57,7 +57,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
         
         // 연결 확인 메시지 전송
         sendMessage(session, createConnectedMessage(sessionId));
-        log.info("✅ WebSocket 연결 성공: {}", sessionId);
     }
     
     @Override
@@ -89,12 +88,10 @@ public class WebSocketHandler extends TextWebSocketHandler {
                     handleTypingStop(session, messageNode);
                     break;
                 default:
-                    log.warn("⚠️ 알 수 없는 메시지 타입 [{}]: {}", sessionId, type);
                     sendErrorMessage(session, "UNKNOWN_MESSAGE_TYPE", "알 수 없는 메시지 타입: " + type);
             }
             
         } catch (Exception e) {
-            log.error("❌ WebSocket 메시지 처리 오류 [{}]: {}", sessionId, payload, e);
             sendErrorMessage(session, "MESSAGE_PROCESSING_ERROR", "메시지 처리 중 오류가 발생했습니다");
         }
     }
@@ -102,7 +99,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         String sessionId = session.getId();
-        log.info("🔚 WebSocket 연결 종료 [{}]: {}", sessionId, status.toString());
         
         // 사용자 연결 해제 이벤트 발행
         Long userId = sessionUserMapping.remove(sessionId);
@@ -158,8 +154,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 this, userId, sessionId, UserConnectionEvent.ConnectionEventType.CONNECTED
             ));
             
-            log.info("🔐 WebSocket 사용자 인증 완료 [{}]: userId={}", sessionId, userId);
-            
             // 인증 성공 메시지 전송
             sendMessage(session, Map.of(
                 "type", "AUTH_SUCCESS",
@@ -168,7 +162,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
             ));
             
         } catch (Exception e) {
-            log.error("❌ WebSocket 사용자 인증 실패 [{}]", sessionId, e);
             sendErrorMessage(session, "AUTH_FAILED", "사용자 인증에 실패했습니다");
         }
     }
@@ -189,8 +182,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
         // 구독 정보 저장
         sessionSubscriptions.get(sessionId).add(auctionId);
         auctionSubscribers.computeIfAbsent(auctionId, k -> new CopyOnWriteArraySet<>()).add(sessionId);
-        
-        log.info("📡 구독 완료 [{}]: auction-{}", sessionId, auctionId);
         
         // 구독 확인 메시지 전송
         sendMessage(session, Map.of(
@@ -226,8 +217,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 auctionSubscribers.remove(auctionId);
             }
         }
-        
-        log.info("📡 구독 해제 완료 [{}]: auction-{}", sessionId, auctionId);
         
         // 구독 해제 확인 메시지 전송
         sendMessage(session, Map.of(
@@ -285,10 +274,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 this, chatRoomId, userId, userNickname, TypingEvent.TypingEventType.START
             ));
             
-            log.debug("타이핑 시작 처리: sessionId={}, userId={}, chatRoomId={}", sessionId, userId, chatRoomId);
-            
         } catch (Exception e) {
-            log.error("타이핑 시작 처리 오류 [{}]", sessionId, e);
             sendErrorMessage(session, "TYPING_START_ERROR", "타이핑 시작 처리 중 오류가 발생했습니다");
         }
     }
@@ -317,10 +303,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 this, chatRoomId, userId, null, TypingEvent.TypingEventType.STOP
             ));
             
-            log.debug("타이핑 중단 처리: sessionId={}, userId={}, chatRoomId={}", sessionId, userId, chatRoomId);
-            
         } catch (Exception e) {
-            log.error("타이핑 중단 처리 오류 [{}]", sessionId, e);
             sendErrorMessage(session, "TYPING_STOP_ERROR", "타이핑 중단 처리 중 오류가 발생했습니다");
         }
     }
@@ -341,7 +324,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
             if (auctionId != null) {
                 broadcastToAuction(auctionId, message);
             } else {
-                log.warn("⚠️ 잘못된 destination 형식: {}", destination);
             }
         }
     }
@@ -366,11 +348,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 }
             }
 
-            if (sentCount > 0) {
-                log.info("📤 사용자 {} 알림 전송 완료: {} 세션", userId, sentCount);
-            } else {
-                log.debug("사용자 {} 활성 세션 없음", userId);
-            }
+            // 사용자 알림 전송 완료
 
         } catch (NumberFormatException e) {
             log.error("잘못된 userId 형식: {}", userIdStr, e);
@@ -384,7 +362,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
         Set<String> subscriberIds = auctionSubscribers.get(auctionId);
         
         if (subscriberIds == null || subscriberIds.isEmpty()) {
-            log.warn("경매 {} 구독자가 없음", auctionId);
             return;
         }
         
@@ -406,8 +383,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 failCount++;
             }
         }
-        
-        log.info("📤 경매 {} 브로드캐스트 완료: 성공 {}, 실패 {}", auctionId, successCount, failCount);
     }
     
     /**
@@ -419,7 +394,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
             session.sendMessage(new TextMessage(jsonMessage));
             return true;
         } catch (Exception e) {
-            log.error("❌ 메시지 전송 실패 [{}]: {}", session.getId(), e.getMessage());
             return false;
         }
     }

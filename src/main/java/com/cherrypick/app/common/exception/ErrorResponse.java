@@ -44,6 +44,15 @@ public class ErrorResponse {
         response.path = path;
         return response;
     }
+
+    public static ErrorResponse of(ErrorCode errorCode, String path, String customMessage) {
+        ErrorResponse response = new ErrorResponse();
+        response.code = errorCode.getCode();
+        response.message = customMessage;
+        response.status = errorCode.getHttpStatus().value();
+        response.path = path;
+        return response;
+    }
     
     public static ErrorResponse of(ErrorCode errorCode, String path, List<FieldError> fieldErrors) {
         ErrorResponse response = of(errorCode, path);

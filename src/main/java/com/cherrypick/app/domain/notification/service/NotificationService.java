@@ -71,8 +71,6 @@ public class NotificationService {
 
         NotificationSetting savedSetting = notificationSettingRepository.save(updatedSetting);
         
-        log.info("알림 설정이 업데이트되었습니다. userId: {}", userId);
-        
         return NotificationSettingResponse.from(savedSetting);
     }
 
@@ -90,8 +88,6 @@ public class NotificationService {
 
         NotificationSetting updatedSetting = setting.updateFcmToken(fcmToken);
         notificationSettingRepository.save(updatedSetting);
-        
-        log.info("FCM 토큰이 업데이트되었습니다. userId: {}", userId);
     }
 
     /**
@@ -137,8 +133,6 @@ public class NotificationService {
         if (!notification.getIsRead()) {
             NotificationHistory updatedNotification = notification.markAsRead();
             notificationHistoryRepository.save(updatedNotification);
-            
-            log.info("알림이 읽음 처리되었습니다. userId: {}, notificationId: {}", userId, notificationId);
         }
     }
 
@@ -148,8 +142,6 @@ public class NotificationService {
     @Transactional
     public int markAllNotificationsAsRead(Long userId) {
         int updatedCount = notificationHistoryRepository.markAllAsReadByUserId(userId);
-        
-        log.info("모든 알림이 읽음 처리되었습니다. userId: {}, count: {}", userId, updatedCount);
         
         return updatedCount;
     }
@@ -169,8 +161,6 @@ public class NotificationService {
         NotificationSetting updatedSetting = setting.disableAllNotifications();
         NotificationSetting savedSetting = notificationSettingRepository.save(updatedSetting);
         
-        log.info("모든 알림이 비활성화되었습니다. userId: {}", userId);
-        
         return NotificationSettingResponse.from(savedSetting);
     }
 
@@ -188,9 +178,17 @@ public class NotificationService {
 
         NotificationSetting updatedSetting = setting.enableEssentialNotificationsOnly();
         NotificationSetting savedSetting = notificationSettingRepository.save(updatedSetting);
-        
-        log.info("필수 알림만 활성화되었습니다. userId: {}", userId);
-        
+
         return NotificationSettingResponse.from(savedSetting);
+    }
+
+    /**
+     * 모든 알림 삭제
+     */
+    @Transactional
+    public int deleteAllNotifications(Long userId) {
+        int deletedCount = notificationHistoryRepository.deleteAllByUserId(userId);
+
+        return deletedCount;
     }
 }

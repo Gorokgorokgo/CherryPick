@@ -15,6 +15,8 @@ import com.cherrypick.app.domain.notification.event.AuctionEndedForParticipantEv
 import com.cherrypick.app.domain.notification.event.AuctionNotSoldForHighestBidderEvent;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.user.entity.User;
+import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.chat.entity.ChatRoom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -44,6 +46,7 @@ public class AuctionSchedulerService {
     private final WebSocketMessagingService webSocketMessagingService;
     private final BusinessConfig businessConfig;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ChatService chatService;
     
     /**
      * 경매 종료 처리 스케줄러
@@ -122,7 +125,20 @@ public class AuctionSchedulerService {
             log.error("경매 {} 연결 서비스 생성 실패", auction.getId(), e);
         }
 
-        // 3. 실시간 낙찰 알림 전송
+        // 2-1. 채팅방 자동 생성 (낙찰 시 판매자-낙찰자 채팅방)
+        ChatRoom chatRoom = null;
+        try {
+            chatRoom = chatService.createAuctionChatRoom(
+                auction,
+                auction.getSeller(),
+                winningBid.getBidder()
+            );
+            log.info("경매 {} 채팅방 자동 생성 완료: chatRoomId={}", auction.getId(), chatRoom.getId());
+        } catch (Exception e) {
+            log.error("경매 {} 채팅방 생성 실패", auction.getId(), e);
+        }
+
+        // 3. 실시간 낙찰 알림 전송 (경매 페이지 구독자들에게)
         String winnerNickname = winningBid.getBidder().getNickname() != null ?
             winningBid.getBidder().getNickname() :
             "익명" + winningBid.getBidder().getId();
@@ -134,16 +150,23 @@ public class AuctionSchedulerService {
         );
 
         // 4. 낙찰 알림 이벤트 발행 (구매자에게)
+        String sellerNickname = auction.getSeller().getNickname() != null ?
+            auction.getSeller().getNickname() :
+            "익명" + auction.getSeller().getId();
+
+        Long chatRoomId = chatRoom != null ? chatRoom.getId() : null;
+
         applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
             this,
             winningBid.getBidder().getId(),
             auction.getId(),
             auction.getTitle(),
             finalPrice.longValue(),
-            null  // chatRoomId는 자동 스케줄러에서는 생성하지 않음
+            sellerNickname,
+            chatRoomId  // 생성된 채팅방 ID 포함
         ));
 
-        // 5. 판매자에게 낙찰 알림 이벤트 발행
+        // 5. 판매자 낙찰 알림 이벤트 발행 (채팅방 ID 포함)
         applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
             this,
             auction.getSeller().getId(),
@@ -151,14 +174,14 @@ public class AuctionSchedulerService {
             auction.getTitle(),
             finalPrice.longValue(),
             winnerNickname,
-            null  // chatRoomId는 자동 스케줄러에서는 생성하지 않음
+            chatRoomId  // 생성된 채팅방 ID 포함
         ));
 
         // 6. 모든 입찰 참여자에게 경매 종료 알림 발행 (낙찰자 제외)
         notifyAllParticipants(auction, winningBid.getBidder().getId(), finalPrice.longValue(), true);
 
-        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}, 참여자 {}명에게 알림 전송",
-                auction.getId(), finalPrice.intValue(), winnerNickname,
+        log.info("경매 {} 낙찰 처리 완료 - 낙찰가: {}원, 낙찰자: {}, 채팅방: {}, 참여자 {}명에게 알림 전송",
+                auction.getId(), finalPrice.intValue(), winnerNickname, chatRoomId,
                 bidRepository.countDistinctBiddersByAuctionId(auction.getId()) - 1);
     }
     
@@ -189,9 +212,11 @@ public class AuctionSchedulerService {
             highestBidOpt.orElse(null)
         ));
 
-        // 최고 입찰자가 있는 경우 유찰 알림 발행
+        // 최고 입찰자에게 유찰 알림 (입찰자가 있는 경우)
         if (highestBidOpt.isPresent()) {
             Bid highestBid = highestBidOpt.get();
+
+            // 최고 입찰자에게 유찰 알림
             applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
                 this,
                 highestBid.getBidder().getId(),
@@ -200,13 +225,16 @@ public class AuctionSchedulerService {
                 highestBid.getBidAmount().longValue()
             ));
 
-            // 다른 참여자들에게도 유찰 알림
+            // 다른 참여자들에게 경매 종료 알림 (최고 입찰자 제외)
             notifyAllParticipants(auction, highestBid.getBidder().getId(), 0L, false);
-        }
 
-        log.info("경매 {} 유찰 처리 완료 - 참여자 {}명에게 알림 전송",
-                auction.getId(),
-                highestBidOpt.isPresent() ? bidRepository.countDistinctBiddersByAuctionId(auction.getId()) : 0);
+            log.info("경매 {} 유찰 처리 완료 - 최고 입찰자 {}원, 참여자 {}명에게 알림 전송",
+                    auction.getId(),
+                    highestBid.getBidAmount().longValue(),
+                    bidRepository.countDistinctBiddersByAuctionId(auction.getId()));
+        } else {
+            log.info("경매 {} 유찰 처리 완료 - 입찰자 없음", auction.getId());
+        }
     }
 
     /**
@@ -221,6 +249,9 @@ public class AuctionSchedulerService {
         // 해당 경매의 모든 입찰자 조회 (중복 제거)
         List<Bid> allBids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId());
 
+        log.info("🔍 경매 {} 참여자 알림 발송 시작 - 전체 입찰 {}건, 낙찰자/판매자 제외할 ID: {}, 판매자 ID: {}",
+                auction.getId(), allBids.size(), excludeUserId, auction.getSeller().getId());
+
         // 중복 제거 및 제외 대상 필터링
         Set<Long> notifiedUserIds = allBids.stream()
                 .map(bid -> bid.getBidder().getId())
@@ -228,8 +259,11 @@ public class AuctionSchedulerService {
                 .filter(userId -> !userId.equals(auction.getSeller().getId())) // 판매자 제외
                 .collect(Collectors.toSet());
 
+        log.info("📋 경매 {} 알림 대상 참여자 목록: {}", auction.getId(), notifiedUserIds);
+
         // 각 참여자에게 알림 이벤트 발행
         for (Long participantId : notifiedUserIds) {
+            log.info("📤 경매 종료 알림 이벤트 발행 (참여자 {})", participantId);
             applicationEventPublisher.publishEvent(new AuctionEndedForParticipantEvent(
                 this,
                 participantId,
@@ -240,7 +274,7 @@ public class AuctionSchedulerService {
             ));
         }
 
-        log.debug("경매 {} 참여자 {}명에게 종료 알림 발행 (낙찰: {})",
+        log.info("✅ 경매 {} 참여자 {}명에게 종료 알림 발행 완료 (낙찰: {})",
                 auction.getId(), notifiedUserIds.size(), wasSuccessful);
     }
     

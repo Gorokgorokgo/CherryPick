@@ -1,5 +1,7 @@
 package com.cherrypick.app.domain.qna.service;
 
+import com.cherrypick.app.common.exception.BusinessException;
+import com.cherrypick.app.common.exception.ErrorCode;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.qna.dto.request.CreateAnswerRequest;
@@ -52,24 +54,24 @@ public class QnaService {
     public QuestionResponse createQuestion(Long auctionId, Long userId, CreateQuestionRequest request) {
         // 경매 및 사용자 조회
         Auction auction = auctionRepository.findById(auctionId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 경매입니다."));
-            
+            .orElseThrow(() -> new BusinessException(ErrorCode.AUCTION_NOT_FOUND));
+
         User questioner = userRepository.findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 경매 진행 상태 확인
         if (!auction.isActive()) {
-            throw new IllegalStateException("진행 중인 경매에만 질문할 수 있습니다.");
+            throw new BusinessException(ErrorCode.AUCTION_NOT_ACTIVE);
         }
 
         // 경매 종료 30분 전 확인
         if (auction.getEndAt().minusMinutes(30).isBefore(java.time.LocalDateTime.now())) {
-            throw new IllegalStateException("경매 종료 30분 전부터는 질문할 수 없습니다.");
+            throw new BusinessException(ErrorCode.QUESTION_TIME_LIMIT_EXCEEDED);
         }
 
         // 자기 경매에는 질문 불가
         if (auction.getSeller().getId().equals(userId)) {
-            throw new IllegalArgumentException("자신의 경매에는 질문할 수 없습니다.");
+            throw new BusinessException(ErrorCode.SELF_QUESTION_NOT_ALLOWED);
         }
 
         // 질문 생성 및 저장
@@ -97,17 +99,16 @@ public class QnaService {
     @Transactional
     public QuestionResponse updateQuestion(Long questionId, Long userId, UpdateQuestionRequest request) {
         Question question = questionRepository.findByIdWithQuestionerAndAuction(questionId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 질문입니다."));
+            .orElseThrow(() -> new BusinessException(ErrorCode.QUESTION_NOT_FOUND));
 
         // 질문자 본인 확인
-        if (!question.isQuestionerMatches(question.getQuestioner()) || 
-            !question.getQuestioner().getId().equals(userId)) {
-            throw new IllegalArgumentException("질문 작성자만 수정할 수 있습니다.");
+        if (!question.getQuestioner().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.NOT_QUESTION_AUTHOR);
         }
 
         // 경매 종료 30분 전 확인
         if (question.isNearAuctionEnd()) {
-            throw new IllegalStateException("경매 종료 30분 전부터는 질문을 수정할 수 없습니다.");
+            throw new BusinessException(ErrorCode.QNA_MODIFY_RESTRICTED_NEAR_END);
         }
 
         // 질문 수정 (답변 달림 여부는 Question 엔티티에서 확인)
@@ -133,22 +134,21 @@ public class QnaService {
     @Transactional
     public void deleteQuestion(Long questionId, Long userId) {
         Question question = questionRepository.findByIdWithQuestionerAndAuction(questionId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 질문입니다."));
+            .orElseThrow(() -> new BusinessException(ErrorCode.QUESTION_NOT_FOUND));
 
         // 질문자 본인 확인
-        if (!question.isQuestionerMatches(question.getQuestioner()) || 
-            !question.getQuestioner().getId().equals(userId)) {
-            throw new IllegalArgumentException("질문 작성자만 삭제할 수 있습니다.");
+        if (!question.getQuestioner().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.NOT_QUESTION_AUTHOR);
         }
 
         // 답변 달림 여부 확인
         if (question.getIsAnswered()) {
-            throw new IllegalStateException("답변이 달린 질문은 삭제할 수 없습니다.");
+            throw new BusinessException(ErrorCode.QUESTION_DELETE_RESTRICTED_HAS_ANSWER);
         }
 
         // 경매 종료 30분 전 확인
         if (question.isNearAuctionEnd()) {
-            throw new IllegalStateException("경매 종료 30분 전부터는 질문을 삭제할 수 없습니다.");
+            throw new BusinessException(ErrorCode.QNA_DELETE_RESTRICTED_NEAR_END);
         }
 
         // 질문 삭제
@@ -174,24 +174,24 @@ public class QnaService {
     @Transactional
     public AnswerResponse createAnswer(Long questionId, Long userId, CreateAnswerRequest request) {
         Question question = questionRepository.findByIdWithQuestionerAndAuction(questionId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 질문입니다."));
-            
+            .orElseThrow(() -> new BusinessException(ErrorCode.QUESTION_NOT_FOUND));
+
         User answerer = userRepository.findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 판매자 본인 확인
         if (!question.isSellerMatches(answerer)) {
-            throw new IllegalArgumentException("해당 경매의 판매자만 답변할 수 있습니다.");
+            throw new BusinessException(ErrorCode.ONLY_SELLER_CAN_ANSWER);
         }
 
         // 이미 답변이 달렸는지 확인
         if (question.getIsAnswered()) {
-            throw new IllegalStateException("이미 답변이 달린 질문입니다.");
+            throw new BusinessException(ErrorCode.ANSWER_ALREADY_EXISTS);
         }
 
         // 경매 종료 30분 전 확인
         if (question.isNearAuctionEnd()) {
-            throw new IllegalStateException("경매 종료 30분 전부터는 답변할 수 없습니다.");
+            throw new BusinessException(ErrorCode.ANSWER_TIME_LIMIT_EXCEEDED);
         }
 
         // 답변 생성 및 저장 (Question에 답변 완료 표시도 포함)
@@ -219,12 +219,11 @@ public class QnaService {
     @Transactional
     public AnswerResponse updateAnswer(Long answerId, Long userId, UpdateAnswerRequest request) {
         Answer answer = answerRepository.findByIdWithQuestionAndAnswerer(answerId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 답변입니다."));
+            .orElseThrow(() -> new BusinessException(ErrorCode.ANSWER_NOT_FOUND));
 
         // 답변자(판매자) 본인 확인
-        if (!answer.isAnswererMatches(answer.getAnswerer()) || 
-            !answer.getAnswerer().getId().equals(userId)) {
-            throw new IllegalArgumentException("답변 작성자만 수정할 수 있습니다.");
+        if (!answer.getAnswerer().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.NOT_ANSWER_AUTHOR);
         }
 
         // 답변 수정 (경매 상태 확인은 Answer 엔티티에서 확인)
@@ -250,17 +249,16 @@ public class QnaService {
     @Transactional
     public void deleteAnswer(Long answerId, Long userId) {
         Answer answer = answerRepository.findByIdWithQuestionAndAnswerer(answerId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 답변입니다."));
+            .orElseThrow(() -> new BusinessException(ErrorCode.ANSWER_NOT_FOUND));
 
         // 답변자(판매자) 본인 확인
-        if (!answer.isAnswererMatches(answer.getAnswerer()) || 
-            !answer.getAnswerer().getId().equals(userId)) {
-            throw new IllegalArgumentException("답변 작성자만 삭제할 수 있습니다.");
+        if (!answer.getAnswerer().getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.NOT_ANSWER_AUTHOR);
         }
 
         // 수정 가능 여부 확인 (경매 상태 포함)
         if (!answer.canModifyBySeller()) {
-            throw new IllegalStateException("경매 종료 30분 전부터는 답변을 삭제할 수 없습니다.");
+            throw new BusinessException(ErrorCode.QNA_DELETE_RESTRICTED_NEAR_END);
         }
 
         // 질문에 답변 미완료 표시

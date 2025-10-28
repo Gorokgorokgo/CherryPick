@@ -453,18 +453,18 @@ public class NotificationController {
         summary = "필수 알림만 켜기",
         description = """
             중요한 알림만 활성화하고 나머지는 비활성화합니다.
-            
+
             **활성화되는 알림:**
             - 새로운 입찰 알림 (판매자용)
             - 낙찰 알림 (구매자용)
             - 연결 서비스 결제 요청 (판매자용)
             - 채팅 활성화 알림 (구매자용)
             - 거래 완료 알림
-            
+
             **비활성화되는 알림:**
             - 새 메시지 알림 (채팅은 선택사항)
             - 프로모션 알림
-            
+
             **권장 사용:**
             - 알림이 너무 많다고 느끼는 사용자
             - 중요한 알림만 받고 싶은 사용자
@@ -478,8 +478,55 @@ public class NotificationController {
     @PostMapping("/essential-only")
     public ResponseEntity<NotificationSettingResponse> enableEssentialNotificationsOnly(
             @Parameter(description = "사용자 ID", example = "1") @RequestHeader("User-Id") Long userId) {
-        
+
         NotificationSettingResponse response = notificationService.enableEssentialNotificationsOnly(userId);
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+        summary = "모든 알림 삭제",
+        description = """
+            사용자의 모든 알림 히스토리를 삭제합니다.
+
+            **처리 내용:**
+            - 사용자의 모든 알림 히스토리를 DB에서 완전 삭제
+            - 삭제된 알림 개수 반환
+            - 복구 불가능 (영구 삭제)
+
+            **활용 시점:**
+            - "알림 전체 삭제" 버튼 클릭시
+            - 알림 히스토리 초기화
+            - 테스트 데이터 정리
+
+            **주의사항:**
+            - 삭제된 알림은 복구할 수 없음
+            - 읽음/안읽음 상태 관계없이 모두 삭제
+            - 트랜잭션 처리로 일관성 보장
+            """
+    )
+    @ApiResponses(value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "모든 알림 삭제 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    name = "삭제된 알림 개수",
+                    value = """
+                    {
+                      "deletedCount": 15
+                    }
+                    """
+                )
+            )
+        ),
+        @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    @DeleteMapping("/all")
+    public ResponseEntity<Map<String, Integer>> deleteAllNotifications(
+            @Parameter(description = "사용자 ID", example = "1") @RequestHeader("User-Id") Long userId) {
+
+        int deletedCount = notificationService.deleteAllNotifications(userId);
+        return ResponseEntity.ok(Map.of("deletedCount", deletedCount));
     }
 }
