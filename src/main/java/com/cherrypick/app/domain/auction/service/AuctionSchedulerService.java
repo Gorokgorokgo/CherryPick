@@ -17,6 +17,7 @@ import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.chat.service.ChatService;
 import com.cherrypick.app.domain.chat.entity.ChatRoom;
+import com.cherrypick.app.domain.transaction.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -47,6 +48,7 @@ public class AuctionSchedulerService {
     private final BusinessConfig businessConfig;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ChatService chatService;
+    private final TransactionService transactionService;
     
     /**
      * 경매 종료 처리 스케줄러
@@ -115,7 +117,15 @@ public class AuctionSchedulerService {
         auction.endAuction(winningBid.getBidder(), finalPrice);
         auctionRepository.save(auction);
 
-        // 2. 연결 서비스 자동 생성 (PENDING 상태)
+        // 2. Transaction 자동 생성 (PENDING 상태)
+        try {
+            transactionService.createTransactionFromAuction(auction, winningBid);
+            log.info("경매 {} Transaction 생성 완료", auction.getId());
+        } catch (Exception e) {
+            log.error("경매 {} Transaction 생성 실패", auction.getId(), e);
+        }
+
+        // 3. 연결 서비스 자동 생성 (PENDING 상태)
         try {
             ConnectionResponse connectionResponse = connectionService.createConnection(
                 auction.getId(), winningBid.getBidder().getId()
@@ -125,7 +135,7 @@ public class AuctionSchedulerService {
             log.error("경매 {} 연결 서비스 생성 실패", auction.getId(), e);
         }
 
-        // 2-1. 채팅방 자동 생성 (낙찰 시 판매자-낙찰자 채팅방)
+        // 4. 채팅방 자동 생성 (낙찰 시 판매자-낙찰자 채팅방)
         ChatRoom chatRoom = null;
         try {
             chatRoom = chatService.createAuctionChatRoom(

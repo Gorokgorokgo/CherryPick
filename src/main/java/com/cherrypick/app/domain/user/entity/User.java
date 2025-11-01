@@ -57,6 +57,31 @@ public class User extends BaseEntity {
     @Column(name = "seller_exp", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
     private Integer sellerExp = 0;
 
+    // 판매자 후기 통계
+    @Builder.Default
+    @Column(name = "seller_review_good", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer sellerReviewGood = 0;
+
+    @Builder.Default
+    @Column(name = "seller_review_normal", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer sellerReviewNormal = 0;
+
+    @Builder.Default
+    @Column(name = "seller_review_bad", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer sellerReviewBad = 0;
+
+    // 구매자 후기 통계
+    @Builder.Default
+    @Column(name = "buyer_review_good", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer buyerReviewGood = 0;
+
+    @Builder.Default
+    @Column(name = "buyer_review_normal", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer buyerReviewNormal = 0;
+
+    @Builder.Default
+    @Column(name = "buyer_review_bad", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer buyerReviewBad = 0;
 
     // 프로필 이미지
     @Column(length = 500)

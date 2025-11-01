@@ -250,7 +250,35 @@ public class ExperienceService {
         
         LevelProgressResponse buyerProgress = getBuyerLevelProgress(userId);
         LevelProgressResponse sellerProgress = getSellerLevelProgress(userId);
-        
+
         return UserLevelInfoResponse.create(userId, buyerProgress, sellerProgress);
+    }
+
+    /**
+     * 후기 작성 보너스 경험치 지급
+     *
+     * @param userId 후기 작성자 ID
+     */
+    @Transactional
+    public void awardReviewBonus(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+        int bonusExp = 10; // 후기 작성 보너스: +10 EXP
+
+        // 구매자와 판매자 경험치 모두에 보너스 지급 (후기는 거래 행위이므로)
+        int newBuyerExp = user.getBuyerExp() + bonusExp;
+        int newSellerExp = user.getSellerExp() + bonusExp;
+
+        user.setBuyerExp(newBuyerExp);
+        user.setSellerExp(newSellerExp);
+
+        // 레벨업 체크
+        checkBuyerLevelUp(user);
+        checkSellerLevelUp(user);
+
+        userRepository.save(user);
+
+        log.info("후기 작성 보너스 경험치 지급 - userId: {}, bonus: {} EXP", userId, bonusExp);
     }
 }

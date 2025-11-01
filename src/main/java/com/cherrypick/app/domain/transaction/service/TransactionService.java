@@ -3,13 +3,19 @@ package com.cherrypick.app.domain.transaction.service;
 import com.cherrypick.app.config.BusinessConfig;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.bid.entity.Bid;
+import com.cherrypick.app.domain.transaction.dto.response.TransactionConfirmResponse;
+import com.cherrypick.app.domain.transaction.dto.response.TransactionResponse;
 import com.cherrypick.app.domain.transaction.entity.Transaction;
 import com.cherrypick.app.domain.transaction.enums.TransactionStatus;
 import com.cherrypick.app.domain.transaction.repository.TransactionRepository;
+import com.cherrypick.app.domain.transaction.repository.ReviewRepository;
+import com.cherrypick.app.domain.notification.service.NotificationEventPublisher;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.service.ExperienceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,8 +29,10 @@ import java.time.LocalDateTime;
 public class TransactionService {
 
     private final TransactionRepository transactionRepository;
+    private final ReviewRepository reviewRepository;
     private final BusinessConfig businessConfig;
     private final ExperienceService experienceService;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     /**
      * 경매 종료 후 거래 생성
@@ -166,5 +174,156 @@ public class TransactionService {
      */
     public BigDecimal getCommissionRateForUser(User user) {
         return businessConfig.getCommissionRateForUser(user.getCreatedAt().toLocalDate());
+    }
+
+    /**
+     * 경매 ID로 거래 조회
+     *
+     * @param auctionId 경매 ID
+     * @return 거래 응답
+     */
+    @Transactional(readOnly = true)
+    public TransactionResponse getTransactionByAuction(Long auctionId) {
+        Transaction transaction = transactionRepository.findByAuctionId(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
+
+        return TransactionResponse.from(transaction);
+    }
+
+    /**
+     * 거래 확인 (판매자/구매자 공통)
+     *
+     * @param transactionId 거래 ID
+     * @param userId 사용자 ID
+     * @return 거래 확인 응답
+     */
+    @Transactional
+    public TransactionConfirmResponse confirmTransaction(Long transactionId, Long userId) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
+
+        // 거래 당사자 확인
+        boolean isSeller = transaction.getSeller().getId().equals(userId);
+        boolean isBuyer = transaction.getBuyer().getId().equals(userId);
+
+        if (!isSeller && !isBuyer) {
+            throw new IllegalArgumentException("거래 당사자만 확인할 수 있습니다.");
+        }
+
+        // 이미 완료된 거래인지 확인
+        if (transaction.getStatus() == TransactionStatus.COMPLETED) {
+            return TransactionConfirmResponse.of(
+                    transactionId,
+                    TransactionStatus.COMPLETED,
+                    transaction.getSellerConfirmed(),
+                    transaction.getBuyerConfirmed(),
+                    transaction.getCompletedAt(),
+                    "이미 완료된 거래입니다."
+            );
+        }
+
+        // 본인이 이미 확인했는지 체크
+        if (isSeller && transaction.getSellerConfirmed()) {
+            return TransactionConfirmResponse.of(
+                    transactionId,
+                    transaction.getStatus(),
+                    true,
+                    transaction.getBuyerConfirmed(),
+                    null,
+                    "이미 확인한 거래입니다. 상대방의 확인을 기다리는 중입니다."
+            );
+        }
+
+        if (isBuyer && transaction.getBuyerConfirmed()) {
+            return TransactionConfirmResponse.of(
+                    transactionId,
+                    transaction.getStatus(),
+                    transaction.getSellerConfirmed(),
+                    true,
+                    null,
+                    "이미 확인한 거래입니다. 상대방의 확인을 기다리는 중입니다."
+            );
+        }
+
+        // 확인 처리
+        Transaction confirmedTransaction;
+        if (isSeller) {
+            confirmedTransaction = confirmBySeller(transactionId, userId);
+        } else {
+            confirmedTransaction = confirmByBuyer(transactionId, userId);
+        }
+
+        // 상대방에게 알림 발송
+        User otherUser = isSeller ? transaction.getBuyer() : transaction.getSeller();
+        if (confirmedTransaction.getStatus() != TransactionStatus.COMPLETED) {
+            // 단일 확인 시 상대방에게 알림
+            notificationEventPublisher.publishTransactionConfirmedNotification(
+                    otherUser.getId(),
+                    transaction.getAuction().getTitle(),
+                    isSeller ? "판매자" : "구매자"
+            );
+        }
+
+        // 응답 생성
+        String message;
+        if (confirmedTransaction.getStatus() == TransactionStatus.COMPLETED) {
+            message = "거래가 완료되었습니다! 경험치가 지급되었습니다. 후기를 작성해주세요.";
+        } else {
+            message = "거래 확인이 완료되었습니다. 상대방의 확인을 기다리는 중입니다.";
+        }
+
+        return TransactionConfirmResponse.of(
+                transactionId,
+                confirmedTransaction.getStatus(),
+                confirmedTransaction.getSellerConfirmed(),
+                confirmedTransaction.getBuyerConfirmed(),
+                confirmedTransaction.getCompletedAt(),
+                message
+        );
+    }
+
+    /**
+     * 내 거래 내역 조회
+     *
+     * @param userId 사용자 ID
+     * @param status 거래 상태 필터 (선택)
+     * @param pageable 페이징 정보
+     * @return 거래 내역 페이지
+     */
+    public Page<TransactionResponse> getMyTransactions(Long userId, TransactionStatus status, Pageable pageable) {
+        Page<Transaction> transactions;
+
+        if (status != null) {
+            transactions = transactionRepository.findByUserIdAndStatus(userId, status, pageable);
+        } else {
+            transactions = transactionRepository.findByUserId(userId, pageable);
+        }
+
+        // 각 거래에 대해 후기 작성 여부 확인
+        return transactions.map(transaction -> {
+            boolean hasWrittenReview = reviewRepository.existsByTransactionIdAndReviewerId(
+                    transaction.getId(), userId);
+            return TransactionResponse.from(transaction, hasWrittenReview);
+        });
+    }
+
+    /**
+     * 거래 상세 조회
+     *
+     * @param transactionId 거래 ID
+     * @param userId 사용자 ID
+     * @return 거래 상세 정보
+     */
+    public TransactionResponse getTransactionDetail(Long transactionId, Long userId) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
+
+        // 권한 확인
+        if (!transaction.getSeller().getId().equals(userId) &&
+            !transaction.getBuyer().getId().equals(userId)) {
+            throw new IllegalArgumentException("거래 당사자만 조회할 수 있습니다.");
+        }
+
+        return TransactionResponse.from(transaction);
     }
 }

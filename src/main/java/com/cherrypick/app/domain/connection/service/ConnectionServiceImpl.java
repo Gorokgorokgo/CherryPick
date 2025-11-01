@@ -104,11 +104,11 @@ public class ConnectionServiceImpl {
                 auction, seller, buyer, finalPrice, connectionFee);
         
         ConnectionService savedConnection = connectionServiceRepository.save(connectionService);
-        
-        // 판매자에게 연결 서비스 결제 요청 알림 발송
-        fcmService.sendConnectionPaymentRequestNotification(
-                seller, savedConnection.getId(), auction.getTitle());
-        
+
+        // 판매자에게 연결 서비스 결제 요청 알림 발송 (제거됨 - 경매 종료 시 알림 불필요)
+        // fcmService.sendConnectionPaymentRequestNotification(
+        //         seller, savedConnection.getId(), auction.getTitle());
+
         return ConnectionResponse.from(savedConnection);
     }
     

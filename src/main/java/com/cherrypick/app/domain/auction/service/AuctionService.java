@@ -646,6 +646,16 @@ public class AuctionService {
             // 모든 참여자에게 경매 종료 알림 (유찰)
             if (highestBid.isPresent()) {
                 Bid highestBidEntity = highestBid.get();
+
+                // [FIX] 최고 입찰자에게 유찰 알림 이벤트 발행
+                applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
+                    this,
+                    highestBidEntity.getBidder().getId(),
+                    savedAuction.getId(),
+                    savedAuction.getTitle(),
+                    highestBidEntity.getBidAmount().longValue()
+                ));
+
                 notifyAllParticipants(savedAuction, highestBidEntity.getBidder().getId(), 0L, false);
             }
         }

@@ -42,9 +42,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     Page<Transaction> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId, Pageable pageable);
 
     /**
+     * 사용자별 거래 조회 (판매자 또는 구매자) - 상태 필터 없음
+     */
+    @Query("SELECT t FROM Transaction t WHERE (t.seller.id = :userId OR t.buyer.id = :userId) ORDER BY t.createdAt DESC")
+    Page<Transaction> findByUserId(@Param("userId") Long userId, Pageable pageable);
+
+    /**
+     * 사용자별 거래 조회 (판매자 또는 구매자) - 상태 필터
+     */
+    @Query("SELECT t FROM Transaction t WHERE (t.seller.id = :userId OR t.buyer.id = :userId) AND t.status = :status ORDER BY t.createdAt DESC")
+    Page<Transaction> findByUserIdAndStatus(@Param("userId") Long userId, @Param("status") TransactionStatus status, Pageable pageable);
+
+    /**
      * 완료된 거래 중 특정 기간 수수료 합계 (수익 분석용)
      */
     @Query("SELECT SUM(t.commissionFee) FROM Transaction t WHERE t.status = 'COMPLETED' AND t.completedAt BETWEEN :startDate AND :endDate")
-    Optional<Long> getCommissionSumByPeriod(@Param("startDate") java.time.LocalDateTime startDate, 
+    Optional<Long> getCommissionSumByPeriod(@Param("startDate") java.time.LocalDateTime startDate,
                                            @Param("endDate") java.time.LocalDateTime endDate);
 }
