@@ -24,14 +24,14 @@ public class TransactionConfirmResponse {
 
     public static TransactionConfirmResponse of(Long transactionId, TransactionStatus status,
                                                 Boolean sellerConfirmed, Boolean buyerConfirmed,
-                                                LocalDateTime completedAt, String message) {
+                                                LocalDateTime completedAt, String message, Boolean canWriteReview) {
         return TransactionConfirmResponse.builder()
                 .transactionId(transactionId)
                 .status(status)
                 .sellerConfirmed(sellerConfirmed)
                 .buyerConfirmed(buyerConfirmed)
                 .completedAt(completedAt)
-                .canWriteReview(status == TransactionStatus.COMPLETED)
+                .canWriteReview(canWriteReview)
                 .message(message)
                 .build();
     }

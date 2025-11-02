@@ -212,13 +212,17 @@ public class TransactionService {
 
         // 이미 완료된 거래인지 확인
         if (transaction.getStatus() == TransactionStatus.COMPLETED) {
+            // 후기 작성 여부 확인
+            boolean hasReview = reviewRepository.existsByTransactionIdAndReviewerId(transactionId, userId);
+
             return TransactionConfirmResponse.of(
                     transactionId,
                     TransactionStatus.COMPLETED,
                     transaction.getSellerConfirmed(),
                     transaction.getBuyerConfirmed(),
                     transaction.getCompletedAt(),
-                    "이미 완료된 거래입니다."
+                    "이미 완료된 거래입니다.",
+                    !hasReview  // 후기를 작성하지 않았으면 true
             );
         }
 
@@ -230,7 +234,8 @@ public class TransactionService {
                     true,
                     transaction.getBuyerConfirmed(),
                     null,
-                    "이미 확인한 거래입니다. 상대방의 확인을 기다리는 중입니다."
+                    "이미 확인한 거래입니다. 상대방의 확인을 기다리는 중입니다.",
+                    false  // 거래가 완료되지 않았으므로 후기 작성 불가
             );
         }
 
@@ -241,7 +246,8 @@ public class TransactionService {
                     transaction.getSellerConfirmed(),
                     true,
                     null,
-                    "이미 확인한 거래입니다. 상대방의 확인을 기다리는 중입니다."
+                    "이미 확인한 거래입니다. 상대방의 확인을 기다리는 중입니다.",
+                    false  // 거래가 완료되지 않았으므로 후기 작성 불가
             );
         }
 
@@ -266,7 +272,12 @@ public class TransactionService {
 
         // 응답 생성
         String message;
+        boolean canWriteReview = false;
         if (confirmedTransaction.getStatus() == TransactionStatus.COMPLETED) {
+            // 후기 작성 여부 확인
+            boolean hasReview = reviewRepository.existsByTransactionIdAndReviewerId(transactionId, userId);
+            canWriteReview = !hasReview;  // 후기를 작성하지 않았으면 true
+
             message = "거래가 완료되었습니다! 경험치가 지급되었습니다. 후기를 작성해주세요.";
         } else {
             message = "거래 확인이 완료되었습니다. 상대방의 확인을 기다리는 중입니다.";
@@ -278,7 +289,8 @@ public class TransactionService {
                 confirmedTransaction.getSellerConfirmed(),
                 confirmedTransaction.getBuyerConfirmed(),
                 confirmedTransaction.getCompletedAt(),
-                message
+                message,
+                canWriteReview
         );
     }
 

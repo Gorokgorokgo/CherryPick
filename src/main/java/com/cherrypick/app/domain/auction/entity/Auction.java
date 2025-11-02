@@ -197,9 +197,15 @@ public class Auction extends BaseEntity {
 
     /**
      * Reserve Price 달성 여부 확인
+     * reservePrice가 null이거나 0 이하면 Reserve Price 없음으로 간주
      */
     public boolean isReservePriceMet(BigDecimal currentBidPrice) {
-        return reservePrice == null || currentBidPrice.compareTo(reservePrice) >= 0;
+        // Reserve Price가 없으면 항상 충족
+        if (!hasReservePrice()) {
+            return true;
+        }
+        // Reserve Price가 있으면 비교
+        return currentBidPrice.compareTo(reservePrice) >= 0;
     }
 
     /**

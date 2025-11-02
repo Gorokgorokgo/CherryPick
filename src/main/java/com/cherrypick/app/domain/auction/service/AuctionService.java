@@ -38,6 +38,8 @@ import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.auction.dto.TopBidderResponse;
 import com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.transaction.service.TransactionService;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -61,6 +63,8 @@ public class AuctionService {
     private final BidRepository bidRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final AuctionBookmarkRepository bookmarkRepository;
+    private final WebSocketMessagingService webSocketMessagingService;
+    private final TransactionService transactionService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -566,7 +570,6 @@ public class AuctionService {
         // 최고 입찰자를 낙찰자로 설정 (Reserve Price 확인)
         Optional<Bid> highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
 
-        boolean isSuccessfulAuction = false;
         if (highestBid.isPresent()) {
             BigDecimal highestBidAmount = highestBid.get().getBidAmount();
 
@@ -574,7 +577,6 @@ public class AuctionService {
             if (auction.isReservePriceMet(highestBidAmount)) {
                 // Reserve Price 충족 → 낙찰
                 auction.setWinner(highestBid.get().getBidder(), highestBidAmount);
-                isSuccessfulAuction = true;
             } else {
                 // Reserve Price 미달 → 유찰
                 log.info("경매 {} - Reserve Price 미달로 유찰 처리: 최고입찰가={}, Reserve Price={}",
@@ -589,8 +591,8 @@ public class AuctionService {
 
         Auction savedAuction = auctionRepository.save(auction);
 
-        // 낙찰자가 있으면 채팅방 자동 생성 및 알림 발송
-        if (isSuccessfulAuction && savedAuction.getWinner() != null) {
+        // 저장 후 실제 낙찰 여부 확인 (setWinner 내부에서 Reserve Price 재검증)
+        if (savedAuction.getWinner() != null && savedAuction.getStatus() == AuctionStatus.ENDED) {
             Long chatRoomId = null;
             try {
                 ChatRoom chatRoom = chatService.createAuctionChatRoom(
@@ -630,9 +632,24 @@ public class AuctionService {
             // 다른 참여자들에게 경매 종료 알림 발행 (낙찰자 제외)
             notifyAllParticipants(savedAuction, savedAuction.getWinner().getId(), finalPrice, true);
 
+            // Transaction 자동 생성 (PENDING 상태)
+            try {
+                transactionService.createTransactionFromAuction(savedAuction, highestBid.get());
+                log.info("경매 {} Transaction 생성 완료 - forceEndAuction", savedAuction.getId());
+            } catch (Exception e) {
+                log.error("경매 {} Transaction 생성 실패 - forceEndAuction", savedAuction.getId(), e);
+            }
+
         } else {
             // 유찰 처리 - 판매자에게만 유찰 알림
             log.info("경매 {} 유찰 처리 - forceEndAuction", savedAuction.getId());
+
+            // 실시간 유찰 알림 전송 (WebSocket)
+            webSocketMessagingService.notifyAuctionEnded(
+                savedAuction.getId(),
+                BigDecimal.ZERO,
+                "유찰"
+            );
 
             // 판매자용 유찰 알림
             applicationEventPublisher.publishEvent(new AuctionNotSoldNotificationEvent(
@@ -647,7 +664,7 @@ public class AuctionService {
             if (highestBid.isPresent()) {
                 Bid highestBidEntity = highestBid.get();
 
-                // [FIX] 최고 입찰자에게 유찰 알림 이벤트 발행
+                // 최고 입���자에게 유찰 알림 이벤트 발행
                 applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
                     this,
                     highestBidEntity.getBidder().getId(),
