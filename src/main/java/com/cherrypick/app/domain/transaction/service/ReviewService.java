@@ -10,6 +10,7 @@ import com.cherrypick.app.domain.transaction.enums.ReviewType;
 import com.cherrypick.app.domain.transaction.enums.TransactionStatus;
 import com.cherrypick.app.domain.transaction.repository.ReviewRepository;
 import com.cherrypick.app.domain.transaction.repository.TransactionRepository;
+import com.cherrypick.app.domain.user.dto.response.ExperienceGainResponse;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.user.service.ExperienceService;
@@ -89,7 +90,7 @@ public class ReviewService {
         updateUserReviewStats(reviewee, reviewType, request.getRatingType());
 
         // 7. 후기 작성 보너스 경험치 지급 (+10 EXP)
-        experienceService.awardReviewBonus(reviewerId);
+        ExperienceGainResponse experienceResponse = experienceService.awardReviewBonus(reviewerId);
 
         // 8. 상대방에게 알림 발송
         notificationEventPublisher.sendReviewReceivedNotification(reviewee, reviewer.getNickname());
@@ -97,7 +98,7 @@ public class ReviewService {
         log.info("후기 작성 완료 - transactionId: {}, reviewer: {}, reviewee: {}, rating: {}",
                 transactionId, reviewerId, reviewee.getId(), request.getRatingType());
 
-        return ReviewResponse.from(review, REVIEW_BONUS_EXP);
+        return ReviewResponse.fromWithExperience(review, experienceResponse);
     }
 
     /**
