@@ -107,6 +107,24 @@ public class TransactionController {
     }
 
     @Operation(
+        summary = "경매 ID로 거래 확인 (유찰 경매 직거래)",
+        description = "경매 ID로 거래를 확인합니다. Transaction이 없으면 자동으로 생성합니다 (유찰 경매 직거래용)."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "거래 확인 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청"),
+        @ApiResponse(responseCode = "404", description = "경매를 찾을 수 없음")
+    })
+    @PostMapping("/auction/{auctionId}/confirm")
+    public ResponseEntity<TransactionConfirmResponse> confirmTransactionByAuction(
+            @Parameter(description = "경매 ID", example = "123") @PathVariable Long auctionId,
+            @Parameter(description = "사용자 ID", example = "1") @RequestHeader("User-Id") Long userId) {
+
+        TransactionConfirmResponse response = transactionService.confirmTransactionByAuction(auctionId, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
         summary = "경매 ID로 거래 조회",
         description = "경매 ID로 해당 경매의 거래 정보를 조회합니다."
     )

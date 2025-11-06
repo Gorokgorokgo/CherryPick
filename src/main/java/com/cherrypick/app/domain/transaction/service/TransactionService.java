@@ -2,7 +2,9 @@ package com.cherrypick.app.domain.transaction.service;
 
 import com.cherrypick.app.config.BusinessConfig;
 import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
+import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.transaction.dto.response.TransactionConfirmResponse;
 import com.cherrypick.app.domain.transaction.dto.response.TransactionResponse;
 import com.cherrypick.app.domain.transaction.entity.Transaction;
@@ -10,6 +12,7 @@ import com.cherrypick.app.domain.transaction.enums.TransactionStatus;
 import com.cherrypick.app.domain.transaction.repository.TransactionRepository;
 import com.cherrypick.app.domain.transaction.repository.ReviewRepository;
 import com.cherrypick.app.domain.notification.service.NotificationEventPublisher;
+import com.cherrypick.app.domain.user.dto.response.ExperienceGainResponse;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.service.ExperienceService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +36,8 @@ public class TransactionService {
     private final BusinessConfig businessConfig;
     private final ExperienceService experienceService;
     private final NotificationEventPublisher notificationEventPublisher;
+    private final AuctionRepository auctionRepository;
+    private final BidRepository bidRepository;
 
     /**
      * 경매 종료 후 거래 생성
@@ -74,13 +79,34 @@ public class TransactionService {
     }
 
     /**
+     * 거래 완료 결과 (거래 + 경험치 정보)
+     */
+    public static class TransactionCompletionResult {
+        private final Transaction transaction;
+        private final ExperienceService.TransactionExperienceResult experienceResult;
+
+        public TransactionCompletionResult(Transaction transaction, ExperienceService.TransactionExperienceResult experienceResult) {
+            this.transaction = transaction;
+            this.experienceResult = experienceResult;
+        }
+
+        public Transaction getTransaction() {
+            return transaction;
+        }
+
+        public ExperienceService.TransactionExperienceResult getExperienceResult() {
+            return experienceResult;
+        }
+    }
+
+    /**
      * 거래 완료 처리 (양방향 확인 완료 시)
-     * 
+     *
      * @param transactionId 거래 ID
-     * @return 완료된 거래
+     * @return 완료된 거래 및 경험치 정보
      */
     @Transactional
-    public Transaction completeTransaction(Long transactionId) {
+    public TransactionCompletionResult completeTransaction(Long transactionId) {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
 
@@ -98,29 +124,43 @@ public class TransactionService {
         User seller = transaction.getSeller();
         seller.setPointBalance(seller.getPointBalance() + transaction.getSellerAmount().longValue());
 
-        // 경험치 지급 (구매자/판매자)
+        Transaction savedTransaction = transactionRepository.save(transaction);
+
+        // 경험치 지급 (구매자/판매자) 및 결과 수집
+        ExperienceService.TransactionExperienceResult experienceResult = null;
         try {
-            experienceService.awardTransactionExperience(
+            log.info("💎 경험치 지급 시작 - 거래 ID: {}, 구매자 ID: {}, 판매자 ID: {}, 금액: {}",
+                transactionId, transaction.getBuyer().getId(), transaction.getSeller().getId(), transaction.getFinalPrice());
+
+            experienceResult = experienceService.awardTransactionExperience(
                 transaction.getBuyer().getId(),
                 transaction.getSeller().getId(),
                 transaction.getFinalPrice(),
                 completedAt,
                 transaction.getAuction()
             );
-            log.info("거래 완료 경험치 지급 완료 - 거래 ID: {}", transactionId);
+
+            if (experienceResult != null) {
+                log.info("✅ 거래 완료 경험치 지급 완료 - 거래 ID: {}, 구매자 EXP: {}, 판매자 EXP: {}",
+                    transactionId,
+                    experienceResult.getBuyerExperience() != null ? experienceResult.getBuyerExperience().getExpGained() : "null",
+                    experienceResult.getSellerExperience() != null ? experienceResult.getSellerExperience().getExpGained() : "null");
+            } else {
+                log.warn("⚠️ 경험치 지급 결과가 null - 거래 ID: {}", transactionId);
+            }
         } catch (Exception e) {
-            log.error("경험치 지급 중 오류 발생 - 거래 ID: {}, 오류: {}", transactionId, e.getMessage());
+            log.error("❌ 경험치 지급 중 오류 발생 - 거래 ID: {}, 오류: {}", transactionId, e.getMessage(), e);
             // 경험치 지급 실패가 거래 완료를 막지 않도록 예외를 잡음
         }
 
-        return transactionRepository.save(transaction);
+        return new TransactionCompletionResult(savedTransaction, experienceResult);
     }
 
     /**
      * 판매자 거래 확인
      */
     @Transactional
-    public Transaction confirmBySeller(Long transactionId, Long sellerId) {
+    public TransactionCompletionResult confirmBySeller(Long transactionId, Long sellerId) {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
 
@@ -136,14 +176,15 @@ public class TransactionService {
             return completeTransaction(transactionId);
         }
 
-        return transactionRepository.save(transaction);
+        Transaction saved = transactionRepository.save(transaction);
+        return new TransactionCompletionResult(saved, null);
     }
 
     /**
      * 구매자 거래 확인
      */
     @Transactional
-    public Transaction confirmByBuyer(Long transactionId, Long buyerId) {
+    public TransactionCompletionResult confirmByBuyer(Long transactionId, Long buyerId) {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
 
@@ -159,7 +200,8 @@ public class TransactionService {
             return completeTransaction(transactionId);
         }
 
-        return transactionRepository.save(transaction);
+        Transaction saved = transactionRepository.save(transaction);
+        return new TransactionCompletionResult(saved, null);
     }
 
     /**
@@ -185,9 +227,66 @@ public class TransactionService {
     @Transactional(readOnly = true)
     public TransactionResponse getTransactionByAuction(Long auctionId) {
         Transaction transaction = transactionRepository.findByAuctionId(auctionId)
-                .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("거래 정보를 찾을 수 없습니다."));
 
         return TransactionResponse.from(transaction);
+    }
+
+    /**
+     * 경매 ID로 거래 조회 또는 생성 (유찰 경매 직거래용)
+     *
+     * @param auctionId 경매 ID
+     * @return 거래
+     */
+    @Transactional
+    public Transaction getOrCreateTransactionByAuction(Long auctionId) {
+        // 먼저 조회 시도
+        return transactionRepository.findByAuctionId(auctionId)
+                .orElseGet(() -> {
+                    try {
+                        // Transaction이 없으면 자동 생성 (유찰 경매 직거래)
+                        log.info("경매 {}에 Transaction이 없음 - 자동 생성 시작", auctionId);
+
+                        Auction auction = auctionRepository.findById(auctionId)
+                                .orElseThrow(() -> new IllegalArgumentException("경매를 찾을 수 없습니다."));
+
+                        // 최고 입찰 조회
+                        Bid highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId)
+                                .orElseThrow(() -> new IllegalArgumentException("입찰 내역이 없습니다."));
+
+                        // Transaction 생성
+                        Transaction transaction = createTransactionFromAuction(auction, highestBid);
+
+                        log.info("경매 {} Transaction 자동 생성 완료 - 판매자: {}, 구매자: {}, 금액: {}",
+                                auctionId,
+                                transaction.getSeller().getId(),
+                                transaction.getBuyer().getId(),
+                                transaction.getFinalPrice());
+
+                        return transaction;
+                    } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                        // 동시성 문제로 이미 생성된 경우 다시 조회
+                        log.warn("⚠️ 경매 {} Transaction 중복 생성 시도 - 다시 조회", auctionId);
+                        return transactionRepository.findByAuctionId(auctionId)
+                                .orElseThrow(() -> new IllegalStateException("Transaction 조회/생성 실패"));
+                    }
+                });
+    }
+
+    /**
+     * 경매 ID로 거래 확인 (유찰 경매 직거래용)
+     *
+     * @param auctionId 경매 ID
+     * @param userId 사용자 ID
+     * @return 거래 확인 응답
+     */
+    @Transactional
+    public TransactionConfirmResponse confirmTransactionByAuction(Long auctionId, Long userId) {
+        // Transaction 조회 또는 생성 (유찰 경매는 자동 생성)
+        Transaction transaction = getOrCreateTransactionByAuction(auctionId);
+
+        // 기존 confirmTransaction 로직 호출
+        return confirmTransaction(transaction.getId(), userId);
     }
 
     /**
@@ -252,12 +351,18 @@ public class TransactionService {
         }
 
         // 확인 처리
-        Transaction confirmedTransaction;
+        TransactionCompletionResult completionResult;
         if (isSeller) {
-            confirmedTransaction = confirmBySeller(transactionId, userId);
+            completionResult = confirmBySeller(transactionId, userId);
         } else {
-            confirmedTransaction = confirmByBuyer(transactionId, userId);
+            completionResult = confirmByBuyer(transactionId, userId);
         }
+
+        Transaction confirmedTransaction = completionResult.getTransaction();
+        ExperienceService.TransactionExperienceResult experienceResult = completionResult.getExperienceResult();
+
+        log.info("📋 confirmTransaction - 거래 ID: {}, 상태: {}, experienceResult: {}",
+            transactionId, confirmedTransaction.getStatus(), experienceResult != null ? "존재" : "null");
 
         // 상대방에게 알림 발송
         User otherUser = isSeller ? transaction.getBuyer() : transaction.getSeller();
@@ -279,6 +384,27 @@ public class TransactionService {
             canWriteReview = !hasReview;  // 후기를 작성하지 않았으면 true
 
             message = "거래가 완료되었습니다! 경험치가 지급되었습니다. 후기를 작성해주세요.";
+
+            // 경험치 정보 포함 (본인의 경험치만 반환)
+            ExperienceGainResponse buyerExp = null;
+            ExperienceGainResponse sellerExp = null;
+
+            if (experienceResult != null) {
+                buyerExp = experienceResult.getBuyerExperience();
+                sellerExp = experienceResult.getSellerExperience();
+            }
+
+            return TransactionConfirmResponse.ofWithExperience(
+                    transactionId,
+                    confirmedTransaction.getStatus(),
+                    confirmedTransaction.getSellerConfirmed(),
+                    confirmedTransaction.getBuyerConfirmed(),
+                    confirmedTransaction.getCompletedAt(),
+                    message,
+                    canWriteReview,
+                    buyerExp,
+                    sellerExp
+            );
         } else {
             message = "거래 확인이 완료되었습니다. 상대방의 확인을 기다리는 중입니다.";
         }
