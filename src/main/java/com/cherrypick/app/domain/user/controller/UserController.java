@@ -14,6 +14,7 @@ import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileRequest;
 import com.cherrypick.app.domain.user.dto.request.UpdateProfileImageRequest;
+import com.cherrypick.app.domain.user.dto.response.ExperienceHistoryResponse;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
 import com.cherrypick.app.domain.user.dto.response.UserLevelInfoResponse;
 import com.cherrypick.app.domain.user.dto.response.LevelProgressResponse;
@@ -321,5 +322,21 @@ public class UserController {
         Long userId = extractUserIdFromRequest(request);
         LevelProgressResponse progress = experienceService.getSellerLevelProgress(userId);
         return ResponseEntity.ok(progress);
+    }
+
+    @GetMapping("/experience/history")
+    @Operation(summary = "경험치 히스토리 조회", description = "사용자의 경험치 획득 이력을 조회합니다 (페이징)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "경험치 히스토리 조회 성공"),
+        @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<Page<ExperienceHistoryResponse>> getExperienceHistory(
+            HttpServletRequest request,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Long userId = extractUserIdFromRequest(request);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ExperienceHistoryResponse> history = experienceService.getExperienceHistory(userId, pageable);
+        return ResponseEntity.ok(history);
     }
 }
