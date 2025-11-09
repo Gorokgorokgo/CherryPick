@@ -128,9 +128,10 @@ public class AuctionSchedulerService {
         }
 
         // 2.5. 낙찰 성공 경험치 지급
+        ExperienceGainResponse experienceGain = null;
         try {
-            experienceService.awardAuctionWinExperience(winningBid.getBidder().getId(), auction);
-            log.info("경매 {} 낙찰 경험치 지급 완료", auction.getId());
+            experienceGain = experienceService.awardAuctionWinExperience(winningBid.getBidder().getId(), auction);
+            log.info("경매 {} 낙찰 경험치 지급 완료: {} EXP", auction.getId(), experienceGain.getExpGained());
         } catch (Exception e) {
             log.error("경매 {} 낙찰 경험치 지급 실패", auction.getId(), e);
         }
@@ -182,15 +183,16 @@ public class AuctionSchedulerService {
             auction.getId(),
             auction.getTitle(),
             finalPrice.longValue(),
-            sellerNickname,
-            chatRoomId  // 생성된 채팅방 ID 포함
-        ));
-
-        // 5. 판매자 낙찰 알림 이벤트 발행 (채팅방 ID 포함)
-        applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
+        applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
             this,
-            auction.getSeller().getId(),
+            winningBid.getBidder().getId(),
             auction.getId(),
+            auction.getTitle(),
+            finalPrice.longValue(),
+            sellerNickname,
+            chatRoomId,  // 생성된 채팅방 ID 포함
+            experienceGain  // 낙찰 경험치 정보 포함
+        ));
             auction.getTitle(),
             finalPrice.longValue(),
             winnerNickname,
