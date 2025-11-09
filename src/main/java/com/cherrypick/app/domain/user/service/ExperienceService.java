@@ -296,6 +296,29 @@ public class ExperienceService {
 
         return response;
     }
+
+    /**
+     * 낙찰 성공 경험치 지급
+     *
+     * @param winnerId 낙찰자 ID
+     * @param auction 경매 정보
+     * @return 경험치 획득 응답
+     */
+    @Transactional
+    public ExperienceGainResponse awardAuctionWinExperience(Long winnerId, Auction auction) {
+        User winner = userRepository.findById(winnerId)
+            .orElseThrow(() -> new IllegalArgumentException("낙찰자를 찾을 수 없습니다."));
+
+        // 낙찰 성공 경험치 지급 (구매자 경험치로 지급)
+        int experience = AUCTION_WIN_EXP;
+        String reason = "낙찰 성공";
+        String reasonDetail = String.format("경매 '%s' 낙찰", auction.getTitle());
+
+        log.info("낙찰 성공 경험치 지급 - 사용자: {}, 경매: {}, 경험치: {} EXP",
+            winnerId, auction.getId(), experience);
+
+        return awardBuyerExperienceWithReason(winner, experience, reason, reasonDetail);
+    }
     
     /**
      * 현실적인 레벨업 체크 (구매자)

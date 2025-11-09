@@ -18,6 +18,7 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.chat.service.ChatService;
 import com.cherrypick.app.domain.chat.entity.ChatRoom;
 import com.cherrypick.app.domain.transaction.service.TransactionService;
+import com.cherrypick.app.domain.user.service.ExperienceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -49,6 +50,7 @@ public class AuctionSchedulerService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ChatService chatService;
     private final TransactionService transactionService;
+    private final ExperienceService experienceService;
     
     /**
      * 경매 종료 처리 스케줄러
@@ -123,6 +125,14 @@ public class AuctionSchedulerService {
             log.info("경매 {} Transaction 생성 완료", auction.getId());
         } catch (Exception e) {
             log.error("경매 {} Transaction 생성 실패", auction.getId(), e);
+        }
+
+        // 2.5. 낙찰 성공 경험치 지급
+        try {
+            experienceService.awardAuctionWinExperience(winningBid.getBidder().getId(), auction);
+            log.info("경매 {} 낙찰 경험치 지급 완료", auction.getId());
+        } catch (Exception e) {
+            log.error("경매 {} 낙찰 경험치 지급 실패", auction.getId(), e);
         }
 
         // 3. 연결 서비스 자동 생성 (PENDING 상태)
