@@ -11,6 +11,7 @@ import com.cherrypick.app.domain.chat.dto.response.ChatRoomResponse;
 import com.cherrypick.app.domain.chat.entity.ChatMessage;
 import com.cherrypick.app.domain.chat.entity.ChatRoom;
 import com.cherrypick.app.domain.chat.enums.ChatRoomStatus;
+import com.cherrypick.app.domain.chat.enums.MessageType;
 import com.cherrypick.app.domain.chat.repository.ChatMessageRepository;
 import com.cherrypick.app.domain.chat.repository.ChatRoomRepository;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
@@ -423,14 +424,99 @@ public class ChatService {
             }
             
             // 메시지 전송 완료
-            
+
             return response;
         }
     }
-    
+
+    /**
+     * 배치 메시지 전송 (여러 이미지 동시 전송용)
+     *
+     * @param roomId 채팅방 ID
+     * @param userId 사용자 ID
+     * @param requests 메시지 전송 요청 목록
+     * @return 전송된 메시지 정보 목록
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public List<ChatMessageResponse> sendBatchMessages(Long roomId, Long userId, List<SendMessageRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST);
+        }
+
+        // 채팅방별 동시성 제어
+        Object lock = getChatRoomLock(roomId);
+
+        synchronized (lock) {
+            ChatRoom chatRoom = chatRoomRepository.findById(roomId)
+                    .orElseThrow(EntityNotFoundException::chatRoom);
+
+            // 사용자가 채팅방 참여자인지 확인
+            if (!chatRoom.isParticipant(userId)) {
+                throw new BusinessException(ErrorCode.FORBIDDEN);
+            }
+
+            // 채팅방이 활성화되어 있는지 확인
+            if (!chatRoom.isActive()) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST);
+            }
+
+            User sender = userRepository.findById(userId)
+                    .orElseThrow(EntityNotFoundException::user);
+
+            // 모든 메시지 생성 및 저장 (메시지 타입 고려)
+            List<ChatMessage> messages = requests.stream()
+                    .map(request -> {
+                        MessageType messageType = request.getMessageType() != null
+                                ? request.getMessageType()
+                                : MessageType.TEXT;
+                        return ChatMessage.createMessage(chatRoom, sender, request.getContent(), messageType);
+                    })
+                    .collect(Collectors.toList());
+
+            List<ChatMessage> savedMessages = chatMessageRepository.saveAll(messages);
+
+            // 채팅방 마지막 메시지 시간 업데이트 (한 번만)
+            ChatRoom updatedRoom = chatRoom.updateLastMessageTime();
+            chatRoomRepository.save(updatedRoom);
+
+            // 실시간 메시지 전송 (WebSocket) - 각 메시지마다
+            List<ChatMessageResponse> responses = savedMessages.stream()
+                    .map(ChatMessageResponse::from)
+                    .collect(Collectors.toList());
+
+            // WebSocket으로 모든 메시지 전송
+            responses.forEach(response -> {
+                try {
+                    log.info("🔔 WebSocket 메시지 전송 시도: roomId={}, messageId={}, messageType={}",
+                            roomId, response.getId(), response.getMessageType());
+                    webSocketMessagingService.sendChatMessage(roomId, response);
+                    log.info("✅ WebSocket 메시지 전송 성공: messageId={}", response.getId());
+                } catch (Exception e) {
+                    log.warn("❌ WebSocket 메시지 전송 실패 (메시지는 저장됨): roomId={}, messageId={}, error={}",
+                            roomId, response.getId(), e.getMessage(), e);
+                }
+            });
+
+            // 메시지 전송 시 타이핑 상태 자동 중단 이벤트 발행
+            try {
+                eventPublisher.publishEvent(new TypingEvent(
+                        this, roomId, userId, null, TypingEvent.TypingEventType.MESSAGE_SENT
+                ));
+            } catch (Exception e) {
+                log.warn("타이핑 상태 자동 중단 이벤트 발행 실패: roomId={}, userId={}, error={}",
+                        roomId, userId, e.getMessage());
+            }
+
+            log.info("배치 메시지 전송 완료: roomId={}, userId={}, messageCount={}",
+                    roomId, userId, responses.size());
+
+            return responses;
+        }
+    }
+
     /**
      * 채팅방별 Lock 객체 획득 (메모리 효율적인 Lock 관리)
-     * 
+     *
      * @param roomId 채팅방 ID
      * @return Lock 객체
      */

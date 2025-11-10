@@ -2,7 +2,6 @@ package com.cherrypick.app.domain.auction.service;
 
 import com.cherrypick.app.config.BusinessConfig;
 import com.cherrypick.app.domain.auction.entity.Auction;
-import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
@@ -14,11 +13,11 @@ import com.cherrypick.app.domain.notification.event.AuctionWonNotificationEvent;
 import com.cherrypick.app.domain.notification.event.AuctionEndedForParticipantEvent;
 import com.cherrypick.app.domain.notification.event.AuctionNotSoldForHighestBidderEvent;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
-import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.chat.service.ChatService;
 import com.cherrypick.app.domain.chat.entity.ChatRoom;
 import com.cherrypick.app.domain.transaction.service.TransactionService;
 import com.cherrypick.app.domain.user.service.ExperienceService;
+import com.cherrypick.app.domain.user.dto.response.ExperienceGainResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -178,21 +177,21 @@ public class AuctionSchedulerService {
         Long chatRoomId = chatRoom != null ? chatRoom.getId() : null;
 
         applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
-            this,
-            winningBid.getBidder().getId(),
-            auction.getId(),
-            auction.getTitle(),
-            finalPrice.longValue(),
-        applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
-            this,
-            winningBid.getBidder().getId(),
-            auction.getId(),
-            auction.getTitle(),
-            finalPrice.longValue(),
-            sellerNickname,
-            chatRoomId,  // 생성된 채팅방 ID 포함
-            experienceGain  // 낙찰 경험치 정보 포함
+            this,                              // source
+            winningBid.getBidder().getId(),    // buyerId
+            auction.getId(),                   // auctionId
+            auction.getTitle(),                // auctionTitle
+            finalPrice.longValue(),            // finalPrice
+            sellerNickname,                    // sellerNickname
+            chatRoomId,                        // chatRoomId
+            experienceGain                     // experienceGain
         ));
+
+        // 5. 판매자에게 낙찰 알림 발행
+        applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
+            this,
+            auction.getSeller().getId(),
+            auction.getId(),
             auction.getTitle(),
             finalPrice.longValue(),
             winnerNickname,

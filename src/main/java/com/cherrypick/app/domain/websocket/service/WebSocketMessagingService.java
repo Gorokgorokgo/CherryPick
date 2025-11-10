@@ -173,18 +173,36 @@ public class WebSocketMessagingService {
             log.warn("잘못된 chatRoomId: {}", chatRoomId);
             return;
         }
-        
+
         if (message == null) {
             log.warn("메시지가 null입니다. chatRoomId: {}", chatRoomId);
             return;
         }
-        
+
         String destination = "/topic/chat/" + chatRoomId;
-        
+
+        // 프론트엔드가 기대하는 형식으로 래핑
+        var wrappedMessage = java.util.Map.of(
+            "messageType", "CHAT_MESSAGE",
+            "roomId", chatRoomId,
+            "messageId", message.getId(),
+            "senderId", message.getSenderId(),
+            "senderNickname", message.getSenderName(),
+            "content", message.getContent(),
+            "contentType", message.getMessageType().name(),
+            "timestamp", message.getCreatedAt() != null ? message.getCreatedAt().toString() : java.time.ZonedDateTime.now().toString(),
+            "isRead", message.isRead()
+        );
+
+        log.info("📤 WebSocket 메시지 래핑: destination={}, contentType={}, messageId={}",
+                destination, message.getMessageType().name(), message.getId());
+
         try {
-            webSocketHandler.sendToAuctionSubscribers(destination, message);
+            webSocketHandler.sendToAuctionSubscribers(destination, wrappedMessage);
+            log.info("✅ WebSocket 전송 완료: destination={}, messageId={}", destination, message.getId());
         } catch (Exception e) {
-            // 채팅 메시지 전송 실패 무시
+            log.error("❌ WebSocket 전송 실패: destination={}, messageId={}, error={}",
+                    destination, message.getId(), e.getMessage(), e);
         }
     }
     

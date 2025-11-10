@@ -99,4 +99,6 @@ migration:
 logging:
   level:
     com.cherrypick: DEBUG
-    org.springframework.web: DEBUG
+    org.springframework.web: INFO
+    org.springframework.web.socket: WARN
+    org.apache.tomcat.websocket: WARN

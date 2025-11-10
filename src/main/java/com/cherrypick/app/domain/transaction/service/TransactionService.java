@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -48,6 +49,13 @@ public class TransactionService {
      */
     @Transactional
     public Transaction createTransactionFromAuction(Auction auction, Bid winningBid) {
+        // 중복 생성 방지: 이미 Transaction이 존재하면 기존 것을 반환
+        Optional<Transaction> existingTransaction = transactionRepository.findByAuctionId(auction.getId());
+        if (existingTransaction.isPresent()) {
+            log.info("경매 {} Transaction이 이미 존재합니다. 기존 Transaction 반환", auction.getId());
+            return existingTransaction.get();
+        }
+
         User seller = auction.getSeller();
         User buyer = winningBid.getBidder();
         BigDecimal finalPrice = winningBid.getBidAmount();
@@ -60,7 +68,7 @@ public class TransactionService {
 
         // 수수료 계산
         BigDecimal commissionFee = finalPrice.multiply(commissionRate);
-        
+
         // 판매자 수령 금액 계산 (낙찰가 - 수수료)
         BigDecimal sellerAmount = finalPrice.subtract(commissionFee);
 

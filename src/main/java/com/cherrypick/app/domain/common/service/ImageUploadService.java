@@ -282,19 +282,20 @@ public class ImageUploadService {
     private void uploadToS3(MultipartFile file, String path) throws IOException {
         try {
             log.info("S3 업로드 시작: bucket={}, path={}", bucketName, path);
-            
-            // S3에 파일 업로드
+
+            // S3에 파일 업로드 (Public Read ACL 설정)
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(path)
                     .contentType(file.getContentType())
+                    .acl("public-read") // 공개 읽기 권한 설정
                     .build();
-            
-            getS3Client().putObject(putObjectRequest, 
+
+            getS3Client().putObject(putObjectRequest,
                     RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-            
+
             log.info("S3 업로드 완료: path={}", path);
-            
+
         } catch (Exception e) {
             log.error("S3 업로드 실패: path={}, error={}", path, e.getMessage(), e);
             throw new IOException("S3 업로드에 실패했습니다: " + e.getMessage());

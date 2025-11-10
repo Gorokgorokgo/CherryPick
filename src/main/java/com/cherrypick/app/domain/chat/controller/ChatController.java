@@ -134,7 +134,7 @@ public class ChatController {
 
     /**
      * 채팅 메시지 전송
-     * 
+     *
      * @param roomId 채팅방 ID
      * @param request 메시지 전송 요청
      * @param userDetails 인증된 사용자 정보
@@ -146,15 +146,40 @@ public class ChatController {
             @PathVariable Long roomId,
             @Valid @RequestBody SendMessageRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        
+
         Long userId = userService.getUserIdByEmail(userDetails.getUsername());
-        
-        log.info("메시지 전송: roomId={}, userId={}, content={}", 
+
+        log.info("메시지 전송: roomId={}, userId={}, content={}",
                 roomId, userId, request.getContent().substring(0, Math.min(50, request.getContent().length())));
-        
+
         ChatMessageResponse message = chatService.sendMessage(roomId, userId, request);
-        
+
         return ResponseEntity.ok(message);
+    }
+
+    /**
+     * 채팅 메시지 배치 전송 (여러 이미지 동시 전송용)
+     *
+     * @param roomId 채팅방 ID
+     * @param requests 메시지 전송 요청 목록
+     * @param userDetails 인증된 사용자 정보
+     * @return 전송된 메시지 정보 목록
+     */
+    @PostMapping("/rooms/{roomId}/messages/batch")
+    @Operation(summary = "채팅 메시지 배치 전송", description = "채팅방에 여러 메시지를 한 번에 전송합니다 (주로 이미지 전송용)")
+    public ResponseEntity<List<ChatMessageResponse>> sendBatchMessages(
+            @PathVariable Long roomId,
+            @Valid @RequestBody List<SendMessageRequest> requests,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+
+        log.info("배치 메시지 전송: roomId={}, userId={}, messageCount={}",
+                roomId, userId, requests.size());
+
+        List<ChatMessageResponse> messages = chatService.sendBatchMessages(roomId, userId, requests);
+
+        return ResponseEntity.ok(messages);
     }
 
     /**

@@ -72,6 +72,33 @@ public class ChatMessage extends BaseEntity {
                 .sentAt(now)
                 .build();
     }
+
+    /**
+     * 이미지 메시지 생성
+     */
+    public static ChatMessage createImageMessage(ChatRoom chatRoom, User sender, String imageUrl) {
+        LocalDateTime now = LocalDateTime.now();
+        return ChatMessage.builder()
+                .chatRoom(chatRoom)
+                .sender(sender)
+                .messageType(MessageType.IMAGE)
+                .content(imageUrl)
+                .isRead(false)
+                .deliveryStatus(MessageDeliveryStatus.SENT)
+                .sentAt(now)
+                .build();
+    }
+
+    /**
+     * 메시지 타입에 따라 적절한 메시지 생성
+     */
+    public static ChatMessage createMessage(ChatRoom chatRoom, User sender, String content, MessageType messageType) {
+        if (messageType == MessageType.IMAGE) {
+            return createImageMessage(chatRoom, sender, content);
+        } else {
+            return createTextMessage(chatRoom, sender, content);
+        }
+    }
     
     /**
      * 시스템 메시지 생성

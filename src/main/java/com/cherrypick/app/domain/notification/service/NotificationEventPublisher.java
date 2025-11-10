@@ -56,7 +56,7 @@ public class NotificationEventPublisher {
                                             Long finalPrice) {
         try {
             AuctionWonNotificationEvent event = new AuctionWonNotificationEvent(
-                    this, buyerId, auctionId, auctionTitle, finalPrice, null);
+                    this, buyerId, auctionId, auctionTitle, finalPrice, null, null, null);
 
             eventPublisher.publishEvent(event);
 
