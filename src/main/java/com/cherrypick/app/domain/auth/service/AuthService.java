@@ -84,7 +84,7 @@ public class AuthService {
             return new AuthResponse("이미 사용 중인 닉네임입니다.");
         }
 
-        // 사용자 생성 (비밀번호 암호화 + 추가 프로필 정보)
+        // 사용자 생성 (비밀번호 암호화 + 번개장터 스타일 프로필)
         User.UserBuilder userBuilder = User.builder()
                 .phoneNumber(request.getPhoneNumber())
                 .nickname(request.getNickname())
@@ -96,30 +96,13 @@ public class AuthService {
                 .sellerLevel(1)
                 .sellerExp(0);
 
-        // 선택 프로필 정보 설정
-        if (request.getRealName() != null && !request.getRealName().trim().isEmpty()) {
-            userBuilder.realName(request.getRealName().trim());
-        }
-        if (request.getBirthDate() != null) {
-            userBuilder.birthDate(request.getBirthDate());
-        }
-        if (request.getGender() != null) {
-            userBuilder.gender(request.getGender());
-        }
+        // 선택 프로필 정보 설정 (번개장터 스타일 - 거래 지역, 자기소개만)
         if (request.getAddress() != null && !request.getAddress().trim().isEmpty()) {
             userBuilder.address(request.getAddress().trim());
-        }
-        if (request.getZipCode() != null && !request.getZipCode().trim().isEmpty()) {
-            userBuilder.zipCode(request.getZipCode().trim());
         }
         if (request.getBio() != null && !request.getBio().trim().isEmpty()) {
             userBuilder.bio(request.getBio().trim());
         }
-
-        // 프로필 공개 설정 (기본값 적용)
-        userBuilder.isProfilePublic(request.getIsProfilePublic() != null ? request.getIsProfilePublic() : true);
-        userBuilder.isRealNamePublic(request.getIsRealNamePublic() != null ? request.getIsRealNamePublic() : false);
-        userBuilder.isBirthDatePublic(request.getIsBirthDatePublic() != null ? request.getIsBirthDatePublic() : false);
 
         User user = userBuilder.build();
 

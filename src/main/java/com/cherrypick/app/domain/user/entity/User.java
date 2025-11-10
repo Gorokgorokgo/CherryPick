@@ -21,9 +21,9 @@ public class User extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Pattern(regexp = "^010[0-9]{8}$", message = "올바른 전화번호 형식이 아닙니다.")
+    @Pattern(regexp = "^010[0-9]{8}$|^$", message = "올바른 전화번호 형식이 아닙니다.")
     @Column(unique = true)
-    private String phoneNumber;
+    private String phoneNumber; // OAuth 사용자는 null 또는 빈 문자열 가능
 
     @NotBlank
     @Column(nullable = false, length = 20)

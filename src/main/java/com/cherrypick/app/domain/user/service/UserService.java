@@ -39,15 +39,8 @@ public class UserService {
                 .sellerLevel(user.getSellerLevel())
                 .sellerExp(user.getSellerExp())
                 .profileImageUrl(user.getProfileImageUrl())
-                .realName(user.getRealName())
-                .birthDate(user.getBirthDate())
-                .gender(user.getGender())
                 .address(user.getAddress())
-                .zipCode(user.getZipCode())
                 .bio(user.getBio())
-                .isProfilePublic(user.getIsProfilePublic())
-                .isRealNamePublic(user.getIsRealNamePublic())
-                .isBirthDatePublic(user.getIsBirthDatePublic())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();
@@ -63,12 +56,12 @@ public class UserService {
             throw new RuntimeException("이미 사용 중인 닉네임입니다.");
         }
 
-        // 기본 정보 업데이트
+        // 닉네임 업데이트
         user.setNickname(request.getNickname());
-        
+
         // 프로필 이미지 업데이트 (기존 이미지가 있고 새 이미지가 다르면 기존 이미지 삭제)
         if (request.getProfileImageUrl() != null) {
-            if (user.getProfileImageUrl() != null && 
+            if (user.getProfileImageUrl() != null &&
                 !user.getProfileImageUrl().equals(request.getProfileImageUrl())) {
                 try {
                     imageUploadService.deleteImage(user.getProfileImageUrl());
@@ -79,38 +72,17 @@ public class UserService {
             }
             user.setProfileImageUrl(request.getProfileImageUrl());
         }
-        
-        // 추가 개인정보 업데이트
-        if (request.getRealName() != null) {
-            user.setRealName(request.getRealName());
-        }
-        if (request.getBirthDate() != null) {
-            user.setBirthDate(request.getBirthDate());
-        }
-        if (request.getGender() != null) {
-            user.setGender(request.getGender());
-        }
+
+        // 거래 지역 업데이트
         if (request.getAddress() != null) {
             user.setAddress(request.getAddress());
         }
-        if (request.getZipCode() != null) {
-            user.setZipCode(request.getZipCode());
-        }
+
+        // 자기소개 업데이트
         if (request.getBio() != null) {
             user.setBio(request.getBio());
         }
-        
-        // 프로필 공개 설정 업데이트
-        if (request.getIsProfilePublic() != null) {
-            user.setIsProfilePublic(request.getIsProfilePublic());
-        }
-        if (request.getIsRealNamePublic() != null) {
-            user.setIsRealNamePublic(request.getIsRealNamePublic());
-        }
-        if (request.getIsBirthDatePublic() != null) {
-            user.setIsBirthDatePublic(request.getIsBirthDatePublic());
-        }
-        
+
         user.setUpdatedAt(LocalDateTime.now());
         User updatedUser = userRepository.save(user);
 

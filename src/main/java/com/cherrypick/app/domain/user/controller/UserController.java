@@ -90,8 +90,8 @@ public class UserController {
     }
 
     @PutMapping("/profile")
-    @Operation(summary = "프로필 수정", 
-               description = "사용자의 프로필 정보를 수정합니다. 닉네임, 프로필 이미지, 실명, 생년월일, 성별, 주소, 자기소개, 공개 설정 등을 수정할 수 있습니다.")
+    @Operation(summary = "프로필 수정",
+               description = "사용자의 프로필 정보를 수정합니다. 닉네임, 프로필 이미지, 거래 지역, 자기소개를 수정할 수 있습니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "프로필 수정 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 요청 또는 중복 닉네임"),

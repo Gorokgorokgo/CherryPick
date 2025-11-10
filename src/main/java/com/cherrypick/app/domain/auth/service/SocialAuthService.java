@@ -84,29 +84,24 @@ public class SocialAuthService {
                 return new AuthResponse("이미 가입된 이메일입니다.");
             }
 
-            // 6. 사용자 생성
-            User user = User.builder()
+            // 6. 사용자 생성 (번개장터 스타일)
+            User.UserBuilder userBuilder = User.builder()
                     .nickname(request.getNickname())
                     .email(socialUserInfo.getEmail())
                     .password("") // 소셜 로그인 사용자는 비밀번호 불필요
-                    .phoneNumber("") // 소셜 로그인 사용자는 전화번호 불필요 (나중에 추가 가능)
+                    .phoneNumber(null) // 소셜 로그인 사용자는 전화번호 선택 (나중에 추가 가능)
                     .pointBalance(0L)
                     .buyerLevel(1)
                     .buyerExp(0)
                     .sellerLevel(1)
-                    .sellerExp(0)
-                    .isProfilePublic(true)
-                    .isRealNamePublic(false)
-                    .isBirthDatePublic(false)
-                    .build();
+                    .sellerExp(0);
 
-            // 7. 소셜 정보로 프로필 보완
-            if (socialUserInfo.getName() != null) {
-                user.setRealName(socialUserInfo.getName());
-            }
+            // 7. 소셜 정보로 프로필 보완 (프로필 이미지만)
             if (socialUserInfo.getProfileImageUrl() != null) {
-                user.setProfileImageUrl(socialUserInfo.getProfileImageUrl());
+                userBuilder.profileImageUrl(socialUserInfo.getProfileImageUrl());
             }
+
+            User user = userBuilder.build();
 
             User savedUser = userRepository.save(user);
 
