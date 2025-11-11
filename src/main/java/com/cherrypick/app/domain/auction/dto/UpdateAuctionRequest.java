@@ -13,7 +13,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.util.List;
 
-@Schema(description = "경매 수정 요청 - 제목과 설명만 수정 가능 (eBay 정책과 동일)")
+@Schema(description = "경매 수정 요청 - 제목, 설명, 이미지 수정 가능")
 @Getter
 @Setter
 @Builder
@@ -29,15 +29,19 @@ public class UpdateAuctionRequest {
     @Size(max = 2000, message = "상품 설명은 2000자를 넘을 수 없습니다.")
     private String description;
 
+    @Schema(description = "상품 이미지 URL 목록", example = "[\"https://s3.../image1.jpg\", \"https://s3.../image2.jpg\"]", required = false)
+    @Size(max = 10, message = "이미지는 최대 10개까지 등록 가능합니다.")
+    private List<String> imageUrls;
+
     /**
      * 수정 요청 검증
-     * 제목과 설명만 수정 가능하므로 별도 검증 불필요
      */
     public void validate() {
-        // 제목이나 설명 중 하나는 있어야 함
+        // 제목, 설명, 이미지 중 하나는 있어야 함
         if ((title == null || title.trim().isEmpty()) &&
-            (description == null || description.trim().isEmpty())) {
-            throw new IllegalArgumentException("수정할 내용이 없습니다. 제목 또는 설명을 입력해주세요.");
+            (description == null || description.trim().isEmpty()) &&
+            (imageUrls == null || imageUrls.isEmpty())) {
+            throw new IllegalArgumentException("수정할 내용이 없습니다. 제목, 설명 또는 이미지를 입력해주세요.");
         }
     }
 }

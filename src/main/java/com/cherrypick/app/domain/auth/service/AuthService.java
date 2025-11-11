@@ -116,7 +116,16 @@ public class AuthService {
 
         log.info("회원가입 완료 - 사용자: {} ({})", savedUser.getNickname(), savedUser.getEmail());
 
-        return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname(), "회원가입 성공");
+        return new AuthResponse(
+            token,
+            savedUser.getId(),
+            savedUser.getEmail(),
+            savedUser.getNickname(),
+            savedUser.getProfileImageUrl(),
+            savedUser.getAddress(),
+            savedUser.getBio(),
+            "회원가입 성공"
+        );
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -135,10 +144,19 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
-        
+
         log.info("로그인 성공 - 사용자: {} ({})", user.getNickname(), user.getEmail());
 
-        return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
+        return new AuthResponse(
+            token,
+            user.getId(),
+            user.getEmail(),
+            user.getNickname(),
+            user.getProfileImageUrl(),
+            user.getAddress(),
+            user.getBio(),
+            "로그인 성공"
+        );
     }
 
     public AuthResponse phoneLogin(PhoneLoginRequest request) {
@@ -160,10 +178,19 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
-        
+
         log.info("전화번호 로그인 성공 - 사용자: {} ({})", user.getNickname(), user.getPhoneNumber());
 
-        return new AuthResponse(token, user.getId(), user.getPhoneNumber(), user.getNickname());
+        return new AuthResponse(
+            token,
+            user.getId(),
+            user.getPhoneNumber(),
+            user.getNickname(),
+            user.getProfileImageUrl(),
+            user.getAddress(),
+            user.getBio(),
+            "로그인 성공"
+        );
     }
 
     private boolean verifyCode(String phoneNumber, String code) {

@@ -43,6 +43,7 @@ import com.cherrypick.app.domain.transaction.service.TransactionService;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -735,12 +736,30 @@ public class AuctionService {
         // 4. 요청 검증
         updateRequest.validate();
 
-        // 5. 제목과 설명만 수정 (eBay 정책)
+        // 5. 제목, 설명, 이미지 수정
         if (updateRequest.getTitle() != null && !updateRequest.getTitle().trim().isEmpty()) {
             auction.updateTitle(updateRequest.getTitle());
         }
         if (updateRequest.getDescription() != null && !updateRequest.getDescription().trim().isEmpty()) {
             auction.updateDescription(updateRequest.getDescription());
+        }
+
+        // 6. 이미지 수정 (imageUrls가 제공된 경우에만)
+        if (updateRequest.getImageUrls() != null) {
+            // 기존 이미지 삭제
+            auctionImageRepository.deleteByAuctionId(auctionId);
+
+            // 새 이미지 추가
+            List<AuctionImage> newImages = new ArrayList<>();
+            for (int i = 0; i < updateRequest.getImageUrls().size(); i++) {
+                AuctionImage image = AuctionImage.builder()
+                        .auction(auction)
+                        .imageUrl(updateRequest.getImageUrls().get(i))
+                        .sortOrder(i)
+                        .build();
+                newImages.add(image);
+            }
+            auctionImageRepository.saveAll(newImages);
         }
 
         Auction updatedAuction = auctionRepository.save(auction);
