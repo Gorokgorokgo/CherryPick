@@ -13,6 +13,7 @@ import com.cherrypick.app.domain.auction.enums.RegionScope;
 import com.cherrypick.app.domain.user.service.UserService;
 import com.cherrypick.app.domain.chat.dto.response.ChatRoomResponse;
 import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.location.service.LocationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -43,6 +44,7 @@ public class AuctionController {
     private final UserService userService;
     private final AuctionBookmarkService bookmarkService;
     private final ChatService chatService;
+    private final LocationService locationService;
     
     @Operation(summary = "경매 등록", 
                description = """
@@ -703,5 +705,95 @@ public class AuctionController {
             "success", true,
             "message", "경매가 삭제되었습니다."
         ));
+    }
+
+    // ==================== GPS 위치 기반 검색 API ====================
+
+    @GetMapping("/nearby")
+    @Operation(
+        summary = "내 주변 경매 검색 (GPS 위치 기반)",
+        description = """
+            사용자의 GPS 위치를 기준으로 반경 N km 이내의 경매를 검색합니다.
+
+            **검색 방식:**
+            - Haversine 공식을 사용하여 정확한 거리 계산
+            - 거리순 정렬 (가까운 순)
+            - 키워드, 카테고리, 가격 범위 필터 동시 지원
+
+            **파라미터:**
+            - latitude, longitude: 필수 (사용자 현재 위치)
+            - maxDistanceKm: 최대 거리 (기본값: 10km)
+            - keyword, category, minPrice, maxPrice: 선택 사항
+
+            **응답:**
+            - distanceKm 필드에 사용자로부터의 거리가 포함됩니다.
+            """
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "검색 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 좌표 또는 파라미터"),
+        @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<Page<AuctionResponse>> searchNearbyAuctions(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "사용자 위치 위도", required = true) @RequestParam Double latitude,
+            @Parameter(description = "사용자 위치 경도", required = true) @RequestParam Double longitude,
+            @Parameter(description = "최대 거리 (km)", example = "10") @RequestParam(defaultValue = "10") Double maxDistanceKm,
+            @Parameter(description = "검색 키워드") @RequestParam(required = false) String keyword,
+            @Parameter(description = "카테고리") @RequestParam(required = false) Category category,
+            @Parameter(description = "최소 가격") @RequestParam(required = false) BigDecimal minPrice,
+            @Parameter(description = "최대 가격") @RequestParam(required = false) BigDecimal maxPrice,
+            @Parameter(description = "페이지 번호 (0부터 시작)", example = "0") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기", example = "20") @RequestParam(defaultValue = "20") int size) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+
+        // AuctionSearchRequest 구성
+        AuctionSearchRequest searchRequest = new AuctionSearchRequest();
+        searchRequest.setLatitude(latitude);
+        searchRequest.setLongitude(longitude);
+        searchRequest.setMaxDistanceKm(maxDistanceKm);
+        searchRequest.setKeyword(keyword);
+        searchRequest.setCategory(category);
+        searchRequest.setMinPrice(minPrice);
+        searchRequest.setMaxPrice(maxPrice);
+        searchRequest.setStatus(AuctionStatus.ACTIVE);
+        searchRequest.setSortBy(AuctionSearchRequest.SortOption.DISTANCE_ASC);
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        // AuctionService를 통해 거리 기반 검색 수행
+        Page<AuctionResponse> auctions = auctionService.searchNearbyAuctions(searchRequest, pageable, userId);
+
+        return ResponseEntity.ok(auctions);
+    }
+
+    @GetMapping("/nearby/simple")
+    @Operation(
+        summary = "내 주변 경매 간단 검색",
+        description = "사용자 위치 기준 반경 N km 이내의 활성 경매만 간단히 조회합니다. (필터 없음)"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "검색 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 좌표"),
+        @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<Page<AuctionResponse>> getNearbyAuctions(
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "사용자 위치 위도", required = true) @RequestParam Double latitude,
+            @Parameter(description = "사용자 위치 경도", required = true) @RequestParam Double longitude,
+            @Parameter(description = "최대 거리 (km)", example = "5") @RequestParam(defaultValue = "5") Double radiusKm,
+            @Parameter(description = "페이지 번호", example = "0") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "페이지 크기", example = "20") @RequestParam(defaultValue = "20") int size) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+        Pageable pageable = PageRequest.of(page, size);
+
+        // 간단 검색 (필터 없음)
+        Page<AuctionResponse> auctions = auctionService.findNearbyAuctions(
+                latitude, longitude, radiusKm, AuctionStatus.ACTIVE, pageable, userId
+        );
+
+        return ResponseEntity.ok(auctions);
     }
 }

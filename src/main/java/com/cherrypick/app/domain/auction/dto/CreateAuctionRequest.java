@@ -71,7 +71,22 @@ public class CreateAuctionRequest {
 
     @Schema(description = "상품 구매일", example = "2023년 3월 구매", required = false)
     private String purchaseDate;
-    
+
+    // GPS 위치 정보 (선택사항)
+    @Schema(description = "경매 위치 위도 (선택사항)", example = "37.5665")
+    @Min(value = 33, message = "위도는 33도 이상이어야 합니다.")
+    @Max(value = 43, message = "위도는 43도 이하여야 합니다.")
+    private Double latitude;
+
+    @Schema(description = "경매 위치 경도 (선택사항)", example = "126.9780")
+    @Min(value = 124, message = "경도는 124도 이상이어야 합니다.")
+    @Max(value = 132, message = "경도는 132도 이하여야 합니다.")
+    private Double longitude;
+
+    @Schema(description = "거래 희망 장소 (선택사항)", example = "강남역 1번 출구")
+    @Size(max = 200, message = "거래 희망 장소는 200자를 넘을 수 없습니다.")
+    private String preferredLocation;
+
     public void validate() {
         if (startPrice.compareTo(hopePrice) > 0) {
             throw new IllegalArgumentException("시작가는 희망가보다 클 수 없습니다.");

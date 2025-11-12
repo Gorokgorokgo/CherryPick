@@ -133,4 +133,100 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT a FROM Auction a WHERE a.id = :id")
     Optional<Auction> findByIdForUpdate(@Param("id") Long id);
+
+    // === GPS 위치 기반 검색 메소드들 ===
+
+    /**
+     * 거리 기반 경매 검색 (Haversine 공식 사용)
+     * 사용자 위치 기준 N km 이내의 경매를 거리순으로 정렬
+     *
+     * @param latitude 사용자 위치 위도
+     * @param longitude 사용자 위치 경도
+     * @param maxDistanceKm 최대 거리 (km)
+     * @param status 경매 상태
+     * @param pageable 페이징 정보
+     * @return 거리순으로 정렬된 경매 목록
+     */
+    @Query(value = """
+        SELECT a.*,
+               (6371 * acos(
+                   cos(radians(:latitude))
+                   * cos(radians(a.latitude))
+                   * cos(radians(a.longitude) - radians(:longitude))
+                   + sin(radians(:latitude))
+                   * sin(radians(a.latitude))
+               )) AS distance
+        FROM auctions a
+        WHERE a.status = :status
+          AND a.latitude IS NOT NULL
+          AND a.longitude IS NOT NULL
+        HAVING distance <= :maxDistanceKm
+        ORDER BY distance ASC
+    """, nativeQuery = true)
+    Page<Auction> findNearbyAuctions(
+        @Param("latitude") Double latitude,
+        @Param("longitude") Double longitude,
+        @Param("maxDistanceKm") Double maxDistanceKm,
+        @Param("status") String status,
+        Pageable pageable
+    );
+
+    /**
+     * 거리 계산을 포함한 복합 검색
+     * 키워드, 카테고리, 가격 범위와 함께 거리 기반 필터링 지원
+     *
+     * @param latitude 사용자 위치 위도
+     * @param longitude 사용자 위치 경도
+     * @param maxDistanceKm 최대 거리 (km)
+     * @param keyword 검색 키워드
+     * @param category 카테고리
+     * @param minPrice 최소 가격
+     * @param maxPrice 최대 가격
+     * @param status 경매 상태
+     * @param pageable 페이징 정보
+     * @return 거리순으로 정렬된 경매 목록
+     */
+    @Query(value = """
+        SELECT a.*,
+               (6371 * acos(
+                   cos(radians(:latitude))
+                   * cos(radians(a.latitude))
+                   * cos(radians(a.longitude) - radians(:longitude))
+                   + sin(radians(:latitude))
+                   * sin(radians(a.latitude))
+               )) AS distance
+        FROM auctions a
+        WHERE a.status = :status
+          AND a.latitude IS NOT NULL
+          AND a.longitude IS NOT NULL
+          AND (:keyword IS NULL OR LOWER(a.title) LIKE LOWER(CONCAT('%', :keyword, '%')))
+          AND (:category IS NULL OR a.category = :category)
+          AND (:minPrice IS NULL OR a.current_price >= :minPrice)
+          AND (:maxPrice IS NULL OR a.current_price <= :maxPrice)
+        HAVING distance <= :maxDistanceKm
+        ORDER BY distance ASC
+    """, nativeQuery = true)
+    Page<Auction> searchNearbyAuctions(
+        @Param("latitude") Double latitude,
+        @Param("longitude") Double longitude,
+        @Param("maxDistanceKm") Double maxDistanceKm,
+        @Param("keyword") String keyword,
+        @Param("category") String category,
+        @Param("minPrice") BigDecimal minPrice,
+        @Param("maxPrice") BigDecimal maxPrice,
+        @Param("status") String status,
+        Pageable pageable
+    );
+
+    /**
+     * 위치 정보가 있는 경매만 조회 (Fallback용)
+     *
+     * @param status 경매 상태
+     * @param pageable 페이징 정보
+     * @return 위치 정보가 있는 경매 목록
+     */
+    @Query("SELECT a FROM Auction a WHERE a.status = :status " +
+           "AND a.latitude IS NOT NULL AND a.longitude IS NOT NULL " +
+           "ORDER BY a.createdAt DESC")
+    Page<Auction> findAuctionsWithLocation(@Param("status") AuctionStatus status, Pageable pageable);
 }

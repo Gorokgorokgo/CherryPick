@@ -13,6 +13,7 @@ import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.auction.repository.AuctionBookmarkRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.location.service.LocationService;
 import com.cherrypick.app.common.exception.BusinessException;
 import com.cherrypick.app.common.exception.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -66,6 +67,7 @@ public class AuctionService {
     private final AuctionBookmarkRepository bookmarkRepository;
     private final WebSocketMessagingService webSocketMessagingService;
     private final TransactionService transactionService;
+    private final LocationService locationService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -645,12 +647,28 @@ public class AuctionService {
             // 유찰 처리 - 판매자에게만 유찰 알림
             log.info("경매 {} 유찰 처리 - forceEndAuction", savedAuction.getId());
 
-            // 실시간 유찰 알림 전송 (WebSocket)
-            webSocketMessagingService.notifyAuctionEnded(
-                savedAuction.getId(),
-                BigDecimal.ZERO,
-                "유찰"
-            );
+            // 실시간 유찰 알림 전송 (WebSocket) - 판매자에게 상세 정보 전달
+            if (highestBid.isPresent()) {
+                Bid highestBidEntity = highestBid.get();
+                webSocketMessagingService.notifyAuctionNotSold(
+                    savedAuction.getId(),
+                    (int) bidRepository.countByAuctionId(savedAuction.getId()),
+                    true, // hasHighestBidder
+                    highestBidEntity.getBidder().getId(),
+                    highestBidEntity.getBidder().getNickname(),
+                    savedAuction.getReservePrice() == null // isNoReserve
+                );
+            } else {
+                // 입찰자가 없는 경우
+                webSocketMessagingService.notifyAuctionNotSold(
+                    savedAuction.getId(),
+                    0, // bidCount
+                    false, // hasHighestBidder
+                    null, // winnerId
+                    null, // winnerNickname
+                    savedAuction.getReservePrice() == null // isNoReserve
+                );
+            }
 
             // 판매자용 유찰 알림
             applicationEventPublisher.publishEvent(new AuctionNotSoldNotificationEvent(
@@ -870,5 +888,136 @@ public class AuctionService {
                 chatRoomId
             )
         );
+    }
+
+    // ==================== GPS 위치 기반 검색 메서드 ====================
+
+    /**
+     * 내 주변 경매 검색 (복합 필터 지원)
+     *
+     * @param searchRequest 검색 조건 (latitude, longitude, maxDistanceKm, 기타 필터)
+     * @param pageable 페이징 정보
+     * @param userId 사용자 ID (북마크 정보 조회용)
+     * @return 거리 정보가 포함된 경매 목록
+     */
+    public Page<AuctionResponse> searchNearbyAuctions(AuctionSearchRequest searchRequest, Pageable pageable, Long userId) {
+        // 위치 정보 검증
+        if (searchRequest.getLatitude() == null || searchRequest.getLongitude() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "위도와 경도는 필수입니다.");
+        }
+
+        if (!locationService.isValidKoreanCoordinate(searchRequest.getLatitude(), searchRequest.getLongitude())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "유효하지 않은 좌표입니다. 대한민국 범위 내의 좌표를 입력해주세요.");
+        }
+
+        // 기본 거리 제한 (제공되지 않으면 10km)
+        Double maxDistanceKm = searchRequest.getMaxDistanceKm() != null ? searchRequest.getMaxDistanceKm() : 10.0;
+
+        // Repository를 통해 거리 기반 검색
+        Page<Auction> auctionPage = auctionRepository.searchNearbyAuctions(
+                searchRequest.getLatitude(),
+                searchRequest.getLongitude(),
+                maxDistanceKm,
+                searchRequest.getKeyword(),
+                searchRequest.getCategory() != null ? searchRequest.getCategory().name() : null,
+                searchRequest.getMinPrice(),
+                searchRequest.getMaxPrice(),
+                AuctionStatus.ACTIVE.name(),
+                pageable
+        );
+
+        // AuctionResponse 변환 및 거리 계산
+        return auctionPage.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            AuctionResponse response = AuctionResponse.from(auction, images);
+
+            // 거리 계산 (Haversine)
+            if (auction.getLatitude() != null && auction.getLongitude() != null) {
+                double distance = locationService.calculateDistance(
+                        searchRequest.getLatitude(),
+                        searchRequest.getLongitude(),
+                        auction.getLatitude(),
+                        auction.getLongitude()
+                );
+                response.setDistanceKm(Math.round(distance * 10.0) / 10.0); // 소수점 1자리 반올림
+            }
+
+            // 북마크 정보 설정
+            if (userId != null) {
+                User user = userRepository.findById(userId).orElse(null);
+                if (user != null) {
+                    boolean isBookmarked = bookmarkRepository.existsByAuctionAndUser(auction, user);
+                    response.setBookmarked(isBookmarked);
+                }
+            }
+
+            return response;
+        });
+    }
+
+    /**
+     * 내 주변 경매 간단 검색 (필터 없음)
+     *
+     * @param latitude 사용자 위도
+     * @param longitude 사용자 경도
+     * @param radiusKm 검색 반경 (km)
+     * @param status 경매 상태
+     * @param pageable 페이징 정보
+     * @param userId 사용자 ID (북마크 정보 조회용)
+     * @return 거리 정보가 포함된 경매 목록
+     */
+    public Page<AuctionResponse> findNearbyAuctions(
+            Double latitude,
+            Double longitude,
+            Double radiusKm,
+            AuctionStatus status,
+            Pageable pageable,
+            Long userId) {
+
+        // 위치 정보 검증
+        if (latitude == null || longitude == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "위도와 경도는 필수입니다.");
+        }
+
+        if (!locationService.isValidKoreanCoordinate(latitude, longitude)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "유효하지 않은 좌표입니다. 대한민국 범위 내의 좌표를 입력해주세요.");
+        }
+
+        // Repository를 통해 거리 기반 검색
+        Page<Auction> auctionPage = auctionRepository.findNearbyAuctions(
+                latitude,
+                longitude,
+                radiusKm,
+                status.name(),
+                pageable
+        );
+
+        // AuctionResponse 변환 및 거리 계산
+        return auctionPage.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            AuctionResponse response = AuctionResponse.from(auction, images);
+
+            // 거리 계산 (Haversine)
+            if (auction.getLatitude() != null && auction.getLongitude() != null) {
+                double distance = locationService.calculateDistance(
+                        latitude,
+                        longitude,
+                        auction.getLatitude(),
+                        auction.getLongitude()
+                );
+                response.setDistanceKm(Math.round(distance * 10.0) / 10.0); // 소수점 1자리 반올림
+            }
+
+            // 북마크 정보 설정
+            if (userId != null) {
+                User user = userRepository.findById(userId).orElse(null);
+                if (user != null) {
+                    boolean isBookmarked = bookmarkRepository.existsByAuctionAndUser(auction, user);
+                    response.setBookmarked(isBookmarked);
+                }
+            }
+
+            return response;
+        });
     }
 }

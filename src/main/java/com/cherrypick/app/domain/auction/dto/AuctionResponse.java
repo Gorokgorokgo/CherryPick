@@ -63,6 +63,12 @@ public class AuctionResponse {
     private Long bookmarkCount; // 전체 찜 수
     private boolean isBookmarked; // 현재 사용자 기준 찜 여부
 
+    // GPS 위치 정보
+    private Double latitude; // 경매 위치 위도
+    private Double longitude; // 경매 위치 경도
+    private String preferredLocation; // 거래 희망 장소
+    private Double distanceKm; // 사용자 위치로부터의 거리 (km) - GPS 검색 시에만 포함
+
     // 서버 시간 (클라이언트 시계 보정용)
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private LocalDateTime serverTime; // 응답 생성 시점의 서버 시간 (UTC)
@@ -115,6 +121,13 @@ public class AuctionResponse {
         // 북마크 필드는 컨트롤러/서비스에서 채워짐 (기본값)
         response.setBookmarkCount(null);
         response.setBookmarked(false);
+
+        // GPS 위치 정보
+        response.setLatitude(auction.getLatitude());
+        response.setLongitude(auction.getLongitude());
+        response.setPreferredLocation(auction.getPreferredLocation());
+        // distanceKm는 서비스/컨트롤러에서 계산하여 설정 (기본값 null)
+        response.setDistanceKm(null);
 
         // 서버 시간 설정 (클라이언트 시계 보정용)
         response.setServerTime(LocalDateTime.now(java.time.ZoneOffset.UTC));

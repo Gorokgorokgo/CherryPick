@@ -37,7 +37,12 @@ public class AuctionSearchRequest {
     
     // 최소 입찰 수 필터
     private Integer minBidCount;
-    
+
+    // GPS 위치 기반 검색 (사용자 현재 위치)
+    private Double latitude;   // 사용자 위치 위도
+    private Double longitude;  // 사용자 위치 경도
+    private Double maxDistanceKm; // 최대 거리 (km), 기본값: null (거리 제한 없음)
+
     public enum SortOption {
         CREATED_DESC,      // 최신순 (기본값)
         CREATED_ASC,       // 오래된순
@@ -45,22 +50,33 @@ public class AuctionSearchRequest {
         PRICE_DESC,        // 높은 가격순
         ENDING_SOON,       // 마감 임박순
         VIEW_COUNT_DESC,   // 조회수 높은순
-        BID_COUNT_DESC     // 입찰수 높은순
+        BID_COUNT_DESC,    // 입찰수 높은순
+        DISTANCE_ASC       // 거리순 (가까운 순) - GPS 검색 시에만 사용
     }
     
     /**
      * 검색 조건이 비어있는지 확인
      */
     public boolean isEmpty() {
-        return keyword == null 
-            && category == null 
-            && regionScope == null 
+        return keyword == null
+            && category == null
+            && regionScope == null
             && regionCode == null
-            && minPrice == null 
-            && maxPrice == null 
+            && minPrice == null
+            && maxPrice == null
             && endingSoonHours == null
             && minBidCount == null
+            && latitude == null
+            && longitude == null
+            && maxDistanceKm == null
             && status == AuctionStatus.ACTIVE; // 기본 상태만 있는 경우 비어있다고 간주
+    }
+
+    /**
+     * GPS 위치 기반 검색인지 확인
+     */
+    public boolean isLocationBasedSearch() {
+        return latitude != null && longitude != null;
     }
     
     /**

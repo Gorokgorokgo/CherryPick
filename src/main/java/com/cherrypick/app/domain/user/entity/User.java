@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "users")
@@ -106,6 +107,19 @@ public class User extends BaseEntity {
 
     @Column(length = 500)
     private String bio; // 자기소개
+
+    // GPS 위치 정보
+    @Column(name = "latitude")
+    private Double latitude; // 위도
+
+    @Column(name = "longitude")
+    private Double longitude; // 경도
+
+    @Column(name = "location_updated_at")
+    private LocalDateTime locationUpdatedAt; // 위치 업데이트 시각
+
+    @Column(name = "verified_region", length = 100)
+    private String verifiedRegion; // 인증된 행정동명 (예: "서울시 강남구 역삼1동")
 
     // 프로필 공개 설정
     @Builder.Default

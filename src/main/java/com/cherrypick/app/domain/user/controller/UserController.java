@@ -18,8 +18,11 @@ import com.cherrypick.app.domain.user.dto.response.ExperienceHistoryResponse;
 import com.cherrypick.app.domain.user.dto.response.UserProfileResponse;
 import com.cherrypick.app.domain.user.dto.response.UserLevelInfoResponse;
 import com.cherrypick.app.domain.user.dto.response.LevelProgressResponse;
+import com.cherrypick.app.domain.user.dto.UserLocationUpdateRequest;
+import com.cherrypick.app.domain.user.dto.UserLocationResponse;
 import com.cherrypick.app.domain.user.service.UserService;
 import com.cherrypick.app.domain.user.service.ExperienceService;
+import com.cherrypick.app.domain.location.service.LocationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -59,6 +62,9 @@ public class UserController {
     private final BidService bidService;
     private final BidRepository bidRepository;
 
+    // Location 관련 의존성
+    private final LocationService locationService;
+
     public UserController(UserService userService,
                           ExperienceService experienceService,
                           JwtConfig jwtConfig,
@@ -66,7 +72,8 @@ public class UserController {
                           AuctionImageRepository auctionImageRepository,
                           AuctionService auctionService,
                           BidService bidService,
-                          BidRepository bidRepository) {
+                          BidRepository bidRepository,
+                          LocationService locationService) {
         this.userService = userService;
         this.experienceService = experienceService;
         this.jwtConfig = jwtConfig;
@@ -75,6 +82,7 @@ public class UserController {
         this.auctionService = auctionService;
         this.bidService = bidService;
         this.bidRepository = bidRepository;
+        this.locationService = locationService;
     }
 
     @GetMapping("/profile")
@@ -338,5 +346,94 @@ public class UserController {
         Pageable pageable = PageRequest.of(page, size);
         Page<ExperienceHistoryResponse> history = experienceService.getExperienceHistory(userId, pageable);
         return ResponseEntity.ok(history);
+    }
+
+    // ==================== GPS 위치 인증 API ====================
+
+    @PatchMapping("/location")
+    @Operation(
+        summary = "사용자 위치 업데이트",
+        description = "사용자의 현재 GPS 위치를 업데이트하고 행정동명으로 인증합니다. " +
+                      "위치 업데이트는 8시간마다 1회로 제한됩니다."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "위치 업데이트 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 좌표 또는 대한민국 범위 밖"),
+        @ApiResponse(responseCode = "401", description = "인증 실패"),
+        @ApiResponse(responseCode = "429", description = "위치 업데이트 빈도 제한 초과")
+    })
+    public ResponseEntity<UserLocationResponse> updateUserLocation(
+            HttpServletRequest request,
+            @Valid @RequestBody UserLocationUpdateRequest locationRequest) {
+
+        Long userId = extractUserIdFromRequest(request);
+
+        // LocationService를 통해 위치 업데이트 (좌표 → 행정동 변환 포함)
+        locationService.updateUserLocation(
+                userId,
+                locationRequest.getLatitude(),
+                locationRequest.getLongitude()
+        );
+
+        // 업데이트된 위치 정보 조회
+        LocationService.LocationInfo locationInfo = locationService.getUserLocation(userId);
+
+        // 응답 DTO 생성
+        UserLocationResponse response = UserLocationResponse.builder()
+                .latitude(locationInfo.getLatitude())
+                .longitude(locationInfo.getLongitude())
+                .verifiedRegion(locationInfo.getVerifiedRegion())
+                .regionCode(extractRegionCode(locationInfo.getVerifiedRegion()))
+                .locationUpdatedAt(locationInfo.getLocationUpdatedAt())
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/location")
+    @Operation(
+        summary = "사용자 위치 정보 조회",
+        description = "현재 로그인된 사용자의 위치 정보를 조회합니다."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "위치 정보 조회 성공"),
+        @ApiResponse(responseCode = "401", description = "인증 실패")
+    })
+    public ResponseEntity<UserLocationResponse> getUserLocation(HttpServletRequest request) {
+        Long userId = extractUserIdFromRequest(request);
+
+        LocationService.LocationInfo locationInfo = locationService.getUserLocation(userId);
+
+        UserLocationResponse response = UserLocationResponse.builder()
+                .latitude(locationInfo.getLatitude())
+                .longitude(locationInfo.getLongitude())
+                .verifiedRegion(locationInfo.getVerifiedRegion())
+                .regionCode(extractRegionCode(locationInfo.getVerifiedRegion()))
+                .locationUpdatedAt(locationInfo.getLocationUpdatedAt())
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 지역명에서 간단한 지역 코드 추출
+     * TODO: User 엔티티에 regionCode 필드 추가하여 정확한 코드 저장
+     */
+    private String extractRegionCode(String verifiedRegion) {
+        if (verifiedRegion == null) {
+            return null;
+        }
+
+        if (verifiedRegion.startsWith("서울")) return "11";
+        if (verifiedRegion.startsWith("부산")) return "26";
+        if (verifiedRegion.startsWith("대구")) return "27";
+        if (verifiedRegion.startsWith("인천")) return "28";
+        if (verifiedRegion.startsWith("광주")) return "29";
+        if (verifiedRegion.startsWith("대전")) return "30";
+        if (verifiedRegion.startsWith("울산")) return "31";
+        if (verifiedRegion.startsWith("세종")) return "36";
+        if (verifiedRegion.startsWith("경기")) return "41";
+
+        return "99"; // 기타
     }
 }

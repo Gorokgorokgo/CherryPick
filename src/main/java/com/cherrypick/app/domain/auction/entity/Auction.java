@@ -91,14 +91,24 @@ public class Auction extends BaseEntity {
     @Column(name = "purchase_date")
     private String purchaseDate;
 
+    // GPS 위치 정보
+    @Column(name = "latitude")
+    private Double latitude; // 경매 위치 위도
+
+    @Column(name = "longitude")
+    private Double longitude; // 경매 위치 경도
+
+    @Column(name = "preferred_location", length = 200)
+    private String preferredLocation; // 거래 희망 장소 (예: "강남역 1번 출구")
+
     // === 정적 팩토리 메서드 ===
     
     /**
-     * 새로운 경매 생성
+     * 새로운 경매 생성 (GPS 위치 정보 포함)
      */
     public static Auction createAuction(
-            User seller, 
-            String title, 
+            User seller,
+            String title,
             String description,
             Category category,
             BigDecimal startPrice,
@@ -109,10 +119,13 @@ public class Auction extends BaseEntity {
             String regionCode,
             String regionName,
             Integer productCondition,
-            String purchaseDate) {
-        
+            String purchaseDate,
+            Double latitude,
+            Double longitude,
+            String preferredLocation) {
+
         LocalDateTime now = LocalDateTime.now();
-        
+
         return new Auction(
             null, // id는 DB에서 생성
             seller,
@@ -135,7 +148,37 @@ public class Auction extends BaseEntity {
             now,
             now.plusHours(auctionTimeHours),
             productCondition,
-            purchaseDate
+            purchaseDate,
+            latitude,
+            longitude,
+            preferredLocation
+        );
+    }
+
+    /**
+     * 새로운 경매 생성 (GPS 위치 정보 없이 - 하위 호환)
+     */
+    public static Auction createAuction(
+            User seller,
+            String title,
+            String description,
+            Category category,
+            BigDecimal startPrice,
+            BigDecimal hopePrice,
+            BigDecimal reservePrice,
+            Integer auctionTimeHours,
+            RegionScope regionScope,
+            String regionCode,
+            String regionName,
+            Integer productCondition,
+            String purchaseDate) {
+
+        return createAuction(
+            seller, title, description, category,
+            startPrice, hopePrice, reservePrice,
+            auctionTimeHours, regionScope, regionCode, regionName,
+            productCondition, purchaseDate,
+            null, null, null // GPS 위치 정보 없음
         );
     }
 
