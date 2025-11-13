@@ -81,7 +81,32 @@ public class AuctionUpdateMessage {
      * 추가 메시지 (선택사항)
      */
     private String message;
-    
+
+    /**
+     * 유찰 시 최고 입찰자 존재 여부
+     */
+    private Boolean hasHighestBidder;
+
+    /**
+     * 낙찰자/최고 입찰자 ID
+     */
+    private Long winnerId;
+
+    /**
+     * 낙찰자/최고 입찰자 닉네임
+     */
+    private String winnerNickname;
+
+    /**
+     * Reserve Price (최소 낙찰가) 설정 여부
+     */
+    private Boolean isNoReserve;
+
+    /**
+     * 채팅방 ID (낙찰 시 생성된 채팅방)
+     */
+    private Long chatRoomId;
+
     // === 정적 팩토리 메서드 ===
     
     /**
@@ -164,6 +189,32 @@ public class AuctionUpdateMessage {
                 .highestBidderNickname(winnerNickname)
                 .timestamp(LocalDateTime.now())
                 .message("자동입찰 경쟁 완료")
+                .build();
+    }
+
+    /**
+     * 유찰 메시지 생성 (판매자용 - AUCTION_NOT_SOLD)
+     * @param auctionId 경매 ID
+     * @param bidCount 총 입찰 수
+     * @param hasHighestBidder 최고 입찰자 존재 여부
+     * @param winnerId 최고 입찰자 ID (없으면 null)
+     * @param winnerNickname 최고 입찰자 닉네임 (없으면 null)
+     * @param isNoReserve Reserve Price 미설정 여부
+     */
+    public static AuctionUpdateMessage auctionNotSold(Long auctionId, Integer bidCount,
+                                                      Boolean hasHighestBidder, Long winnerId,
+                                                      String winnerNickname, Boolean isNoReserve) {
+        return AuctionUpdateMessage.builder()
+                .messageType(MessageType.AUCTION_NOT_SOLD)
+                .auctionId(auctionId)
+                .currentPrice(BigDecimal.ZERO)
+                .bidCount(bidCount)
+                .hasHighestBidder(hasHighestBidder)
+                .winnerId(winnerId)
+                .winnerNickname(winnerNickname)
+                .isNoReserve(isNoReserve)
+                .timestamp(LocalDateTime.now())
+                .message("경매가 유찰되었습니다.")
                 .build();
     }
 

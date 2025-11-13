@@ -171,18 +171,24 @@ public class WebSocketHandler extends TextWebSocketHandler {
      */
     private void handleSubscribe(WebSocketSession session, JsonNode messageNode) {
         String sessionId = session.getId();
-        
+
+        log.info("🔵 [DEBUG] handleSubscribe - sessionId: {}, message: {}", sessionId, messageNode.toString());
+
         if (!messageNode.has("auctionId")) {
+            log.warn("⚠️ [DEBUG] Missing auctionId in subscribe request");
             sendErrorMessage(session, "MISSING_AUCTION_ID", "구독 요청에 auctionId가 필요합니다");
             return;
         }
-        
+
         String auctionId = messageNode.get("auctionId").asText();
-        
+
         // 구독 정보 저장
         sessionSubscriptions.get(sessionId).add(auctionId);
         auctionSubscribers.computeIfAbsent(auctionId, k -> new CopyOnWriteArraySet<>()).add(sessionId);
-        
+
+        log.info("✅ [DEBUG] Subscription successful - auctionId: {}, sessionId: {}, total subscribers: {}",
+                auctionId, sessionId, auctionSubscribers.get(auctionId).size());
+
         // 구독 확인 메시지 전송
         sendMessage(session, Map.of(
             "type", "SUBSCRIBED",
@@ -360,29 +366,37 @@ public class WebSocketHandler extends TextWebSocketHandler {
      */
     public void broadcastToAuction(String auctionId, Object message) {
         Set<String> subscriberIds = auctionSubscribers.get(auctionId);
-        
+
+        log.info("🟣 [DEBUG] broadcastToAuction - auctionId: {}, subscribers: {}", auctionId, subscriberIds != null ? subscriberIds.size() : 0);
+
         if (subscriberIds == null || subscriberIds.isEmpty()) {
+            log.warn("⚠️ [DEBUG] No subscribers for auction: {}", auctionId);
             return;
         }
-        
+
         int successCount = 0;
         int failCount = 0;
-        
+
         for (String sessionId : subscriberIds) {
             WebSocketSession session = activeSessions.get(sessionId);
-            
+
             if (session != null && session.isOpen()) {
                 if (sendMessage(session, message)) {
+                    log.info("✅ [DEBUG] Message sent to session: {}", sessionId);
                     successCount++;
                 } else {
+                    log.warn("❌ [DEBUG] Failed to send message to session: {}", sessionId);
                     failCount++;
                 }
             } else {
                 // 세션이 없거나 닫혀있는 경우 정리
+                log.warn("🔴 [DEBUG] Session closed or null: {}", sessionId);
                 subscriberIds.remove(sessionId);
                 failCount++;
             }
         }
+
+        log.info("📊 [DEBUG] Broadcast complete - success: {}, fail: {}", successCount, failCount);
     }
     
     /**

@@ -43,11 +43,14 @@ public class WebSocketMessagingService {
         }
         
         String destination = "/topic/auctions/" + auctionId;
-        
+
+        log.info("🔵 [DEBUG] Broadcasting to auction - destination: {}, messageType: {}", destination, message.getMessageType());
+
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, message);
+            log.info("✅ [DEBUG] Broadcast successful");
         } catch (Exception e) {
-            // 메시지 전송 실패 무시
+            log.error("❌ [DEBUG] Broadcast failed: {}", e.getMessage(), e);
         }
     }
     
@@ -140,6 +143,31 @@ public class WebSocketMessagingService {
      */
     public void notifyAutoBidResult(Long auctionId, java.math.BigDecimal currentPrice, Integer bidCount, String winnerNickname) {
         AuctionUpdateMessage message = AuctionUpdateMessage.autoBidResult(auctionId, currentPrice, bidCount, winnerNickname);
+        broadcastToAuction(auctionId, message);
+    }
+
+    /**
+     * 유찰 알림 (판매자용)
+     * @param auctionId 경매 ID
+     * @param bidCount 총 입찰 수
+     * @param hasHighestBidder 최고 입찰자 존재 여부
+     * @param winnerId 최고 입찰자 ID (없으면 null)
+     * @param winnerNickname 최고 입찰자 닉네임 (없으면 null)
+     * @param isNoReserve Reserve Price 미설정 여부
+     */
+    public void notifyAuctionNotSold(Long auctionId, Integer bidCount,
+                                    Boolean hasHighestBidder, Long winnerId,
+                                    String winnerNickname, Boolean isNoReserve) {
+        log.info("🔴 [DEBUG] notifyAuctionNotSold - auctionId: {}, bidCount: {}, hasHighestBidder: {}, winnerId: {}, winnerNickname: {}, isNoReserve: {}",
+                auctionId, bidCount, hasHighestBidder, winnerId, winnerNickname, isNoReserve);
+
+        AuctionUpdateMessage message = AuctionUpdateMessage.auctionNotSold(
+            auctionId, bidCount, hasHighestBidder, winnerId, winnerNickname, isNoReserve
+        );
+
+        log.info("🔴 [DEBUG] Created message - messageType: {}, hasHighestBidder: {}, winnerId: {}, winnerNickname: {}",
+                message.getMessageType(), message.getHasHighestBidder(), message.getWinnerId(), message.getWinnerNickname());
+
         broadcastToAuction(auctionId, message);
     }
 

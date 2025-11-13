@@ -217,12 +217,28 @@ public class AuctionSchedulerService {
         // 최고 입찰 조회 (유찰이지만 입찰자가 있을 수 있음)
         Optional<Bid> highestBidOpt = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auction.getId());
 
-        // 실시간 유찰 알림 전송
-        webSocketMessagingService.notifyAuctionEnded(
-            auction.getId(),
-            BigDecimal.ZERO,
-            "유찰"
-        );
+        // 실시간 유찰 알림 전송 (WebSocket) - 판매자에게 상세 정보 전달
+        if (highestBidOpt.isPresent()) {
+            Bid highestBid = highestBidOpt.get();
+            webSocketMessagingService.notifyAuctionNotSold(
+                auction.getId(),
+                (int) bidRepository.countByAuctionId(auction.getId()),
+                true, // hasHighestBidder
+                highestBid.getBidder().getId(),
+                highestBid.getBidder().getNickname(),
+                auction.getReservePrice() == null // isNoReserve
+            );
+        } else {
+            // 입찰자가 없는 경우
+            webSocketMessagingService.notifyAuctionNotSold(
+                auction.getId(),
+                0, // bidCount
+                false, // hasHighestBidder
+                null, // winnerId
+                null, // winnerNickname
+                auction.getReservePrice() == null // isNoReserve
+            );
+        }
 
         // 유찰 알림 이벤트 발행 (판매자에게)
         applicationEventPublisher.publishEvent(new AuctionNotSoldNotificationEvent(
