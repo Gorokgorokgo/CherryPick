@@ -232,6 +232,22 @@ public class NotificationEventListener {
                 chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
             }
 
+            // 유찰 알림의 경우 추가 정보 포함
+            Boolean hasHighestBidder = null;
+            Long winnerId = null;
+            String winnerNickname = null;
+
+            if (event instanceof AuctionNotSoldNotificationEvent) {
+                AuctionNotSoldNotificationEvent notSoldEvent = (AuctionNotSoldNotificationEvent) event;
+                if (notSoldEvent.getHighestBid() != null) {
+                    hasHighestBidder = true;
+                    winnerId = notSoldEvent.getHighestBid().getBidder().getId();
+                    winnerNickname = notSoldEvent.getHighestBid().getBidder().getNickname();
+                } else {
+                    hasHighestBidder = false;
+                }
+            }
+
             // 프론트엔드 NotificationMessage 형식에 맞춰 JSON 메시지 생성
             NotificationWebSocketMessage wsNotification = NotificationWebSocketMessage.builder()
                     .id(String.valueOf(System.currentTimeMillis())) // 임시 ID (실제로는 NotificationHistory의 ID 사용 가능)
@@ -242,6 +258,9 @@ public class NotificationEventListener {
                     .isRead(false)
                     .resourceId(event.getResourceId())
                     .chatRoomId(chatRoomId)
+                    .hasHighestBidder(hasHighestBidder)
+                    .winnerId(winnerId)
+                    .winnerNickname(winnerNickname)
                     .build();
 
             webSocketMessagingService.sendNotificationToUser(userId, wsNotification);
@@ -267,6 +286,9 @@ public class NotificationEventListener {
         private boolean isRead;
         private Long resourceId;
         private Long chatRoomId;
+        private Boolean hasHighestBidder;
+        private Long winnerId;
+        private String winnerNickname;
     }
 
     /**

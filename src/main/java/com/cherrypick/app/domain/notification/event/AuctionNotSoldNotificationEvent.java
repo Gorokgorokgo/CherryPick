@@ -12,6 +12,7 @@ public class AuctionNotSoldNotificationEvent extends NotificationEvent {
 
     private final String auctionTitle;
     private final Bid highestBid; // 최고 입찰 정보 (null일 수 있음)
+    private final boolean hasHighestBidder; // 입찰자 유무
 
     public AuctionNotSoldNotificationEvent(Object source, Long sellerId, Long auctionId,
                                           String auctionTitle, Bid highestBid) {
@@ -21,6 +22,7 @@ public class AuctionNotSoldNotificationEvent extends NotificationEvent {
               auctionId);
         this.auctionTitle = auctionTitle;
         this.highestBid = highestBid;
+        this.hasHighestBidder = highestBid != null;
     }
 
     private static String buildMessage(String auctionTitle, Bid highestBid) {
