@@ -47,6 +47,9 @@ public class AuctionResponse {
     // 판매자 정보
     private Long sellerId;
     private String sellerNickname;
+    private String sellerProfileImageUrl;
+    private Integer sellerLevel;
+    private Integer sellerReviewCount; // 총 후기 수 (good + normal + bad)
     
     // 이미지 목록
     private List<String> imageUrls;
@@ -98,6 +101,14 @@ public class AuctionResponse {
         // 판매자 정보
         response.setSellerId(auction.getSeller().getId());
         response.setSellerNickname(auction.getSeller().getNickname());
+        response.setSellerProfileImageUrl(auction.getSeller().getProfileImageUrl());
+        response.setSellerLevel(auction.getSeller().getSellerLevel());
+
+        // 판매자 총 후기 수 계산
+        int totalReviews = (auction.getSeller().getSellerReviewGood() != null ? auction.getSeller().getSellerReviewGood() : 0)
+                + (auction.getSeller().getSellerReviewNormal() != null ? auction.getSeller().getSellerReviewNormal() : 0)
+                + (auction.getSeller().getSellerReviewBad() != null ? auction.getSeller().getSellerReviewBad() : 0);
+        response.setSellerReviewCount(totalReviews);
         
         // 이미지 URL 목록
         response.setImageUrls(images.stream()
