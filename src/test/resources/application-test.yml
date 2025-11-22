@@ -53,7 +53,7 @@ android_google_client_id: test-android-google-client-id
 GOOGLE_CLIENT_ID: test-google-client-id
 GOOGLE_CLIENT_SECRET: test-google-client-secret
 GOOGLE_REDIRECT_URI: http://localhost:3000/auth/google/callback
-KAKAO_CLIENT_ID: test-kakao-client-id
+KAKAO_REST_API_KEY: test-kakao-rest-api-key
 KAKAO_CLIENT_SECRET: test-kakao-client-secret
 KAKAO_REDIRECT_URI: http://localhost:3000/auth/kakao/callback
 NAVER_CLIENT_ID: test-naver-client-id

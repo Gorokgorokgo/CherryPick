@@ -80,7 +80,7 @@ ncp:
 # Kakao API 설정
 kakao:
   api:
-    key: ${KAKAO_API_KEY:}  # 카카오 REST API 키 (환경변수에서 로드)
+    key: ${KAKAO_REST_API_KEY:}  # 카카오 REST API 키 (환경변수에서 로드)
 
 # 비즈니스 설정
 business:

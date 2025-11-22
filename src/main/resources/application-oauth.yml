@@ -6,7 +6,7 @@ oauth:
     redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:3000/auth/google/callback}
     
   kakao:
-    client-id: ${KAKAO_CLIENT_ID:your-kakao-client-id}
+    client-id: ${KAKAO_REST_API_KEY:your-kakao-rest-api-key}
     client-secret: ${KAKAO_CLIENT_SECRET:your-kakao-client-secret}
     redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/auth/kakao/callback}
     

@@ -72,7 +72,7 @@ public class OAuthService {
                 tokenRequest.put("client_secret", oAuthConfig.getGoogleClientSecret());
                 return oAuthClientService.getAccessToken("GOOGLE", OAuthConfig.Urls.GOOGLE_TOKEN_URL, tokenRequest);
             case KAKAO:
-                tokenRequest.put("client_id", oAuthConfig.getKakaoClientId());
+                tokenRequest.put("client_id", oAuthConfig.getKakaoRestApiKey());
                 tokenRequest.put("client_secret", oAuthConfig.getKakaoClientSecret());
                 return oAuthClientService.getAccessToken("KAKAO", OAuthConfig.Urls.KAKAO_TOKEN_URL, tokenRequest);
             case NAVER:
