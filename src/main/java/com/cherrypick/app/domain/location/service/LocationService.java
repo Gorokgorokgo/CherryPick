@@ -7,7 +7,6 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -38,6 +37,9 @@ public class LocationService {
 
     // 지구 반지름 (km)
     private static final double EARTH_RADIUS_KM = 6371.0;
+
+    // 위치 인증 유효 기간 (일)
+    private static final int LOCATION_VALIDITY_DAYS = 30;
 
     /**
      * Haversine 공식을 이용한 두 지점 간 거리 계산
@@ -141,6 +143,11 @@ public class LocationService {
             throw new LocationException("Kakao API 오류: " + responseBody, e);
         } catch (Exception e) {
             log.error("카카오 로컬 API 호출 실패: lat={}, lon={}, error={}", latitude, longitude, e.getMessage());
+            
+            if (e.getMessage() != null && e.getMessage().contains("403")) {
+                throw new LocationException("Kakao API 권한 오류(403): Kakao Developers에서 '로컬' API가 활성화되어 있는지, 또는 REST API 키가 맞는지 확인해주세요.", e);
+            }
+            
             throw new LocationException("위치 정보 변환 중 오류가 발생했습니다: " + e.getMessage(), e);
         }
     }
@@ -162,9 +169,6 @@ public class LocationService {
         if (!isValidKoreanCoordinate(latitude, longitude)) {
             throw new IllegalArgumentException("유효하지 않은 좌표입니다. 대한민국 범위 내의 좌표를 입력해주세요.");
         }
-
-        // 위치 업데이트 빈도 제한 (8시간마다 1회)
-        // TODO: Redis 등을 활용하여 정확한 횟수 카운트 구현 (하루 3회 등)
 
 
         // 좌표 → 행정동명 변환
@@ -192,11 +196,19 @@ public class LocationService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
+        boolean isLocationValid = false;
+        if (user.getLocationUpdatedAt() != null) {
+            // 30일 이내에 인증했는지 확인
+            LocalDateTime expirationDate = user.getLocationUpdatedAt().plusDays(LOCATION_VALIDITY_DAYS);
+            isLocationValid = LocalDateTime.now().isBefore(expirationDate);
+        }
+
         return LocationInfo.builder()
                 .latitude(user.getLatitude())
                 .longitude(user.getLongitude())
                 .verifiedRegion(user.getVerifiedRegion())
                 .locationUpdatedAt(user.getLocationUpdatedAt())
+                .isLocationValid(isLocationValid)
                 .build();
     }
 
@@ -212,5 +224,6 @@ public class LocationService {
         private Double longitude;
         private String verifiedRegion;
         private LocalDateTime locationUpdatedAt;
+        private boolean isLocationValid;
     }
 }
