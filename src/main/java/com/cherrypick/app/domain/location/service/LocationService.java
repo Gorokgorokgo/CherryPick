@@ -1,5 +1,7 @@
 package com.cherrypick.app.domain.location.service;
 
+import com.cherrypick.app.common.exception.LocationException;
+import com.cherrypick.app.config.OAuthConfig;
 import com.cherrypick.app.domain.location.dto.KakaoLocalResponse;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
@@ -26,8 +28,7 @@ public class LocationService {
     private final UserRepository userRepository;
     private final WebClient webClient;
 
-    @Value("${kakao.api.key:}")
-    private String kakaoApiKey;
+    private final OAuthConfig oAuthConfig;
 
     // 대한민국 좌표 범위
     private static final double KOREA_MIN_LAT = 33.0;
@@ -96,10 +97,13 @@ public class LocationService {
             throw new IllegalArgumentException("유효하지 않은 좌표입니다. 대한민국 범위 내의 좌표를 입력해주세요.");
         }
 
+        String kakaoApiKey = oAuthConfig.getKakaoRestApiKey();
         if (kakaoApiKey == null || kakaoApiKey.isEmpty()) {
-            log.warn("Kakao API Key가 설정되지 않았습니다. 기본 지역명을 반환합니다.");
-            return "서울특별시"; // Fallback
+            log.error("Kakao API Key가 설정되지 않았습니다.");
+            throw new LocationException("서버 설정 오류: Kakao API Key가 없습니다.");
         }
+
+        log.info("카카오 로컬 API 요청: lat={}, lon={}, API Key 길이={}", latitude, longitude, kakaoApiKey.length());
 
         try {
             KakaoLocalResponse response = webClient
@@ -120,19 +124,24 @@ public class LocationService {
                 KakaoLocalResponse.Document document = response.getDocuments().get(0);
 
                 // 법정동명 반환 (예: "서울특별시 강남구 역삼동")
+                // 시/도 + 시/군/구 + 읍/면/동 모두 포함
                 return String.format("%s %s %s",
-                        document.getRegion1depthName(), // 시/도
-                        document.getRegion2depthName(), // 시/군/구
-                        document.getRegion3depthName()  // 읍/면/동
-                );
+                        document.getRegion1depthName(), // 시/도 (예: 서울특별시)
+                        document.getRegion2depthName(), // 시/군/구 (예: 강남구)
+                        document.getRegion3depthName()  // 읍/면/동 (예: 역삼1동)
+                ).trim();
             }
 
             log.warn("카카오 API 응답에서 지역 정보를 찾을 수 없습니다. lat={}, lon={}", latitude, longitude);
-            return "대한민국"; // Fallback
+            throw new LocationException("해당 좌표의 행정동 정보를 찾을 수 없습니다.");
 
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            String responseBody = e.getResponseBodyAsString();
+            log.error("카카오 로컬 API 호출 실패: status={}, body={}", e.getStatusCode(), responseBody);
+            throw new LocationException("Kakao API 오류: " + responseBody, e);
         } catch (Exception e) {
             log.error("카카오 로컬 API 호출 실패: lat={}, lon={}, error={}", latitude, longitude, e.getMessage());
-            throw new RuntimeException("위치 정보 변환 중 오류가 발생했습니다.", e);
+            throw new LocationException("위치 정보 변환 중 오류가 발생했습니다: " + e.getMessage(), e);
         }
     }
 
@@ -156,15 +165,7 @@ public class LocationService {
 
         // 위치 업데이트 빈도 제한 (8시간마다 1회)
         // TODO: Redis 등을 활용하여 정확한 횟수 카운트 구현 (하루 3회 등)
-        if (user.getLocationUpdatedAt() != null) {
-            LocalDateTime lastUpdate = user.getLocationUpdatedAt();
 
-            if (lastUpdate.isAfter(LocalDateTime.now().minusHours(8))) {
-                log.warn("위치 업데이트 빈도 제한: userId={}, lastUpdate={}", userId, lastUpdate);
-                // 제한을 초과했지만 기존 지역명 반환 (업데이트는 안함)
-                return user.getVerifiedRegion() != null ? user.getVerifiedRegion() : "위치 인증 필요";
-            }
-        }
 
         // 좌표 → 행정동명 변환
         String regionName = convertCoordinateToRegion(latitude, longitude);
@@ -198,6 +199,8 @@ public class LocationService {
                 .locationUpdatedAt(user.getLocationUpdatedAt())
                 .build();
     }
+
+
 
     /**
      * 위치 정보 DTO
