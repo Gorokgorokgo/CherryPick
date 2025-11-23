@@ -126,8 +126,10 @@ public class UserAccountService {
         if (account.getIsPrimary()) {
             throw new IllegalArgumentException("기본 계좌는 삭제할 수 없습니다. 다른 계좌를 기본 계좌로 설정 후 삭제해주세요.");
         }
-        
-        userAccountRepository.delete(account);
+
+        // 계좌 Soft Delete
+        account.softDelete(userId);
+        userAccountRepository.save(account);
     }
     
     private void resetPrimaryAccount(Long userId) {

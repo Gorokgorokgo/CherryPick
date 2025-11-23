@@ -86,4 +86,11 @@ public class Answer extends BaseEntity {
     public boolean canModifyBySeller() {
         return !this.question.isNearAuctionEnd() && !this.question.getAuction().isEnded();
     }
+
+    /**
+     * 답변 삭제 가능 여부 확인
+     */
+    public boolean canDelete() {
+        return canModifyBySeller();
+    }
 }

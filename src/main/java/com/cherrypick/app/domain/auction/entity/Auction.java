@@ -101,6 +101,9 @@ public class Auction extends BaseEntity {
     @Column(name = "preferred_location", length = 200)
     private String preferredLocation; // 거래 희망 장소 (예: "강남역 1번 출구")
 
+    @Column(name = "seller_verified_region_at_creation", length = 100)
+    private String sellerVerifiedRegionAtCreation; // 경매 등록 당시 판매자의 GPS 인증 주소 (스냅샷)
+
     // === 정적 팩토리 메서드 ===
     
     /**
@@ -126,33 +129,31 @@ public class Auction extends BaseEntity {
 
         LocalDateTime now = LocalDateTime.now();
 
-        return new Auction(
-            null, // id는 DB에서 생성
-            seller,
-            title,
-            description,
-            category,
-            startPrice,
-            hopePrice,
-            reservePrice,
-            auctionTimeHours,
-            regionScope,
-            regionCode,
-            regionName,
-            AuctionStatus.ACTIVE,
-            0, // viewCount - DB 기본값
-            startPrice, // currentPrice - 시작가로 초기화
-            null, // lastPriceBeforeEnd
-            0, // bidCount - DB 기본값
-            null, // winner
-            now,
-            now.plusHours(auctionTimeHours),
-            productCondition,
-            purchaseDate,
-            latitude,
-            longitude,
-            preferredLocation
-        );
+        return Auction.builder()
+            .seller(seller)
+            .title(title)
+            .description(description)
+            .category(category)
+            .startPrice(startPrice)
+            .hopePrice(hopePrice)
+            .reservePrice(reservePrice)
+            .auctionTimeHours(auctionTimeHours)
+            .regionScope(regionScope)
+            .regionCode(regionCode)
+            .regionName(regionName)
+            .status(AuctionStatus.ACTIVE)
+            .viewCount(0)
+            .currentPrice(startPrice)
+            .bidCount(0)
+            .startAt(now)
+            .endAt(now.plusHours(auctionTimeHours))
+            .productCondition(productCondition)
+            .purchaseDate(purchaseDate)
+            .latitude(latitude)
+            .longitude(longitude)
+            .preferredLocation(preferredLocation)
+            .sellerVerifiedRegionAtCreation(seller.getVerifiedRegion()) // 경매 등록 당시 판매자 주소 스냅샷
+            .build();
     }
 
     /**

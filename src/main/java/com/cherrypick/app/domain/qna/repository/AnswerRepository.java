@@ -15,14 +15,18 @@ public interface AnswerRepository extends JpaRepository<Answer, Long> {
     /**
      * 특정 질문의 답변 조회
      */
-    Optional<Answer> findByQuestionId(Long questionId);
+    @Query("SELECT a FROM Answer a " +
+           "WHERE a.question.id = :questionId " +
+           "AND a.deletedAt IS NULL")
+    Optional<Answer> findByQuestionId(@Param("questionId") Long questionId);
 
     /**
      * 특정 질문의 답변을 답변자와 함께 조회
      */
     @Query("SELECT a FROM Answer a " +
            "JOIN FETCH a.answerer " +
-           "WHERE a.question.id = :questionId")
+           "WHERE a.question.id = :questionId " +
+           "AND a.deletedAt IS NULL")
     Optional<Answer> findByQuestionIdWithAnswerer(@Param("questionId") Long questionId);
 
     /**
@@ -32,7 +36,8 @@ public interface AnswerRepository extends JpaRepository<Answer, Long> {
            "JOIN FETCH a.question q " +
            "JOIN FETCH q.auction " +
            "JOIN FETCH a.answerer " +
-           "WHERE a.id = :answerId")
+           "WHERE a.id = :answerId " +
+           "AND a.deletedAt IS NULL")
     Optional<Answer> findByIdWithQuestionAndAnswerer(@Param("answerId") Long answerId);
 
     /**
@@ -42,6 +47,8 @@ public interface AnswerRepository extends JpaRepository<Answer, Long> {
            "JOIN FETCH a.question q " +
            "JOIN FETCH a.answerer " +
            "WHERE q.auction.id = :auctionId " +
+           "AND a.deletedAt IS NULL " +
+           "AND q.deletedAt IS NULL " +
            "ORDER BY a.createdAt DESC")
     List<Answer> findByAuctionIdWithQuestionAndAnswerer(@Param("auctionId") Long auctionId);
 
@@ -49,11 +56,15 @@ public interface AnswerRepository extends JpaRepository<Answer, Long> {
      * 특정 판매자가 작성한 답변 수 조회
      */
     @Query("SELECT COUNT(a) FROM Answer a " +
-           "WHERE a.answerer.id = :answererId")
+           "WHERE a.answerer.id = :answererId " +
+           "AND a.deletedAt IS NULL")
     Long countByAnswererId(@Param("answererId") Long answererId);
 
     /**
      * 특정 질문에 답변이 존재하는지 확인
      */
-    boolean existsByQuestionId(Long questionId);
+    @Query("SELECT CASE WHEN COUNT(a) > 0 THEN true ELSE false END FROM Answer a " +
+           "WHERE a.question.id = :questionId " +
+           "AND a.deletedAt IS NULL")
+    boolean existsByQuestionId(@Param("questionId") Long questionId);
 }

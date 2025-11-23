@@ -22,4 +22,33 @@ public abstract class BaseEntity {
     @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by")
+    private Long deletedBy;
+
+    /**
+     * Soft Delete 수행
+     */
+    public void softDelete(Long deletedByUserId) {
+        this.deletedAt = LocalDateTime.now();
+        this.deletedBy = deletedByUserId;
+    }
+
+    /**
+     * 삭제 여부 확인
+     */
+    public boolean isDeleted() {
+        return this.deletedAt != null;
+    }
+
+    /**
+     * 복구 (관리자용)
+     */
+    public void restore() {
+        this.deletedAt = null;
+        this.deletedBy = null;
+    }
 }

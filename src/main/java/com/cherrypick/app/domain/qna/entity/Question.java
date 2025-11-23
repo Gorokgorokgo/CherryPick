@@ -107,4 +107,11 @@ public class Question extends BaseEntity {
     public boolean isNearAuctionEnd() {
         return this.auction.getEndAt().minusMinutes(30).isBefore(java.time.LocalDateTime.now());
     }
+
+    /**
+     * 질문 삭제 가능 여부 확인
+     */
+    public boolean canDelete() {
+        return !this.isAnswered && !this.isNearAuctionEnd();
+    }
 }

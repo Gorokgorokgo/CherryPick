@@ -50,6 +50,7 @@ public class AuctionResponse {
     private String sellerProfileImageUrl;
     private Integer sellerLevel;
     private Integer sellerReviewCount; // 총 후기 수 (good + normal + bad)
+    private String sellerVerifiedRegion; // 판매자 GPS 인증 주소 (예: "서울특별시 강남구 역삼1동")
     
     // 이미지 목록
     private List<String> imageUrls;
@@ -103,6 +104,7 @@ public class AuctionResponse {
         response.setSellerNickname(auction.getSeller().getNickname());
         response.setSellerProfileImageUrl(auction.getSeller().getProfileImageUrl());
         response.setSellerLevel(auction.getSeller().getSellerLevel());
+        response.setSellerVerifiedRegion(auction.getSellerVerifiedRegionAtCreation());
 
         // 판매자 총 후기 수 계산
         int totalReviews = (auction.getSeller().getSellerReviewGood() != null ? auction.getSeller().getSellerReviewGood() : 0)

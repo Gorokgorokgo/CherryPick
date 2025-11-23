@@ -19,6 +19,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
      */
     @Query("SELECT q FROM Question q " +
            "WHERE q.auction.id = :auctionId " +
+           "AND q.deletedAt IS NULL " +
            "ORDER BY q.createdAt DESC")
     Page<Question> findByAuctionIdOrderByCreatedAtDesc(@Param("auctionId") Long auctionId, Pageable pageable);
 
@@ -27,6 +28,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
      */
     @Query("SELECT q FROM Question q " +
            "WHERE q.auction.id = :auctionId " +
+           "AND q.deletedAt IS NULL " +
            "ORDER BY q.createdAt DESC")
     List<Question> findByAuctionIdOrderByCreatedAtDesc(@Param("auctionId") Long auctionId);
 
@@ -35,6 +37,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
      */
     @Query("SELECT q FROM Question q " +
            "WHERE q.questioner.id = :questionerId " +
+           "AND q.deletedAt IS NULL " +
            "ORDER BY q.createdAt DESC")
     Page<Question> findByQuestionerIdOrderByCreatedAtDesc(@Param("questionerId") Long questionerId, Pageable pageable);
 
@@ -43,20 +46,25 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
      */
     @Query("SELECT COUNT(q) FROM Question q " +
            "WHERE q.auction.id = :auctionId " +
-           "AND q.isAnswered = false")
+           "AND q.isAnswered = false " +
+           "AND q.deletedAt IS NULL")
     Long countUnansweredByAuctionId(@Param("auctionId") Long auctionId);
 
     /**
      * 특정 경매의 총 질문 수 조회
      */
-    Long countByAuctionId(Long auctionId);
+    @Query("SELECT COUNT(q) FROM Question q " +
+           "WHERE q.auction.id = :auctionId " +
+           "AND q.deletedAt IS NULL")
+    Long countByAuctionId(@Param("auctionId") Long auctionId);
 
     /**
      * 특정 질문을 질문자와 함께 조회
      */
     @Query("SELECT q FROM Question q " +
            "JOIN FETCH q.questioner " +
-           "WHERE q.id = :questionId")
+           "WHERE q.id = :questionId " +
+           "AND q.deletedAt IS NULL")
     Optional<Question> findByIdWithQuestioner(@Param("questionId") Long questionId);
 
     /**
@@ -65,6 +73,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
     @Query("SELECT q FROM Question q " +
            "JOIN FETCH q.questioner " +
            "JOIN FETCH q.auction " +
-           "WHERE q.id = :questionId")
+           "WHERE q.id = :questionId " +
+           "AND q.deletedAt IS NULL")
     Optional<Question> findByIdWithQuestionerAndAuction(@Param("questionId") Long questionId);
 }

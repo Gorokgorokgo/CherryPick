@@ -138,27 +138,23 @@ public class ImageUploadService {
     }
     
     public void deleteImage(String imageUrl) {
-        // 1. 데이터베이스에서 먼저 삭제 (트랜잭션 보장)
+        // 1. 데이터베이스에서 Soft Delete (메타데이터 보존)
         UploadedImage image = uploadedImageRepository.findByS3Url(imageUrl)
                 .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다."));
-        
-        uploadedImageRepository.delete(image);
-        log.info("DB에서 이미지 삭제 완료: {}", imageUrl);
-        
-        // 2. S3에서 삭제 (실패해도 DB는 이미 삭제됨)
-        try {
-            deleteFromS3(imageUrl);
-            log.info("S3에서 이미지 삭제 완료: {}", imageUrl);
-        } catch (Exception e) {
-            // S3 삭제 실패 시 로깅만 하고 사용자에게는 성공으로 응답
-            log.warn("S3 삭제 실패 (DB는 삭제됨): {}, 오류: {}", imageUrl, e.getMessage());
-            // TODO: 추후 비동기 재시도 큐 또는 배치 정리 작업 추가
-        }
+
+        // Soft Delete 수행 (업로더 ID 사용, 없으면 null)
+        image.softDelete(image.getUploaderId());
+        uploadedImageRepository.save(image);
+        log.info("이미지 메타데이터 Soft Delete 완료: {}", imageUrl);
+
+        // 2. S3 파일은 배치 작업으로 정리 예정
+        // TODO: 삭제된 이미지 배치 정리 작업 추가 (예: 30일 후 완전 삭제)
+        log.info("S3 파일은 배치 작업에서 정리됩니다: {}", imageUrl);
     }
     
     /**
      * ID로 이미지 삭제 (권한 체크 포함)
-     * 
+     *
      * @param imageId 삭제할 이미지 ID
      * @param userId 요청 사용자 ID (권한 체크용)
      */
@@ -166,50 +162,40 @@ public class ImageUploadService {
         // 1. 이미지 조회
         UploadedImage image = uploadedImageRepository.findById(imageId)
                 .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다."));
-        
+
         // 2. 권한 체크 (업로더 본인만 삭제 가능)
         if (image.getUploaderId() != null && !image.getUploaderId().equals(userId)) {
             throw new IllegalArgumentException("본인이 업로드한 이미지만 삭제할 수 있습니다.");
         }
-        
-        // 3. 데이터베이스에서 먼저 삭제 (트랜잭션 보장)
-        uploadedImageRepository.delete(image);
-        log.info("DB에서 이미지 삭제 완료 - ID: {}, URL: {}", imageId, image.getS3Url());
-        
-        // 4. S3에서 삭제 (실패해도 DB는 이미 삭제됨)
-        try {
-            deleteFromS3(image.getS3Url());
-            log.info("S3에서 이미지 삭제 완료 - ID: {}, URL: {}", imageId, image.getS3Url());
-        } catch (Exception e) {
-            // S3 삭제 실패 시 로깅만 하고 사용자에게는 성공으로 응답
-            log.warn("S3 삭제 실패 (DB는 삭제됨) - ID: {}, URL: {}, 오류: {}", imageId, image.getS3Url(), e.getMessage());
-            // TODO: 추후 비동기 재시도 큐 또는 배치 정리 작업 추가
-        }
+
+        // 3. 데이터베이스에서 Soft Delete (메타데이터 보존)
+        image.softDelete(userId);
+        uploadedImageRepository.save(image);
+        log.info("이미지 메타데이터 Soft Delete 완료 - ID: {}, URL: {}", imageId, image.getS3Url());
+
+        // 4. S3 파일은 배치 작업으로 정리 예정
+        // TODO: 삭제된 이미지 배치 정리 작업 추가 (예: 30일 후 완전 삭제)
+        log.info("S3 파일은 배치 작업에서 정리됩니다 - ID: {}, URL: {}", imageId, image.getS3Url());
     }
     
     /**
      * ID로 이미지 삭제 (권한 체크 없음 - 관리자용)
-     * 
+     *
      * @param imageId 삭제할 이미지 ID
      */
     public void deleteImageById(Long imageId) {
         // 1. 이미지 조회
         UploadedImage image = uploadedImageRepository.findById(imageId)
                 .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다."));
-        
-        // 2. 데이터베이스에서 먼저 삭제 (트랜잭션 보장)
-        uploadedImageRepository.delete(image);
-        log.info("DB에서 이미지 삭제 완료 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
-        
-        // 3. S3에서 삭제 (실패해도 DB는 이미 삭제됨)
-        try {
-            deleteFromS3(image.getS3Url());
-            log.info("S3에서 이미지 삭제 완료 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
-        } catch (Exception e) {
-            // S3 삭제 실패 시 로깅만 하고 사용자에게는 성공으로 응답
-            log.warn("S3 삭제 실패 (DB는 삭제됨, 관리자) - ID: {}, URL: {}, 오류: {}", imageId, image.getS3Url(), e.getMessage());
-            // TODO: 추후 비동기 재시도 큐 또는 배치 정리 작업 추가
-        }
+
+        // 2. 데이터베이스에서 Soft Delete (메타데이터 보존)
+        image.softDelete(null); // 관리자 삭제이므로 deletedBy는 null
+        uploadedImageRepository.save(image);
+        log.info("이미지 메타데이터 Soft Delete 완료 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
+
+        // 3. S3 파일은 배치 작업으로 정리 예정
+        // TODO: 삭제된 이미지 배치 정리 작업 추가 (예: 30일 후 완전 삭제)
+        log.info("S3 파일은 배치 작업에서 정리됩니다 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
     }
     
     /**
