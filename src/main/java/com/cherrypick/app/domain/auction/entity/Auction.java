@@ -398,4 +398,12 @@ public class Auction extends BaseEntity {
     public void markAsDeleted() {
         this.status = AuctionStatus.DELETED;
     }
+
+    /**
+     * 위치 정보 설정
+     */
+    public void setLocation(Double latitude, Double longitude) {
+        this.latitude = latitude;
+        this.longitude = longitude;
+    }
 }

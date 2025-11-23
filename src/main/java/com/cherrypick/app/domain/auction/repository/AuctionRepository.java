@@ -149,20 +149,51 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
      */
     @Query(value = """
         SELECT a.*,
+               CASE 
+                   WHEN a.latitude IS NOT NULL AND a.longitude IS NOT NULL THEN
+                       (6371 * acos(
+                           cos(radians(:latitude))
+                           * cos(radians(a.latitude))
+                           * cos(radians(a.longitude) - radians(:longitude))
+                           + sin(radians(:latitude))
+                           * sin(radians(a.latitude))
+                       ))
+                   ELSE NULL
+               END AS distance
+        FROM auctions a
+        WHERE a.status = :status
+          AND (
+              (:maxDistanceKm >= 10000) 
+              OR 
+              (a.latitude IS NOT NULL AND a.longitude IS NOT NULL AND 
                (6371 * acos(
                    cos(radians(:latitude))
                    * cos(radians(a.latitude))
                    * cos(radians(a.longitude) - radians(:longitude))
                    + sin(radians(:latitude))
                    * sin(radians(a.latitude))
-               )) AS distance
+               )) <= :maxDistanceKm)
+          )
+        ORDER BY distance ASC NULLS LAST
+    """, 
+    countQuery = """
+        SELECT COUNT(*)
         FROM auctions a
         WHERE a.status = :status
-          AND a.latitude IS NOT NULL
-          AND a.longitude IS NOT NULL
-        HAVING distance <= :maxDistanceKm
-        ORDER BY distance ASC
-    """, nativeQuery = true)
+          AND (
+              (:maxDistanceKm >= 10000) 
+              OR 
+              (a.latitude IS NOT NULL AND a.longitude IS NOT NULL AND 
+               (6371 * acos(
+                   cos(radians(:latitude))
+                   * cos(radians(a.latitude))
+                   * cos(radians(a.longitude) - radians(:longitude))
+                   + sin(radians(:latitude))
+                   * sin(radians(a.latitude))
+               )) <= :maxDistanceKm)
+          )
+    """,
+    nativeQuery = true)
     Page<Auction> findNearbyAuctions(
         @Param("latitude") Double latitude,
         @Param("longitude") Double longitude,
@@ -188,24 +219,59 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
      */
     @Query(value = """
         SELECT a.*,
+               CASE 
+                   WHEN a.latitude IS NOT NULL AND a.longitude IS NOT NULL THEN
+                       (6371 * acos(
+                           cos(radians(:latitude))
+                           * cos(radians(a.latitude))
+                           * cos(radians(a.longitude) - radians(:longitude))
+                           + sin(radians(:latitude))
+                           * sin(radians(a.latitude))
+                       ))
+                   ELSE NULL
+               END AS distance
+        FROM auctions a
+        WHERE a.status = :status
+          AND (:keyword IS NULL OR LOWER(a.title) LIKE LOWER(CONCAT('%', :keyword, '%')))
+          AND (:category IS NULL OR a.category = :category)
+          AND (:minPrice IS NULL OR a.current_price >= :minPrice)
+          AND (:maxPrice IS NULL OR a.current_price <= :maxPrice)
+          AND (
+              (:maxDistanceKm >= 10000) 
+              OR 
+              (a.latitude IS NOT NULL AND a.longitude IS NOT NULL AND 
                (6371 * acos(
                    cos(radians(:latitude))
                    * cos(radians(a.latitude))
                    * cos(radians(a.longitude) - radians(:longitude))
                    + sin(radians(:latitude))
                    * sin(radians(a.latitude))
-               )) AS distance
+               )) <= :maxDistanceKm)
+          )
+        ORDER BY distance ASC NULLS LAST
+    """, 
+    countQuery = """
+        SELECT COUNT(*)
         FROM auctions a
         WHERE a.status = :status
-          AND a.latitude IS NOT NULL
-          AND a.longitude IS NOT NULL
           AND (:keyword IS NULL OR LOWER(a.title) LIKE LOWER(CONCAT('%', :keyword, '%')))
           AND (:category IS NULL OR a.category = :category)
           AND (:minPrice IS NULL OR a.current_price >= :minPrice)
           AND (:maxPrice IS NULL OR a.current_price <= :maxPrice)
-        HAVING distance <= :maxDistanceKm
-        ORDER BY distance ASC
-    """, nativeQuery = true)
+          AND (
+              (:maxDistanceKm >= 10000) 
+              OR 
+              (a.latitude IS NOT NULL AND a.longitude IS NOT NULL AND 
+               (6371 * acos(
+                   cos(radians(:latitude))
+                   * cos(radians(a.latitude))
+                   * cos(radians(a.longitude) - radians(:longitude))
+                   + sin(radians(:latitude))
+                   * sin(radians(a.latitude))
+               )) <= :maxDistanceKm)
+          )
+    """,
+    nativeQuery = true)
     Page<Auction> searchNearbyAuctions(
         @Param("latitude") Double latitude,
         @Param("longitude") Double longitude,

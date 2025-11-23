@@ -118,6 +118,12 @@ public class AuctionService {
                 request.getPurchaseDate()
         );
         
+        // 판매자의 위치 정보를 경매에 복사 (경매 생성 시점의 위치)
+        // TODO: 추후 경매 등록 시 별도 위치 지정 기능이 생기면 request에서 받아오도록 수정
+        if (seller.getLatitude() != null && seller.getLongitude() != null) {
+            auction.setLocation(seller.getLatitude(), seller.getLongitude());
+        }
+        
         Auction savedAuction = auctionRepository.save(auction);
         
         // 상품 이미지 저장 (순서 보장)
