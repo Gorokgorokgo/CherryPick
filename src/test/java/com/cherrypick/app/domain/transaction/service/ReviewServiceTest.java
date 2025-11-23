@@ -99,7 +99,7 @@ class ReviewServiceTest {
     @DisplayName("구매자가 판매자에게 '좋았어요' 후기 작성 성공")
     void createReview_BuyerToSeller_Good_Success() {
         // Given
-        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD);
+        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD, "정말 좋은 거래였어요!");
 
         when(transactionRepository.findById(1000L)).thenReturn(Optional.of(transaction));
         when(userRepository.findById(2L)).thenReturn(Optional.of(buyer));
@@ -135,7 +135,7 @@ class ReviewServiceTest {
     @DisplayName("판매자가 구매자에게 '평범해요' 후기 작성 성공")
     void createReview_SellerToBuyer_Normal_Success() {
         // Given
-        CreateReviewRequest request = new CreateReviewRequest(RatingType.NORMAL);
+        CreateReviewRequest request = new CreateReviewRequest(RatingType.NORMAL, "평범한 거래였습니다");
 
         when(transactionRepository.findById(1000L)).thenReturn(Optional.of(transaction));
         when(userRepository.findById(1L)).thenReturn(Optional.of(seller));
@@ -161,7 +161,7 @@ class ReviewServiceTest {
     void createReview_TransactionNotCompleted_ThrowsException() {
         // Given
         transaction.setStatus(TransactionStatus.PENDING);
-        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD);
+        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD, "좋아요");
 
         when(transactionRepository.findById(1000L)).thenReturn(Optional.of(transaction));
 
@@ -175,7 +175,7 @@ class ReviewServiceTest {
     @DisplayName("거래 당사자가 아닌 사람이 후기 작성 시도 시 예외 발생")
     void createReview_NotTransactionParty_ThrowsException() {
         // Given
-        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD);
+        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD, "좋아요");
         Long unauthorizedUserId = 999L;
 
         when(transactionRepository.findById(1000L)).thenReturn(Optional.of(transaction));
@@ -193,7 +193,7 @@ class ReviewServiceTest {
     @DisplayName("이미 후기를 작성한 경우 중복 작성 시도 시 예외 발생")
     void createReview_AlreadyReviewed_ThrowsException() {
         // Given
-        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD);
+        CreateReviewRequest request = new CreateReviewRequest(RatingType.GOOD, "좋아요");
 
         when(transactionRepository.findById(1000L)).thenReturn(Optional.of(transaction));
         when(userRepository.findById(2L)).thenReturn(Optional.of(buyer));

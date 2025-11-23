@@ -148,6 +148,33 @@ public class User extends BaseEntity {
     @Column(nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'USER'")
     private Role role = Role.USER;
 
+    // Soft Delete (회원 탈퇴)
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    /**
+     * 회원 탈퇴 처리 (Soft Delete)
+     */
+    public void softDelete() {
+        this.deletedAt = LocalDateTime.now();
+        this.enabled = false;
+    }
+
+    /**
+     * 탈퇴 여부 확인
+     */
+    public boolean isDeleted() {
+        return this.deletedAt != null;
+    }
+
+    /**
+     * 회원 복구
+     */
+    public void restore() {
+        this.deletedAt = null;
+        this.enabled = true;
+    }
+
     // 역할 및 권한 메서드
     public boolean hasRole(String roleName) {
         return this.role != null && this.role.name().equals(roleName);
