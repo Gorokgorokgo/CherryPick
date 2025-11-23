@@ -743,6 +743,7 @@ public class AuctionController {
             @Parameter(description = "카테고리") @RequestParam(required = false) Category category,
             @Parameter(description = "최소 가격") @RequestParam(required = false) BigDecimal minPrice,
             @Parameter(description = "최대 가격") @RequestParam(required = false) BigDecimal maxPrice,
+            @Parameter(description = "정렬 옵션") @RequestParam(required = false, defaultValue = "DISTANCE_ASC") AuctionSearchRequest.SortOption sortBy,
             @Parameter(description = "페이지 번호 (0부터 시작)", example = "0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기", example = "20") @RequestParam(defaultValue = "20") int size) {
 
@@ -758,7 +759,7 @@ public class AuctionController {
         searchRequest.setMinPrice(minPrice);
         searchRequest.setMaxPrice(maxPrice);
         searchRequest.setStatus(AuctionStatus.ACTIVE);
-        searchRequest.setSortBy(AuctionSearchRequest.SortOption.DISTANCE_ASC);
+        searchRequest.setSortBy(sortBy);
 
         Pageable pageable = PageRequest.of(page, size);
 

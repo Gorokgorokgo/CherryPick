@@ -919,6 +919,27 @@ public class AuctionService {
         // 기본 거리 제한 (제공되지 않으면 10km)
         Double maxDistanceKm = searchRequest.getMaxDistanceKm() != null ? searchRequest.getMaxDistanceKm() : 10.0;
 
+        // 정렬 조건 설정 (Native Query이므로 컬럼명/Alias 사용)
+        Sort sort;
+        if (searchRequest.getSortBy() != null) {
+            switch (searchRequest.getSortBy()) {
+                case PRICE_ASC -> sort = Sort.by("current_price").ascending();
+                case PRICE_DESC -> sort = Sort.by("current_price").descending();
+                case CREATED_DESC -> sort = Sort.by("created_at").descending();
+                case CREATED_ASC -> sort = Sort.by("created_at").ascending();
+                case ENDING_SOON -> sort = Sort.by("end_at").ascending();
+                case VIEW_COUNT_DESC -> sort = Sort.by("view_count").descending();
+                case BID_COUNT_DESC -> sort = Sort.by("bid_count").descending();
+                case DISTANCE_ASC -> sort = Sort.by("distance").ascending();
+                default -> sort = Sort.by("distance").ascending();
+            }
+        } else {
+            sort = Sort.by("distance").ascending();
+        }
+        
+        // 정렬이 적용된 Pageable 생성
+        Pageable sortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
+
         // Repository를 통해 거리 기반 검색
         Page<Auction> auctionPage = auctionRepository.searchNearbyAuctions(
                 searchRequest.getLatitude(),
@@ -929,7 +950,7 @@ public class AuctionService {
                 searchRequest.getMinPrice(),
                 searchRequest.getMaxPrice(),
                 AuctionStatus.ACTIVE.name(),
-                pageable
+                sortedPageable
         );
 
         // AuctionResponse 변환 및 거리 계산

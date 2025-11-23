@@ -248,7 +248,6 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
                    * sin(radians(a.latitude))
                )) <= :maxDistanceKm)
           )
-        ORDER BY distance ASC NULLS LAST
     """, 
     countQuery = """
         SELECT COUNT(*)
