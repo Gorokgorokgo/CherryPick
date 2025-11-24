@@ -491,29 +491,35 @@ public class AuctionService {
 
         // 반경 필터 적용 (프론트엔드에서 전달받은 GPS 위치 사용)
         if (radiusKm != null && radiusKm > 0 && latitude != null && longitude != null) {
-            log.info("반경 필터 적용: radiusKm={}, userLat={}, userLng={}", radiusKm, latitude, longitude);
+            log.info("🔍 반경 필터 적용: radiusKm={}km, 사용자위치=[lat={}, lng={}]", radiusKm, latitude, longitude);
 
             // 반경 내 경매만 필터링
             List<Auction> filteredList = auctions.getContent().stream()
                     .filter(auction -> {
                         if (auction.getLatitude() == null || auction.getLongitude() == null) {
+                            log.warn("❌ 경매 ID={} GPS 좌표 없음 (lat={}, lng={})",
+                                    auction.getId(), auction.getLatitude(), auction.getLongitude());
                             return false;
                         }
+
                         double distance = locationService.calculateDistance(
                                 latitude, longitude,
                                 auction.getLatitude(), auction.getLongitude());
                         boolean withinRadius = distance <= radiusKm;
-                        if (withinRadius) {
-                            log.debug("경매 포함: auctionId={}, distance={}km", auction.getId(), distance);
-                        }
+
+                        log.info("📍 경매 ID={}, 제목='{}', 경매위치=[lat={}, lng={}], 계산거리={:.2f}km, 반경내={}",
+                                auction.getId(), auction.getTitle(),
+                                auction.getLatitude(), auction.getLongitude(),
+                                distance, withinRadius);
+
                         return withinRadius;
                     })
                     .toList();
 
-            log.info("반경 필터 결과: 전체 {}개 → 필터링 후 {}개", auctions.getContent().size(), filteredList.size());
+            log.info("✅ 반경 필터 결과: 전체 {}개 → 필터링 후 {}개", auctions.getContent().size(), filteredList.size());
             auctions = new PageImpl<>(filteredList, sortedPageable, filteredList.size());
         } else {
-            log.info("반경 필터 미적용: radiusKm={}, latitude={}, longitude={}", radiusKm, latitude, longitude);
+            log.info("⚠️ 반경 필터 미적용: radiusKm={}, latitude={}, longitude={}", radiusKm, latitude, longitude);
         }
 
         return createAuctionResponsePage(auctions, userId);
