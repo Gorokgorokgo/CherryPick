@@ -104,6 +104,9 @@ public class Auction extends BaseEntity {
     @Column(name = "seller_verified_region_at_creation", length = 100)
     private String sellerVerifiedRegionAtCreation; // 경매 등록 당시 판매자의 GPS 인증 주소 (스냅샷)
 
+    @Column(name = "region_radius_km")
+    private Integer regionRadiusKm; // 판매자가 설정한 노출 반경 (km) - null이면 제한 없음 (전국)
+
     // === 정적 팩토리 메서드 ===
     
     /**
@@ -125,7 +128,8 @@ public class Auction extends BaseEntity {
             String purchaseDate,
             Double latitude,
             Double longitude,
-            String preferredLocation) {
+            String preferredLocation,
+            Integer regionRadiusKm) {
 
         LocalDateTime now = LocalDateTime.now();
 
@@ -153,6 +157,7 @@ public class Auction extends BaseEntity {
             .longitude(longitude)
             .preferredLocation(preferredLocation)
             .sellerVerifiedRegionAtCreation(seller.getVerifiedRegion()) // 경매 등록 당시 판매자 주소 스냅샷
+            .regionRadiusKm(regionRadiusKm)
             .build();
     }
 
@@ -179,7 +184,7 @@ public class Auction extends BaseEntity {
             startPrice, hopePrice, reservePrice,
             auctionTimeHours, regionScope, regionCode, regionName,
             productCondition, purchaseDate,
-            null, null, null // GPS 위치 정보 없음
+            null, null, null, null // GPS 위치 정보 없음, regionRadiusKm 없음
         );
     }
 
@@ -405,5 +410,9 @@ public class Auction extends BaseEntity {
     public void setLocation(Double latitude, Double longitude) {
         this.latitude = latitude;
         this.longitude = longitude;
+    }
+
+    public void setRegionRadiusKm(Integer regionRadiusKm) {
+        this.regionRadiusKm = regionRadiusKm;
     }
 }

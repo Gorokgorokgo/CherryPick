@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -117,7 +118,9 @@ public class AuctionService {
                 request.getProductCondition(),
                 request.getPurchaseDate()
         );
-        
+
+        auction.setRegionRadiusKm(request.getRegionRadiusKm());
+
         // 판매자의 위치 정보를 경매에 복사 (경매 생성 시점의 위치)
         // TODO: 추후 경매 등록 시 별도 위치 지정 기능이 생기면 request에서 받아오도록 수정
         if (seller.getLatitude() != null && seller.getLongitude() != null) {
@@ -401,7 +404,7 @@ public class AuctionService {
      */
     public Page<AuctionResponse> searchByKeyword(String keyword, AuctionStatus status, Pageable pageable, Long userId) {
         if (keyword == null || keyword.trim().isEmpty()) {
-            return getAuctionsByStatus(status, pageable, userId);
+            return getAuctionsByStatus(status, null, null, null, null, null, pageable, userId);
         }
 
         Page<Auction> auctions = auctionRepository.searchByKeyword(keyword.trim(), status, pageable);
@@ -450,10 +453,68 @@ public class AuctionService {
     }
     
     /**
-     * 상태별 경매 조회 (기존 getActiveAuctions의 일반화)
+     * 상태별 경매 조회 (필터링 지원)
      */
-    public Page<AuctionResponse> getAuctionsByStatus(AuctionStatus status, Pageable pageable, Long userId) {
-        Page<Auction> auctions = auctionRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+    public Page<AuctionResponse> getAuctionsByStatus(
+            AuctionStatus status,
+            Category category,
+            String sortBy,
+            Integer radiusKm,
+            Double latitude,
+            Double longitude,
+            Pageable pageable,
+            Long userId) {
+
+        // 정렬 처리
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt"); // 기본: 최신순
+        if (sortBy != null) {
+            sort = switch (sortBy) {
+                case "CREATED_ASC" -> Sort.by(Sort.Direction.ASC, "createdAt");
+                case "CREATED_DESC" -> Sort.by(Sort.Direction.DESC, "createdAt");
+                case "PRICE_ASC" -> Sort.by(Sort.Direction.ASC, "currentPrice");
+                case "PRICE_DESC" -> Sort.by(Sort.Direction.DESC, "currentPrice");
+                default -> Sort.by(Sort.Direction.DESC, "createdAt");
+            };
+        }
+        Pageable sortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
+
+        Page<Auction> auctions;
+
+        // 카테고리 필터 여부에 따라 쿼리 선택
+        if (category != null) {
+            // 카테고리가 있으면 카테고리+상태로 조회 (Pageable의 정렬 적용)
+            auctions = auctionRepository.findByCategoryAndStatus(category, status, sortedPageable);
+        } else {
+            // 카테고리가 없으면 상태만으로 조회 (Pageable의 정렬 적용)
+            auctions = auctionRepository.findByStatus(status, sortedPageable);
+        }
+
+        // 반경 필터 적용 (프론트엔드에서 전달받은 GPS 위치 사용)
+        if (radiusKm != null && radiusKm > 0 && latitude != null && longitude != null) {
+            log.info("반경 필터 적용: radiusKm={}, userLat={}, userLng={}", radiusKm, latitude, longitude);
+
+            // 반경 내 경매만 필터링
+            List<Auction> filteredList = auctions.getContent().stream()
+                    .filter(auction -> {
+                        if (auction.getLatitude() == null || auction.getLongitude() == null) {
+                            return false;
+                        }
+                        double distance = locationService.calculateDistance(
+                                latitude, longitude,
+                                auction.getLatitude(), auction.getLongitude());
+                        boolean withinRadius = distance <= radiusKm;
+                        if (withinRadius) {
+                            log.debug("경매 포함: auctionId={}, distance={}km", auction.getId(), distance);
+                        }
+                        return withinRadius;
+                    })
+                    .toList();
+
+            log.info("반경 필터 결과: 전체 {}개 → 필터링 후 {}개", auctions.getContent().size(), filteredList.size());
+            auctions = new PageImpl<>(filteredList, sortedPageable, filteredList.size());
+        } else {
+            log.info("반경 필터 미적용: radiusKm={}, latitude={}, longitude={}", radiusKm, latitude, longitude);
+        }
 
         return createAuctionResponsePage(auctions, userId);
     }

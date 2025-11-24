@@ -25,12 +25,18 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     
     // 진행 중인 경매 조회
     Page<Auction> findByStatusOrderByCreatedAtDesc(AuctionStatus status, Pageable pageable);
-    
+
+    // 진행 중인 경매 조회 (Pageable 정렬 적용)
+    Page<Auction> findByStatus(AuctionStatus status, Pageable pageable);
+
     // 카테고리별 경매 조회
     Page<Auction> findByStatusAndCategoryOrderByCreatedAtDesc(AuctionStatus status, Category category, Pageable pageable);
-    
+
     // 카테고리별 활성 경매 조회 (Service에서 사용)
     Page<Auction> findByCategoryAndStatusOrderByCreatedAtDesc(Category category, AuctionStatus status, Pageable pageable);
+
+    // 카테고리별 활성 경매 조회 (Pageable 정렬 적용)
+    Page<Auction> findByCategoryAndStatus(Category category, AuctionStatus status, Pageable pageable);
     
     // 지역별 경매 조회
     Page<Auction> findByRegionScopeAndStatusOrderByCreatedAtDesc(RegionScope regionScope, AuctionStatus status, Pageable pageable);
@@ -248,6 +254,19 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
                    * sin(radians(a.latitude))
                )) <= :maxDistanceKm)
           )
+          AND (
+              (a.region_radius_km IS NULL)
+              OR 
+              (a.region_radius_km IS NOT NULL AND 
+               a.latitude IS NOT NULL AND a.longitude IS NOT NULL AND 
+               (6371 * acos(
+                   cos(radians(:latitude))
+                   * cos(radians(a.latitude))
+                   * cos(radians(a.longitude) - radians(:longitude))
+                   + sin(radians(:latitude))
+                   * sin(radians(a.latitude))
+               )) <= a.region_radius_km)
+          )
     """, 
     countQuery = """
         SELECT COUNT(*)
@@ -268,6 +287,19 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
                    + sin(radians(:latitude))
                    * sin(radians(a.latitude))
                )) <= :maxDistanceKm)
+          )
+          AND (
+              (a.region_radius_km IS NULL)
+              OR 
+              (a.region_radius_km IS NOT NULL AND 
+               a.latitude IS NOT NULL AND a.longitude IS NOT NULL AND 
+               (6371 * acos(
+                   cos(radians(:latitude))
+                   * cos(radians(a.latitude))
+                   * cos(radians(a.longitude) - radians(:longitude))
+                   + sin(radians(:latitude))
+                   * sin(radians(a.latitude))
+               )) <= a.region_radius_km)
           )
     """,
     nativeQuery = true)

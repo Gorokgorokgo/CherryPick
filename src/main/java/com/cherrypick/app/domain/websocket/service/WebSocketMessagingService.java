@@ -44,8 +44,6 @@ public class WebSocketMessagingService {
         
         String destination = "/topic/auctions/" + auctionId;
 
-        log.info("🔵 [DEBUG] Broadcasting to auction - destination: {}, messageType: {}", destination, message.getMessageType());
-
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, message);
             log.info("✅ [DEBUG] Broadcast successful");

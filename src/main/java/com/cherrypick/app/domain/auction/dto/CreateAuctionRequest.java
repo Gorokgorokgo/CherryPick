@@ -87,6 +87,11 @@ public class CreateAuctionRequest {
     @Size(max = 200, message = "거래 희망 장소는 200자를 넘을 수 없습니다.")
     private String preferredLocation;
 
+    @Schema(description = "노출 반경 제한 (km) - 선택사항 (null이면 제한 없음)", example = "5")
+    @Min(value = 1, message = "노출 반경은 최소 1km 이상이어야 합니다.")
+    @Max(value = 100, message = "노출 반경은 최대 100km 이하여야 합니다.")
+    private Integer regionRadiusKm;
+
     public void validate() {
         if (startPrice.compareTo(hopePrice) > 0) {
             throw new IllegalArgumentException("시작가는 희망가보다 클 수 없습니다.");

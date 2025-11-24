@@ -399,12 +399,18 @@ public class AuctionController {
     public ResponseEntity<Page<AuctionResponse>> getAuctionsByStatus(
             @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "경매 상태") @PathVariable AuctionStatus status,
+            @Parameter(description = "카테고리") @RequestParam(required = false) Category category,
+            @Parameter(description = "정렬 옵션") @RequestParam(required = false) String sortBy,
+            @Parameter(description = "반경 (km)") @RequestParam(required = false) Integer radiusKm,
+            @Parameter(description = "사용자 위도") @RequestParam(required = false) Double latitude,
+            @Parameter(description = "사용자 경도") @RequestParam(required = false) Double longitude,
             @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") int size) {
 
         Long userId = userDetails != null ? userService.getUserIdByEmail(userDetails.getUsername()) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<AuctionResponse> auctions = auctionService.getAuctionsByStatus(status, pageable, userId);
+        Page<AuctionResponse> auctions = auctionService.getAuctionsByStatus(
+                status, category, sortBy, radiusKm, latitude, longitude, pageable, userId);
         return ResponseEntity.ok(auctions);
     }
     
