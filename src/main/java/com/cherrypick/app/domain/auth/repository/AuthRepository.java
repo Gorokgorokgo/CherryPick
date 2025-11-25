@@ -42,4 +42,41 @@ public class AuthRepository {
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email);
     }
+
+    public Optional<User> findById(Long id) {
+        return userRepository.findById(id);
+    }
+
+    public void delete(User user) {
+        userRepository.delete(user);
+    }
+
+    // Soft Delete 고려 조회 메서드 (탈퇴하지 않은 사용자만)
+    public Optional<User> findByPhoneNumberAndNotDeleted(String phoneNumber) {
+        return userRepository.findByPhoneNumberAndNotDeleted(phoneNumber);
+    }
+
+    public Optional<User> findByNicknameAndNotDeleted(String nickname) {
+        return userRepository.findByNicknameAndNotDeleted(nickname);
+    }
+
+    public Optional<User> findByEmailAndNotDeleted(String email) {
+        return userRepository.findByEmailAndNotDeleted(email);
+    }
+
+    public Optional<User> findByIdAndNotDeleted(Long id) {
+        return userRepository.findByIdAndNotDeleted(id);
+    }
+
+    public boolean existsByPhoneNumberAndNotDeleted(String phoneNumber) {
+        return userRepository.existsByPhoneNumberAndNotDeleted(phoneNumber);
+    }
+
+    public boolean existsByNicknameAndNotDeleted(String nickname) {
+        return userRepository.existsByNicknameAndNotDeleted(nickname);
+    }
+
+    public boolean existsByEmailAndNotDeleted(String email) {
+        return userRepository.existsByEmailAndNotDeleted(email);
+    }
 }

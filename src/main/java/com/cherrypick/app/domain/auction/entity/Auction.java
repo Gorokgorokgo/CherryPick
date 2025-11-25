@@ -91,14 +91,82 @@ public class Auction extends BaseEntity {
     @Column(name = "purchase_date")
     private String purchaseDate;
 
+    // GPS 위치 정보
+    @Column(name = "latitude")
+    private Double latitude; // 경매 위치 위도
+
+    @Column(name = "longitude")
+    private Double longitude; // 경매 위치 경도
+
+    @Column(name = "preferred_location", length = 200)
+    private String preferredLocation; // 거래 희망 장소 (예: "강남역 1번 출구")
+
+    @Column(name = "seller_verified_region_at_creation", length = 100)
+    private String sellerVerifiedRegionAtCreation; // 경매 등록 당시 판매자의 GPS 인증 주소 (스냅샷)
+
+    @Column(name = "region_radius_km")
+    private Integer regionRadiusKm; // 판매자가 설정한 노출 반경 (km) - null이면 제한 없음 (전국)
+
     // === 정적 팩토리 메서드 ===
     
     /**
-     * 새로운 경매 생성
+     * 새로운 경매 생성 (GPS 위치 정보 포함)
      */
     public static Auction createAuction(
-            User seller, 
-            String title, 
+            User seller,
+            String title,
+            String description,
+            Category category,
+            BigDecimal startPrice,
+            BigDecimal hopePrice,
+            BigDecimal reservePrice,
+            Integer auctionTimeHours,
+            RegionScope regionScope,
+            String regionCode,
+            String regionName,
+            Integer productCondition,
+            String purchaseDate,
+            Double latitude,
+            Double longitude,
+            String preferredLocation,
+            Integer regionRadiusKm) {
+
+        LocalDateTime now = LocalDateTime.now();
+
+        return Auction.builder()
+            .seller(seller)
+            .title(title)
+            .description(description)
+            .category(category)
+            .startPrice(startPrice)
+            .hopePrice(hopePrice)
+            .reservePrice(reservePrice)
+            .auctionTimeHours(auctionTimeHours)
+            .regionScope(regionScope)
+            .regionCode(regionCode)
+            .regionName(regionName)
+            .status(AuctionStatus.ACTIVE)
+            .viewCount(0)
+            .currentPrice(startPrice)
+            .bidCount(0)
+            .startAt(now)
+            .endAt(now.plusHours(auctionTimeHours))
+            .productCondition(productCondition)
+            .purchaseDate(purchaseDate)
+            .latitude(latitude)
+            .longitude(longitude)
+            .preferredLocation(preferredLocation)
+            .sellerVerifiedRegionAtCreation(seller.getVerifiedRegion()) // 경매 등록 당시 판매자 주소 스냅샷
+            .regionRadiusKm(regionRadiusKm)
+            .build();
+    }
+
+    /**
+     * 새로운 경매 생성 (GPS 위치 정보 없이 - 하위 호환)
+     */
+    public static Auction createAuction(
+            User seller,
+            String title,
             String description,
             Category category,
             BigDecimal startPrice,
@@ -110,32 +178,13 @@ public class Auction extends BaseEntity {
             String regionName,
             Integer productCondition,
             String purchaseDate) {
-        
-        LocalDateTime now = LocalDateTime.now();
-        
-        return new Auction(
-            null, // id는 DB에서 생성
-            seller,
-            title,
-            description,
-            category,
-            startPrice,
-            hopePrice,
-            reservePrice,
-            auctionTimeHours,
-            regionScope,
-            regionCode,
-            regionName,
-            AuctionStatus.ACTIVE,
-            0, // viewCount - DB 기본값
-            startPrice, // currentPrice - 시작가로 초기화
-            null, // lastPriceBeforeEnd
-            0, // bidCount - DB 기본값
-            null, // winner
-            now,
-            now.plusHours(auctionTimeHours),
-            productCondition,
-            purchaseDate
+
+        return createAuction(
+            seller, title, description, category,
+            startPrice, hopePrice, reservePrice,
+            auctionTimeHours, regionScope, regionCode, regionName,
+            productCondition, purchaseDate,
+            null, null, null, null // GPS 위치 정보 없음, regionRadiusKm 없음
         );
     }
 
@@ -197,9 +246,15 @@ public class Auction extends BaseEntity {
 
     /**
      * Reserve Price 달성 여부 확인
+     * reservePrice가 null이거나 0 이하면 Reserve Price 없음으로 간주
      */
     public boolean isReservePriceMet(BigDecimal currentBidPrice) {
-        return reservePrice == null || currentBidPrice.compareTo(reservePrice) >= 0;
+        // Reserve Price가 없으면 항상 충족
+        if (!hasReservePrice()) {
+            return true;
+        }
+        // Reserve Price가 있으면 비교
+        return currentBidPrice.compareTo(reservePrice) >= 0;
     }
 
     /**
@@ -347,5 +402,17 @@ public class Auction extends BaseEntity {
      */
     public void markAsDeleted() {
         this.status = AuctionStatus.DELETED;
+    }
+
+    /**
+     * 위치 정보 설정
+     */
+    public void setLocation(Double latitude, Double longitude) {
+        this.latitude = latitude;
+        this.longitude = longitude;
+    }
+
+    public void setRegionRadiusKm(Integer regionRadiusKm) {
+        this.regionRadiusKm = regionRadiusKm;
     }
 }

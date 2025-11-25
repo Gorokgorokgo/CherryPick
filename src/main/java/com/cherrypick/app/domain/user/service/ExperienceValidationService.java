@@ -77,15 +77,15 @@ public class ExperienceValidationService {
      */
     private boolean checkSameUserFrequentTrading(Long buyerId, Long sellerId) {
         String sql = """
-            SELECT COUNT(*) FROM auctions 
+            SELECT COUNT(*) FROM auctions
             WHERE ((seller_id = ? AND winner_id = ?) OR (seller_id = ? AND winner_id = ?))
-            AND status = 'COMPLETED'
-            AND updated_at >= NOW() - INTERVAL 1 DAY
+            AND status = 'ENDED'
+            AND updated_at >= NOW() - INTERVAL '1 DAY'
             """;
-        
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, 
+
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class,
             sellerId, buyerId, buyerId, sellerId);
-        
+
         return count != null && count >= MAX_DAILY_TRANSACTIONS_SAME_USER;
     }
     
@@ -102,19 +102,21 @@ public class ExperienceValidationService {
      */
     private boolean checkConsecutiveLowAmountPattern(Long buyerId, Long sellerId) {
         String sql = """
-            SELECT COUNT(*) FROM auctions 
-            WHERE ((seller_id = ? AND winner_id = ?) OR (seller_id = ? AND winner_id = ?))
-            AND status = 'COMPLETED'
-            AND final_price < ?
-            AND updated_at >= NOW() - INTERVAL 7 DAY
-            ORDER BY updated_at DESC
-            LIMIT ?
+            SELECT COUNT(*) FROM (
+                SELECT 1 FROM auctions
+                WHERE ((seller_id = ? AND winner_id = ?) OR (seller_id = ? AND winner_id = ?))
+                AND status = 'ENDED'
+                AND current_price < ?
+                AND updated_at >= NOW() - INTERVAL '7 DAYS'
+                ORDER BY updated_at DESC
+                LIMIT ?
+            ) AS subquery
             """;
-        
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, 
-            sellerId, buyerId, buyerId, sellerId, 
+
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class,
+            sellerId, buyerId, buyerId, sellerId,
             SUSPICIOUS_LOW_AMOUNT, MAX_CONSECUTIVE_LOW_AMOUNT);
-        
+
         return count != null && count >= MAX_CONSECUTIVE_LOW_AMOUNT;
     }
     
@@ -123,15 +125,15 @@ public class ExperienceValidationService {
      */
     private int getRecentTransactionCount(Long buyerId, Long sellerId) {
         String sql = """
-            SELECT COUNT(*) FROM auctions 
+            SELECT COUNT(*) FROM auctions
             WHERE ((seller_id = ? AND winner_id = ?) OR (seller_id = ? AND winner_id = ?))
-            AND status = 'COMPLETED'
-            AND updated_at >= NOW() - INTERVAL 30 DAY
+            AND status = 'ENDED'
+            AND updated_at >= NOW() - INTERVAL '30 DAYS'
             """;
-        
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, 
+
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class,
             sellerId, buyerId, buyerId, sellerId);
-        
+
         return count != null ? count : 0;
     }
     

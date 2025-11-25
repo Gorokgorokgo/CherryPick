@@ -40,4 +40,11 @@ public class UserAccount extends BaseEntity {
     @Builder.Default
     @Column(name = "is_primary", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean isPrimary = false;
+
+    /**
+     * 계좌 삭제 가능 여부 확인
+     */
+    public boolean canDelete() {
+        return !this.isPrimary;
+    }
 }

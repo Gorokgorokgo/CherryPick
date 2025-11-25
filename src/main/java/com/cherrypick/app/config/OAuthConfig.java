@@ -22,8 +22,8 @@ public class OAuthConfig {
     private String googleRedirectUri;
 
     // Kakao OAuth 설정
-    @Value("${KAKAO_CLIENT_ID}")
-    private String kakaoClientId;
+    @Value("${KAKAO_REST_API_KEY}")
+    private String kakaoRestApiKey;
     
     @Value("${KAKAO_CLIENT_SECRET}")
     private String kakaoClientSecret;

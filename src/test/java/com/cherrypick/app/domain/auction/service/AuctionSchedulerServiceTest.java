@@ -190,11 +190,12 @@ class AuctionSchedulerServiceTest {
             this, seller.getId(), auction.getId(), auction.getTitle(), highestBid
         ));
 
-        // Then: 경매 상태 검증
+        // Then: 경매 상태 검증 (Reserve Price 미달 = 유찰 = NO_RESERVE_MET)
         Auction endedAuction = auctionRepository.findById(auction.getId()).orElseThrow();
-        assertThat(endedAuction.getStatus()).isEqualTo(AuctionStatus.ENDED);
+        assertThat(endedAuction.getStatus()).isEqualTo(AuctionStatus.NO_RESERVE_MET);
         assertThat(endedAuction.getWinner()).isNull();
-        assertThat(endedAuction.getCurrentPrice()).isEqualByComparingTo(BigDecimal.ZERO);
+        // 유찰 시 currentPrice는 마지막 입찰가를 유지 (reservePrice를 유지)
+        assertThat(endedAuction.getCurrentPrice()).isEqualByComparingTo(new BigDecimal("30000"));
 
         // Then: 유찰 알림 이벤트 검증
         long notSoldEventCount = applicationEvents.stream(AuctionNotSoldNotificationEvent.class).count();
@@ -233,9 +234,9 @@ class AuctionSchedulerServiceTest {
             this, seller.getId(), auction.getId(), auction.getTitle(), null
         ));
 
-        // Then: 경매 상태 검증
+        // Then: 경매 상태 검증 (입찰 없음 = 유찰 = NO_RESERVE_MET)
         Auction endedAuction = auctionRepository.findById(auction.getId()).orElseThrow();
-        assertThat(endedAuction.getStatus()).isEqualTo(AuctionStatus.ENDED);
+        assertThat(endedAuction.getStatus()).isEqualTo(AuctionStatus.NO_RESERVE_MET);
         assertThat(endedAuction.getWinner()).isNull();
 
         // Then: 유찰 알림 이벤트 검증

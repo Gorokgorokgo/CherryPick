@@ -6,19 +6,28 @@ import lombok.Data;
 @Data
 @Schema(description = "인증 응답")
 public class AuthResponse {
-    
+
     @Schema(description = "JWT 인증 토큰", example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
     private String token;
-    
+
     @Schema(description = "사용자 ID", example = "1")
     private Long userId;
-    
+
     @Schema(description = "전화번호", example = "010-1234-5678")
     private String phoneNumber;
-    
+
     @Schema(description = "사용자 닉네임", example = "체리픽유저")
     private String nickname;
-    
+
+    @Schema(description = "프로필 이미지 URL", example = "https://s3.amazonaws.com/...")
+    private String profileImageUrl;
+
+    @Schema(description = "거래 지역", example = "서울시 강남구")
+    private String address;
+
+    @Schema(description = "자기소개", example = "안녕하세요!")
+    private String bio;
+
     @Schema(description = "응답 메시지", example = "로그인 성공")
     private String message;
     
@@ -29,12 +38,24 @@ public class AuthResponse {
         this.nickname = nickname;
         this.message = "로그인 성공";
     }
-    
+
     public AuthResponse(String token, Long userId, String phoneNumber, String nickname, String message) {
         this.token = token;
         this.userId = userId;
         this.phoneNumber = phoneNumber;
         this.nickname = nickname;
+        this.message = message;
+    }
+
+    public AuthResponse(String token, Long userId, String phoneNumber, String nickname,
+                       String profileImageUrl, String address, String bio, String message) {
+        this.token = token;
+        this.userId = userId;
+        this.phoneNumber = phoneNumber;
+        this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
+        this.address = address;
+        this.bio = bio;
         this.message = message;
     }
     

@@ -249,6 +249,17 @@ public class GlobalExceptionHandler {
         ErrorResponse response = ErrorResponse.of(ErrorCode.CONCURRENCY_CONFLICT, request.getRequestURI());
         return ResponseEntity.status(ErrorCode.CONCURRENCY_CONFLICT.getHttpStatus()).body(response);
     }
+
+    /**
+     * 위치 서비스 관련 예외 처리
+     */
+    @ExceptionHandler(LocationException.class)
+    protected ResponseEntity<ErrorResponse> handleLocationException(LocationException e, HttpServletRequest request) {
+        log.error("Location service error at {}: {}", request.getRequestURI(), e.getMessage());
+        // INTERNAL_SERVER_ERROR를 사용하되 메시지는 예외 메시지 사용
+        ErrorResponse response = ErrorResponse.of(ErrorCode.INTERNAL_SERVER_ERROR, request.getRequestURI(), e.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+    }
     
     /**
      * 기타 모든 예외 처리 (보안상 상세 정보 노출 방지)

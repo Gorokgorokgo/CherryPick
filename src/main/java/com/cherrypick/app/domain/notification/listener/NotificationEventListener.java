@@ -127,6 +127,7 @@ public class NotificationEventListener {
      * 알림 이벤트 공통 처리 로직
      */
     private void processNotificationEvent(NotificationEvent event) {
+        log.info("🔔 [알림 처리 시작] 이벤트: {}, 사용자 ID: {}", event.getClass().getSimpleName(), event.getTargetUserId());
         try {
             // 사용자 조회
             User user = userRepository.findById(event.getTargetUserId())
@@ -137,7 +138,10 @@ public class NotificationEventListener {
             NotificationSetting setting = getOrCreateNotificationSetting(user);
             boolean isEnabled = isNotificationEnabled(setting, event.getNotificationType());
 
+            log.info("  - 알림 타입: {}, 설정 활성화 여부: {}", event.getNotificationType(), isEnabled);
+
             if (!isEnabled) {
+                log.info("  - ⏩ [알림 건너뜀] 사용자 설정이 비활성화되어 있습니다.");
                 return;
             }
 
@@ -161,15 +165,17 @@ public class NotificationEventListener {
                         event.getMessage(), event.getResourceId());
             }
             notificationHistoryRepository.save(notification);
+            log.info("  - 💾 [알림 저장 완료] ID: {}", notification.getId());
 
             // FCM 푸시 알림 발송 (모의)
             sendFcmNotification(setting.getFcmToken(), event.getTitle(), event.getMessage(), notification);
 
             // WebSocket 실시간 알림 발송
             sendWebSocketNotification(user.getId(), event);
+            log.info("  - 🚀 [알림 발송 완료] 사용자 ID: {}", user.getId());
 
         } catch (Exception e) {
-            log.error("알림 이벤트 처리 중 오류 발생. event: {}, error: {}",
+            log.error("  - ❌ [알림 처리 오류] 이벤트: {}, 오류: {}",
                     event.getClass().getSimpleName(), e.getMessage(), e);
         }
     }
@@ -183,7 +189,7 @@ public class NotificationEventListener {
             case AUCTION_WON -> setting.getWinningNotification(); // 구매자용 낙찰 알림
             case AUCTION_SOLD -> setting.getBidNotification(); // 판매자용 낙찰 알림 (입찰 관련 알림으로 처리)
             case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림 (판매자용)
-            case AUCTION_NOT_SOLD_HIGHEST_BIDDER -> setting.getBidNotification(); // 유찰 알림 (최고 입찰자용)
+            case AUCTION_NOT_SOLD_HIGHEST_BIDDER -> setting.getWinningNotification(); // 유찰 알림 (최고 입찰자용)
             case AUCTION_ENDED -> setting.getBidNotification(); // 경매 종료 알림 (일반 참여자)
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();
@@ -226,6 +232,22 @@ public class NotificationEventListener {
                 chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
             }
 
+            // 유찰 알림의 경우 추가 정보 포함
+            Boolean hasHighestBidder = null;
+            Long winnerId = null;
+            String winnerNickname = null;
+
+            if (event instanceof AuctionNotSoldNotificationEvent) {
+                AuctionNotSoldNotificationEvent notSoldEvent = (AuctionNotSoldNotificationEvent) event;
+                if (notSoldEvent.getHighestBid() != null) {
+                    hasHighestBidder = true;
+                    winnerId = notSoldEvent.getHighestBid().getBidder().getId();
+                    winnerNickname = notSoldEvent.getHighestBid().getBidder().getNickname();
+                } else {
+                    hasHighestBidder = false;
+                }
+            }
+
             // 프론트엔드 NotificationMessage 형식에 맞춰 JSON 메시지 생성
             NotificationWebSocketMessage wsNotification = NotificationWebSocketMessage.builder()
                     .id(String.valueOf(System.currentTimeMillis())) // 임시 ID (실제로는 NotificationHistory의 ID 사용 가능)
@@ -236,6 +258,9 @@ public class NotificationEventListener {
                     .isRead(false)
                     .resourceId(event.getResourceId())
                     .chatRoomId(chatRoomId)
+                    .hasHighestBidder(hasHighestBidder)
+                    .winnerId(winnerId)
+                    .winnerNickname(winnerNickname)
                     .build();
 
             webSocketMessagingService.sendNotificationToUser(userId, wsNotification);
@@ -261,6 +286,9 @@ public class NotificationEventListener {
         private boolean isRead;
         private Long resourceId;
         private Long chatRoomId;
+        private Boolean hasHighestBidder;
+        private Long winnerId;
+        private String winnerNickname;
     }
 
     /**

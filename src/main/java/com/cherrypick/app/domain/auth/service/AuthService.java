@@ -73,18 +73,18 @@ public class AuthService {
             return new AuthResponse("전화번호 인증이 필요합니다.");
         }
 
-        // 중복 확인
-        if (authRepository.findByPhoneNumber(request.getPhoneNumber()).isPresent()) {
+        // 중복 확인 (탈퇴하지 않은 사용자 기준)
+        if (authRepository.findByPhoneNumberAndNotDeleted(request.getPhoneNumber()).isPresent()) {
             return new AuthResponse("이미 가입된 전화번호입니다.");
         }
-        if (authRepository.findByEmail(request.getEmail()).isPresent()) {
+        if (authRepository.findByEmailAndNotDeleted(request.getEmail()).isPresent()) {
             return new AuthResponse("이미 가입된 이메일입니다.");
         }
-        if (authRepository.findByNickname(request.getNickname()).isPresent()) {
+        if (authRepository.findByNicknameAndNotDeleted(request.getNickname()).isPresent()) {
             return new AuthResponse("이미 사용 중인 닉네임입니다.");
         }
 
-        // 사용자 생성 (비밀번호 암호화 + 추가 프로필 정보)
+        // 사용자 생성 (비밀번호 암호화 + 번개장터 스타일 프로필)
         User.UserBuilder userBuilder = User.builder()
                 .phoneNumber(request.getPhoneNumber())
                 .nickname(request.getNickname())
@@ -96,30 +96,13 @@ public class AuthService {
                 .sellerLevel(1)
                 .sellerExp(0);
 
-        // 선택 프로필 정보 설정
-        if (request.getRealName() != null && !request.getRealName().trim().isEmpty()) {
-            userBuilder.realName(request.getRealName().trim());
-        }
-        if (request.getBirthDate() != null) {
-            userBuilder.birthDate(request.getBirthDate());
-        }
-        if (request.getGender() != null) {
-            userBuilder.gender(request.getGender());
-        }
+        // 선택 프로필 정보 설정 (번개장터 스타일 - 거래 지역, 자기소개만)
         if (request.getAddress() != null && !request.getAddress().trim().isEmpty()) {
             userBuilder.address(request.getAddress().trim());
-        }
-        if (request.getZipCode() != null && !request.getZipCode().trim().isEmpty()) {
-            userBuilder.zipCode(request.getZipCode().trim());
         }
         if (request.getBio() != null && !request.getBio().trim().isEmpty()) {
             userBuilder.bio(request.getBio().trim());
         }
-
-        // 프로필 공개 설정 (기본값 적용)
-        userBuilder.isProfilePublic(request.getIsProfilePublic() != null ? request.getIsProfilePublic() : true);
-        userBuilder.isRealNamePublic(request.getIsRealNamePublic() != null ? request.getIsRealNamePublic() : false);
-        userBuilder.isBirthDatePublic(request.getIsBirthDatePublic() != null ? request.getIsBirthDatePublic() : false);
 
         User user = userBuilder.build();
 
@@ -133,14 +116,23 @@ public class AuthService {
 
         log.info("회원가입 완료 - 사용자: {} ({})", savedUser.getNickname(), savedUser.getEmail());
 
-        return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname(), "회원가입 성공");
+        return new AuthResponse(
+            token,
+            savedUser.getId(),
+            savedUser.getEmail(),
+            savedUser.getNickname(),
+            savedUser.getProfileImageUrl(),
+            savedUser.getAddress(),
+            savedUser.getBio(),
+            "회원가입 성공"
+        );
     }
 
     public AuthResponse login(LoginRequest request) {
-        // 사용자 조회
-        Optional<User> userOpt = authRepository.findByEmail(request.getEmail());
+        // 사용자 조회 (탈퇴하지 않은 사용자만)
+        Optional<User> userOpt = authRepository.findByEmailAndNotDeleted(request.getEmail());
         if (userOpt.isEmpty()) {
-            return new AuthResponse("가입되지 않은 이메일입니다.");
+            return new AuthResponse("가입되지 않은 이메일이거나 탈퇴한 계정입니다.");
         }
 
         User user = userOpt.get();
@@ -152,17 +144,26 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
-        
+
         log.info("로그인 성공 - 사용자: {} ({})", user.getNickname(), user.getEmail());
 
-        return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
+        return new AuthResponse(
+            token,
+            user.getId(),
+            user.getEmail(),
+            user.getNickname(),
+            user.getProfileImageUrl(),
+            user.getAddress(),
+            user.getBio(),
+            "로그인 성공"
+        );
     }
 
     public AuthResponse phoneLogin(PhoneLoginRequest request) {
-        // 등록된 사용자 확인
-        Optional<User> userOpt = authRepository.findByPhoneNumber(request.getPhoneNumber());
+        // 등록된 사용자 확인 (탈퇴하지 않은 사용자만)
+        Optional<User> userOpt = authRepository.findByPhoneNumberAndNotDeleted(request.getPhoneNumber());
         if (userOpt.isEmpty()) {
-            return new AuthResponse("가입되지 않은 전화번호입니다.");
+            return new AuthResponse("가입되지 않은 전화번호이거나 탈퇴한 계정입니다.");
         }
 
         User user = userOpt.get();
@@ -177,10 +178,19 @@ public class AuthService {
 
         // JWT 토큰 생성
         String token = jwtConfig.generateToken(user.getEmail(), user.getId());
-        
+
         log.info("전화번호 로그인 성공 - 사용자: {} ({})", user.getNickname(), user.getPhoneNumber());
 
-        return new AuthResponse(token, user.getId(), user.getPhoneNumber(), user.getNickname());
+        return new AuthResponse(
+            token,
+            user.getId(),
+            user.getPhoneNumber(),
+            user.getNickname(),
+            user.getProfileImageUrl(),
+            user.getAddress(),
+            user.getBio(),
+            "로그인 성공"
+        );
     }
 
     private boolean verifyCode(String phoneNumber, String code) {
@@ -210,8 +220,8 @@ public class AuthService {
                 return new AuthResponse("닉네임은 한글, 영문, 숫자, _, - 조합만 가능합니다.");
             }
 
-            // 중복 확인
-            if (authRepository.findByNickname(trimmedNickname).isPresent()) {
+            // 중복 확인 (탈퇴하지 않은 사용자 기준)
+            if (authRepository.findByNicknameAndNotDeleted(trimmedNickname).isPresent()) {
                 return new AuthResponse("이미 사용 중인 닉네임입니다.");
             }
 
@@ -239,8 +249,8 @@ public class AuthService {
                 return new AuthResponse("올바른 이메일 형식이 아닙니다.");
             }
 
-            // 중복 확인
-            if (authRepository.findByEmail(trimmedEmail).isPresent()) {
+            // 중복 확인 (탈퇴하지 않은 사용자 기준)
+            if (authRepository.findByEmailAndNotDeleted(trimmedEmail).isPresent()) {
                 return new AuthResponse("이미 가입된 이메일입니다.");
             }
 
@@ -249,5 +259,46 @@ public class AuthService {
             System.err.println("이메일 중복 검사 오류: " + e.getMessage());
             return new AuthResponse("이메일 검사 중 오류가 발생했습니다.");
         }
+    }
+    /**
+     * 회원 탈퇴 (Soft Delete)
+     *
+     * 실제 데이터를 삭제하지 않고 deletedAt 필드를 설정하여
+     * 탈퇴 처리합니다. 이를 통해 회원 복구가 가능합니다.
+     */
+    public void deleteAccount(Long userId) {
+        User user = authRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        // 이미 탈퇴한 사용자인지 확인
+        if (user.isDeleted()) {
+            throw new RuntimeException("이미 탈퇴한 사용자입니다.");
+        }
+
+        // Soft Delete 처리
+        user.softDelete();
+        authRepository.save(user);
+
+        log.info("회원 탈퇴 완료 (Soft Delete) - 사용자 ID: {}, 닉네임: {}, 탈퇴 시각: {}",
+                 userId, user.getNickname(), user.getDeletedAt());
+    }
+
+    /**
+     * 회원 복구 (관리자용)
+     *
+     * 탈퇴한 사용자를 복구합니다.
+     */
+    public void restoreAccount(Long userId) {
+        User user = authRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        if (!user.isDeleted()) {
+            throw new RuntimeException("탈퇴하지 않은 사용자입니다.");
+        }
+
+        user.restore();
+        authRepository.save(user);
+
+        log.info("회원 복구 완료 - 사용자 ID: {}, 닉네임: {}", userId, user.getNickname());
     }
 }

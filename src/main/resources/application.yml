@@ -77,6 +77,11 @@ ncp:
     access-key: ${NCP_ACCESS_KEY_ID}
     secret-key: ${NCP_SECRET_ACCESS_KEY}
 
+# Kakao API 설정
+kakao:
+  api:
+    key: ${KAKAO_REST_API_KEY:}  # 카카오 REST API 키 (환경변수에서 로드)
+
 # 비즈니스 설정
 business:
   commission:
@@ -99,4 +104,6 @@ migration:
 logging:
   level:
     com.cherrypick: DEBUG
-    org.springframework.web: DEBUG
+    org.springframework.web: INFO
+    org.springframework.web.socket: WARN
+    org.apache.tomcat.websocket: WARN

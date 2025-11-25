@@ -2,7 +2,6 @@ package com.cherrypick.app.domain.auction.service;
 
 import com.cherrypick.app.config.BusinessConfig;
 import com.cherrypick.app.domain.auction.entity.Auction;
-import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
@@ -14,9 +13,11 @@ import com.cherrypick.app.domain.notification.event.AuctionWonNotificationEvent;
 import com.cherrypick.app.domain.notification.event.AuctionEndedForParticipantEvent;
 import com.cherrypick.app.domain.notification.event.AuctionNotSoldForHighestBidderEvent;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
-import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.chat.service.ChatService;
 import com.cherrypick.app.domain.chat.entity.ChatRoom;
+import com.cherrypick.app.domain.transaction.service.TransactionService;
+import com.cherrypick.app.domain.user.service.ExperienceService;
+import com.cherrypick.app.domain.user.dto.response.ExperienceGainResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -47,6 +48,8 @@ public class AuctionSchedulerService {
     private final BusinessConfig businessConfig;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ChatService chatService;
+    private final TransactionService transactionService;
+    private final ExperienceService experienceService;
     
     /**
      * 경매 종료 처리 스케줄러
@@ -115,7 +118,24 @@ public class AuctionSchedulerService {
         auction.endAuction(winningBid.getBidder(), finalPrice);
         auctionRepository.save(auction);
 
-        // 2. 연결 서비스 자동 생성 (PENDING 상태)
+        // 2. Transaction 자동 생성 (PENDING 상태)
+        try {
+            transactionService.createTransactionFromAuction(auction, winningBid);
+            log.info("경매 {} Transaction 생성 완료", auction.getId());
+        } catch (Exception e) {
+            log.error("경매 {} Transaction 생성 실패", auction.getId(), e);
+        }
+
+        // 2.5. 낙찰 성공 경험치 지급
+        ExperienceGainResponse experienceGain = null;
+        try {
+            experienceGain = experienceService.awardAuctionWinExperience(winningBid.getBidder().getId(), auction);
+            log.info("경매 {} 낙찰 경험치 지급 완료: {} EXP", auction.getId(), experienceGain.getExpGained());
+        } catch (Exception e) {
+            log.error("경매 {} 낙찰 경험치 지급 실패", auction.getId(), e);
+        }
+
+        // 3. 연결 서비스 자동 생성 (PENDING 상태)
         try {
             ConnectionResponse connectionResponse = connectionService.createConnection(
                 auction.getId(), winningBid.getBidder().getId()
@@ -125,7 +145,7 @@ public class AuctionSchedulerService {
             log.error("경매 {} 연결 서비스 생성 실패", auction.getId(), e);
         }
 
-        // 2-1. 채팅방 자동 생성 (낙찰 시 판매자-낙찰자 채팅방)
+        // 4. 채팅방 자동 생성 (낙찰 시 판매자-낙찰자 채팅방)
         ChatRoom chatRoom = null;
         try {
             chatRoom = chatService.createAuctionChatRoom(
@@ -157,16 +177,17 @@ public class AuctionSchedulerService {
         Long chatRoomId = chatRoom != null ? chatRoom.getId() : null;
 
         applicationEventPublisher.publishEvent(new AuctionWonNotificationEvent(
-            this,
-            winningBid.getBidder().getId(),
-            auction.getId(),
-            auction.getTitle(),
-            finalPrice.longValue(),
-            sellerNickname,
-            chatRoomId  // 생성된 채팅방 ID 포함
+            this,                              // source
+            winningBid.getBidder().getId(),    // buyerId
+            auction.getId(),                   // auctionId
+            auction.getTitle(),                // auctionTitle
+            finalPrice.longValue(),            // finalPrice
+            sellerNickname,                    // sellerNickname
+            chatRoomId,                        // chatRoomId
+            experienceGain                     // experienceGain
         ));
 
-        // 5. 판매자 낙찰 알림 이벤트 발행 (채팅방 ID 포함)
+        // 5. 판매자에게 낙찰 알림 발행
         applicationEventPublisher.publishEvent(new AuctionSoldNotificationEvent(
             this,
             auction.getSeller().getId(),
@@ -196,12 +217,28 @@ public class AuctionSchedulerService {
         // 최고 입찰 조회 (유찰이지만 입찰자가 있을 수 있음)
         Optional<Bid> highestBidOpt = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auction.getId());
 
-        // 실시간 유찰 알림 전송
-        webSocketMessagingService.notifyAuctionEnded(
-            auction.getId(),
-            BigDecimal.ZERO,
-            "유찰"
-        );
+        // 실시간 유찰 알림 전송 (WebSocket) - 판매자에게 상세 정보 전달
+        if (highestBidOpt.isPresent()) {
+            Bid highestBid = highestBidOpt.get();
+            webSocketMessagingService.notifyAuctionNotSold(
+                auction.getId(),
+                (int) bidRepository.countByAuctionId(auction.getId()),
+                true, // hasHighestBidder
+                highestBid.getBidder().getId(),
+                highestBid.getBidder().getNickname(),
+                auction.getReservePrice() == null // isNoReserve
+            );
+        } else {
+            // 입찰자가 없는 경우
+            webSocketMessagingService.notifyAuctionNotSold(
+                auction.getId(),
+                0, // bidCount
+                false, // hasHighestBidder
+                null, // winnerId
+                null, // winnerNickname
+                auction.getReservePrice() == null // isNoReserve
+            );
+        }
 
         // 유찰 알림 이벤트 발행 (판매자에게)
         applicationEventPublisher.publishEvent(new AuctionNotSoldNotificationEvent(

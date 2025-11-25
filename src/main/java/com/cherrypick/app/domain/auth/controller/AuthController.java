@@ -267,4 +267,29 @@ public class AuthController {
         AuthResponse response = new AuthResponse("로그아웃이 완료되었습니다");
         return ResponseEntity.ok(response);
     }
+    @DeleteMapping("/delete-account")
+    @Operation(summary = "회원 탈퇴",
+               description = """
+                   현재 사용자의 계정을 삭제합니다.
+                   
+                   **주의사항:**
+                   - 삭제된 계정은 복구할 수 없습니다.
+                   - 모든 사용자 데이터가 영구적으로 삭제됩니다.
+                   
+                   **응답 예시:**
+                   ```json
+                   {
+                     "message": "계정이 성공적으로 삭제되었습니다"
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "회원 탈퇴 성공"),
+            @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없음")
+    })
+    public ResponseEntity<AuthResponse> deleteAccount(@RequestHeader("User-Id") Long userId) {
+        authService.deleteAccount(userId);
+        AuthResponse response = new AuthResponse("계정이 성공적으로 삭제되었습니다");
+        return ResponseEntity.ok(response);
+    }
 }

@@ -47,6 +47,10 @@ public class AuctionResponse {
     // 판매자 정보
     private Long sellerId;
     private String sellerNickname;
+    private String sellerProfileImageUrl;
+    private Integer sellerLevel;
+    private Integer sellerReviewCount; // 총 후기 수 (good + normal + bad)
+    private String sellerVerifiedRegion; // 판매자 GPS 인증 주소 (예: "서울특별시 강남구 역삼1동")
     
     // 이미지 목록
     private List<String> imageUrls;
@@ -62,6 +66,12 @@ public class AuctionResponse {
     // 북마크 정보 (전역/사용자)
     private Long bookmarkCount; // 전체 찜 수
     private boolean isBookmarked; // 현재 사용자 기준 찜 여부
+
+    // GPS 위치 정보
+    private Double latitude; // 경매 위치 위도
+    private Double longitude; // 경매 위치 경도
+    private String preferredLocation; // 거래 희망 장소
+    private Double distanceKm; // 사용자 위치로부터의 거리 (km) - GPS 검색 시에만 포함
 
     // 서버 시간 (클라이언트 시계 보정용)
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
@@ -92,6 +102,15 @@ public class AuctionResponse {
         // 판매자 정보
         response.setSellerId(auction.getSeller().getId());
         response.setSellerNickname(auction.getSeller().getNickname());
+        response.setSellerProfileImageUrl(auction.getSeller().getProfileImageUrl());
+        response.setSellerLevel(auction.getSeller().getSellerLevel());
+        response.setSellerVerifiedRegion(auction.getSellerVerifiedRegionAtCreation());
+
+        // 판매자 총 후기 수 계산
+        int totalReviews = (auction.getSeller().getSellerReviewGood() != null ? auction.getSeller().getSellerReviewGood() : 0)
+                + (auction.getSeller().getSellerReviewNormal() != null ? auction.getSeller().getSellerReviewNormal() : 0)
+                + (auction.getSeller().getSellerReviewBad() != null ? auction.getSeller().getSellerReviewBad() : 0);
+        response.setSellerReviewCount(totalReviews);
         
         // 이미지 URL 목록
         response.setImageUrls(images.stream()
@@ -115,6 +134,13 @@ public class AuctionResponse {
         // 북마크 필드는 컨트롤러/서비스에서 채워짐 (기본값)
         response.setBookmarkCount(null);
         response.setBookmarked(false);
+
+        // GPS 위치 정보
+        response.setLatitude(auction.getLatitude());
+        response.setLongitude(auction.getLongitude());
+        response.setPreferredLocation(auction.getPreferredLocation());
+        // distanceKm는 서비스/컨트롤러에서 계산하여 설정 (기본값 null)
+        response.setDistanceKm(null);
 
         // 서버 시간 설정 (클라이언트 시계 보정용)
         response.setServerTime(LocalDateTime.now(java.time.ZoneOffset.UTC));

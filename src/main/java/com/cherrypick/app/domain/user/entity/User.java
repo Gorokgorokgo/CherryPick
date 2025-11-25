@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "users")
@@ -21,9 +22,9 @@ public class User extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Pattern(regexp = "^010[0-9]{8}$", message = "올바른 전화번호 형식이 아닙니다.")
+    @Pattern(regexp = "^010[0-9]{8}$|^$", message = "올바른 전화번호 형식이 아닙니다.")
     @Column(unique = true)
-    private String phoneNumber;
+    private String phoneNumber; // OAuth 사용자는 null 또는 빈 문자열 가능
 
     @NotBlank
     @Column(nullable = false, length = 20)
@@ -57,6 +58,31 @@ public class User extends BaseEntity {
     @Column(name = "seller_exp", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
     private Integer sellerExp = 0;
 
+    // 판매자 후기 통계
+    @Builder.Default
+    @Column(name = "seller_review_good", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer sellerReviewGood = 0;
+
+    @Builder.Default
+    @Column(name = "seller_review_normal", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer sellerReviewNormal = 0;
+
+    @Builder.Default
+    @Column(name = "seller_review_bad", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer sellerReviewBad = 0;
+
+    // 구매자 후기 통계
+    @Builder.Default
+    @Column(name = "buyer_review_good", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer buyerReviewGood = 0;
+
+    @Builder.Default
+    @Column(name = "buyer_review_normal", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer buyerReviewNormal = 0;
+
+    @Builder.Default
+    @Column(name = "buyer_review_bad", nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer buyerReviewBad = 0;
 
     // 프로필 이미지
     @Column(length = 500)
@@ -81,6 +107,19 @@ public class User extends BaseEntity {
 
     @Column(length = 500)
     private String bio; // 자기소개
+
+    // GPS 위치 정보
+    @Column(name = "latitude")
+    private Double latitude; // 위도
+
+    @Column(name = "longitude")
+    private Double longitude; // 경도
+
+    @Column(name = "location_updated_at")
+    private LocalDateTime locationUpdatedAt; // 위치 업데이트 시각
+
+    @Column(name = "verified_region", length = 100)
+    private String verifiedRegion; // 인증된 행정동명 (예: "서울시 강남구 역삼1동")
 
     // 프로필 공개 설정
     @Builder.Default
@@ -108,6 +147,33 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'USER'")
     private Role role = Role.USER;
+
+    // Soft Delete (회원 탈퇴)
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    /**
+     * 회원 탈퇴 처리 (Soft Delete)
+     */
+    public void softDelete() {
+        this.deletedAt = LocalDateTime.now();
+        this.enabled = false;
+    }
+
+    /**
+     * 탈퇴 여부 확인
+     */
+    public boolean isDeleted() {
+        return this.deletedAt != null;
+    }
+
+    /**
+     * 회원 복구
+     */
+    public void restore() {
+        this.deletedAt = null;
+        this.enabled = true;
+    }
 
     // 역할 및 권한 메서드
     public boolean hasRole(String roleName) {

@@ -43,11 +43,12 @@ public class WebSocketMessagingService {
         }
         
         String destination = "/topic/auctions/" + auctionId;
-        
+
         try {
             webSocketHandler.sendToAuctionSubscribers(destination, message);
+            log.info("✅ [DEBUG] Broadcast successful");
         } catch (Exception e) {
-            // 메시지 전송 실패 무시
+            log.error("❌ [DEBUG] Broadcast failed: {}", e.getMessage(), e);
         }
     }
     
@@ -144,6 +145,31 @@ public class WebSocketMessagingService {
     }
 
     /**
+     * 유찰 알림 (판매자용)
+     * @param auctionId 경매 ID
+     * @param bidCount 총 입찰 수
+     * @param hasHighestBidder 최고 입찰자 존재 여부
+     * @param winnerId 최고 입찰자 ID (없으면 null)
+     * @param winnerNickname 최고 입찰자 닉네임 (없으면 null)
+     * @param isNoReserve Reserve Price 미설정 여부
+     */
+    public void notifyAuctionNotSold(Long auctionId, Integer bidCount,
+                                    Boolean hasHighestBidder, Long winnerId,
+                                    String winnerNickname, Boolean isNoReserve) {
+        log.info("🔴 [DEBUG] notifyAuctionNotSold - auctionId: {}, bidCount: {}, hasHighestBidder: {}, winnerId: {}, winnerNickname: {}, isNoReserve: {}",
+                auctionId, bidCount, hasHighestBidder, winnerId, winnerNickname, isNoReserve);
+
+        AuctionUpdateMessage message = AuctionUpdateMessage.auctionNotSold(
+            auctionId, bidCount, hasHighestBidder, winnerId, winnerNickname, isNoReserve
+        );
+
+        log.info("🔴 [DEBUG] Created message - messageType: {}, hasHighestBidder: {}, winnerId: {}, winnerNickname: {}",
+                message.getMessageType(), message.getHasHighestBidder(), message.getWinnerId(), message.getWinnerNickname());
+
+        broadcastToAuction(auctionId, message);
+    }
+
+    /**
      * 입찰 참여자 수 변경시 실시간 알림
      */
     public void notifyBidCountUpdate(Long auctionId, Integer bidCount) {
@@ -173,18 +199,36 @@ public class WebSocketMessagingService {
             log.warn("잘못된 chatRoomId: {}", chatRoomId);
             return;
         }
-        
+
         if (message == null) {
             log.warn("메시지가 null입니다. chatRoomId: {}", chatRoomId);
             return;
         }
-        
+
         String destination = "/topic/chat/" + chatRoomId;
-        
+
+        // 프론트엔드가 기대하는 형식으로 래핑
+        var wrappedMessage = java.util.Map.of(
+            "messageType", "CHAT_MESSAGE",
+            "roomId", chatRoomId,
+            "messageId", message.getId(),
+            "senderId", message.getSenderId(),
+            "senderNickname", message.getSenderName(),
+            "content", message.getContent(),
+            "contentType", message.getMessageType().name(),
+            "timestamp", message.getCreatedAt() != null ? message.getCreatedAt().toString() : java.time.ZonedDateTime.now().toString(),
+            "isRead", message.isRead()
+        );
+
+        log.info("📤 WebSocket 메시지 래핑: destination={}, contentType={}, messageId={}",
+                destination, message.getMessageType().name(), message.getId());
+
         try {
-            webSocketHandler.sendToAuctionSubscribers(destination, message);
+            webSocketHandler.sendToAuctionSubscribers(destination, wrappedMessage);
+            log.info("✅ WebSocket 전송 완료: destination={}, messageId={}", destination, message.getId());
         } catch (Exception e) {
-            // 채팅 메시지 전송 실패 무시
+            log.error("❌ WebSocket 전송 실패: destination={}, messageId={}, error={}",
+                    destination, message.getId(), e.getMessage(), e);
         }
     }
     

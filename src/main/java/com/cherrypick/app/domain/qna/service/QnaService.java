@@ -151,8 +151,9 @@ public class QnaService {
             throw new BusinessException(ErrorCode.QNA_DELETE_RESTRICTED_NEAR_END);
         }
 
-        // 질문 삭제
-        questionRepository.delete(question);
+        // 질문 Soft Delete
+        question.softDelete(userId);
+        questionRepository.save(question);
     }
 
     /**
@@ -264,9 +265,10 @@ public class QnaService {
         // 질문에 답변 미완료 표시
         Question question = answer.getQuestion();
         question.markAsUnanswered();
-        
-        // 답변 삭제
-        answerRepository.delete(answer);
+
+        // 답변 Soft Delete
+        answer.softDelete(userId);
+        answerRepository.save(answer);
     }
 
     /**

@@ -13,6 +13,7 @@ import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.auction.repository.AuctionBookmarkRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.location.service.LocationService;
 import com.cherrypick.app.common.exception.BusinessException;
 import com.cherrypick.app.common.exception.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -21,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -38,9 +40,12 @@ import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.auction.dto.TopBidderResponse;
 import com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.transaction.service.TransactionService;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +66,9 @@ public class AuctionService {
     private final BidRepository bidRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final AuctionBookmarkRepository bookmarkRepository;
+    private final WebSocketMessagingService webSocketMessagingService;
+    private final TransactionService transactionService;
+    private final LocationService locationService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -110,6 +118,14 @@ public class AuctionService {
                 request.getProductCondition(),
                 request.getPurchaseDate()
         );
+
+        auction.setRegionRadiusKm(request.getRegionRadiusKm());
+
+        // 판매자의 위치 정보를 경매에 복사 (경매 생성 시점의 위치)
+        // TODO: 추후 경매 등록 시 별도 위치 지정 기능이 생기면 request에서 받아오도록 수정
+        if (seller.getLatitude() != null && seller.getLongitude() != null) {
+            auction.setLocation(seller.getLatitude(), seller.getLongitude());
+        }
         
         Auction savedAuction = auctionRepository.save(auction);
         
@@ -388,7 +404,7 @@ public class AuctionService {
      */
     public Page<AuctionResponse> searchByKeyword(String keyword, AuctionStatus status, Pageable pageable, Long userId) {
         if (keyword == null || keyword.trim().isEmpty()) {
-            return getAuctionsByStatus(status, pageable, userId);
+            return getAuctionsByStatus(status, null, null, null, null, null, pageable, userId);
         }
 
         Page<Auction> auctions = auctionRepository.searchByKeyword(keyword.trim(), status, pageable);
@@ -437,10 +453,74 @@ public class AuctionService {
     }
     
     /**
-     * 상태별 경매 조회 (기존 getActiveAuctions의 일반화)
+     * 상태별 경매 조회 (필터링 지원)
      */
-    public Page<AuctionResponse> getAuctionsByStatus(AuctionStatus status, Pageable pageable, Long userId) {
-        Page<Auction> auctions = auctionRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+    public Page<AuctionResponse> getAuctionsByStatus(
+            AuctionStatus status,
+            Category category,
+            String sortBy,
+            Integer radiusKm,
+            Double latitude,
+            Double longitude,
+            Pageable pageable,
+            Long userId) {
+
+        // 정렬 처리
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt"); // 기본: 최신순
+        if (sortBy != null) {
+            sort = switch (sortBy) {
+                case "CREATED_ASC" -> Sort.by(Sort.Direction.ASC, "createdAt");
+                case "CREATED_DESC" -> Sort.by(Sort.Direction.DESC, "createdAt");
+                case "PRICE_ASC" -> Sort.by(Sort.Direction.ASC, "currentPrice");
+                case "PRICE_DESC" -> Sort.by(Sort.Direction.DESC, "currentPrice");
+                default -> Sort.by(Sort.Direction.DESC, "createdAt");
+            };
+        }
+        Pageable sortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
+
+        Page<Auction> auctions;
+
+        // 카테고리 필터 여부에 따라 쿼리 선택
+        if (category != null) {
+            // 카테고리가 있으면 카테고리+상태로 조회 (Pageable의 정렬 적용)
+            auctions = auctionRepository.findByCategoryAndStatus(category, status, sortedPageable);
+        } else {
+            // 카테고리가 없으면 상태만으로 조회 (Pageable의 정렬 적용)
+            auctions = auctionRepository.findByStatus(status, sortedPageable);
+        }
+
+        // 반경 필터 적용 (프론트엔드에서 전달받은 GPS 위치 사용)
+        if (radiusKm != null && radiusKm > 0 && latitude != null && longitude != null) {
+            log.info("🔍 반경 필터 적용: radiusKm={}km, 사용자위치=[lat={}, lng={}]", radiusKm, latitude, longitude);
+
+            // 반경 내 경매만 필터링
+            List<Auction> filteredList = auctions.getContent().stream()
+                    .filter(auction -> {
+                        if (auction.getLatitude() == null || auction.getLongitude() == null) {
+                            log.warn("❌ 경매 ID={} GPS 좌표 없음 (lat={}, lng={})",
+                                    auction.getId(), auction.getLatitude(), auction.getLongitude());
+                            return false;
+                        }
+
+                        double distance = locationService.calculateDistance(
+                                latitude, longitude,
+                                auction.getLatitude(), auction.getLongitude());
+                        boolean withinRadius = distance <= radiusKm;
+
+                        log.info("📍 경매 ID={}, 제목='{}', 경매위치=[lat={}, lng={}], 계산거리={:.2f}km, 반경내={}",
+                                auction.getId(), auction.getTitle(),
+                                auction.getLatitude(), auction.getLongitude(),
+                                distance, withinRadius);
+
+                        return withinRadius;
+                    })
+                    .toList();
+
+            log.info("✅ 반경 필터 결과: 전체 {}개 → 필터링 후 {}개", auctions.getContent().size(), filteredList.size());
+            auctions = new PageImpl<>(filteredList, sortedPageable, filteredList.size());
+        } else {
+            log.info("⚠️ 반경 필터 미적용: radiusKm={}, latitude={}, longitude={}", radiusKm, latitude, longitude);
+        }
 
         return createAuctionResponsePage(auctions, userId);
     }
@@ -566,7 +646,6 @@ public class AuctionService {
         // 최고 입찰자를 낙찰자로 설정 (Reserve Price 확인)
         Optional<Bid> highestBid = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
 
-        boolean isSuccessfulAuction = false;
         if (highestBid.isPresent()) {
             BigDecimal highestBidAmount = highestBid.get().getBidAmount();
 
@@ -574,7 +653,6 @@ public class AuctionService {
             if (auction.isReservePriceMet(highestBidAmount)) {
                 // Reserve Price 충족 → 낙찰
                 auction.setWinner(highestBid.get().getBidder(), highestBidAmount);
-                isSuccessfulAuction = true;
             } else {
                 // Reserve Price 미달 → 유찰
                 log.info("경매 {} - Reserve Price 미달로 유찰 처리: 최고입찰가={}, Reserve Price={}",
@@ -589,8 +667,8 @@ public class AuctionService {
 
         Auction savedAuction = auctionRepository.save(auction);
 
-        // 낙찰자가 있으면 채팅방 자동 생성 및 알림 발송
-        if (isSuccessfulAuction && savedAuction.getWinner() != null) {
+        // 저장 후 실제 낙찰 여부 확인 (setWinner 내부에서 Reserve Price 재검증)
+        if (savedAuction.getWinner() != null && savedAuction.getStatus() == AuctionStatus.ENDED) {
             Long chatRoomId = null;
             try {
                 ChatRoom chatRoom = chatService.createAuctionChatRoom(
@@ -630,9 +708,40 @@ public class AuctionService {
             // 다른 참여자들에게 경매 종료 알림 발행 (낙찰자 제외)
             notifyAllParticipants(savedAuction, savedAuction.getWinner().getId(), finalPrice, true);
 
+            // Transaction 자동 생성 (PENDING 상태)
+            try {
+                transactionService.createTransactionFromAuction(savedAuction, highestBid.get());
+                log.info("경매 {} Transaction 생성 완료 - forceEndAuction", savedAuction.getId());
+            } catch (Exception e) {
+                log.error("경매 {} Transaction 생성 실패 - forceEndAuction", savedAuction.getId(), e);
+            }
+
         } else {
             // 유찰 처리 - 판매자에게만 유찰 알림
             log.info("경매 {} 유찰 처리 - forceEndAuction", savedAuction.getId());
+
+            // 실시간 유찰 알림 전송 (WebSocket) - 판매자에게 상세 정보 전달
+            if (highestBid.isPresent()) {
+                Bid highestBidEntity = highestBid.get();
+                webSocketMessagingService.notifyAuctionNotSold(
+                    savedAuction.getId(),
+                    (int) bidRepository.countByAuctionId(savedAuction.getId()),
+                    true, // hasHighestBidder
+                    highestBidEntity.getBidder().getId(),
+                    highestBidEntity.getBidder().getNickname(),
+                    savedAuction.getReservePrice() == null // isNoReserve
+                );
+            } else {
+                // 입찰자가 없는 경우
+                webSocketMessagingService.notifyAuctionNotSold(
+                    savedAuction.getId(),
+                    0, // bidCount
+                    false, // hasHighestBidder
+                    null, // winnerId
+                    null, // winnerNickname
+                    savedAuction.getReservePrice() == null // isNoReserve
+                );
+            }
 
             // 판매자용 유찰 알림
             applicationEventPublisher.publishEvent(new AuctionNotSoldNotificationEvent(
@@ -646,6 +755,16 @@ public class AuctionService {
             // 모든 참여자에게 경매 종료 알림 (유찰)
             if (highestBid.isPresent()) {
                 Bid highestBidEntity = highestBid.get();
+
+                // 최고 입���자에게 유찰 알림 이벤트 발행
+                applicationEventPublisher.publishEvent(new AuctionNotSoldForHighestBidderEvent(
+                    this,
+                    highestBidEntity.getBidder().getId(),
+                    savedAuction.getId(),
+                    savedAuction.getTitle(),
+                    highestBidEntity.getBidAmount().longValue()
+                ));
+
                 notifyAllParticipants(savedAuction, highestBidEntity.getBidder().getId(), 0L, false);
             }
         }
@@ -708,12 +827,30 @@ public class AuctionService {
         // 4. 요청 검증
         updateRequest.validate();
 
-        // 5. 제목과 설명만 수정 (eBay 정책)
+        // 5. 제목, 설명, 이미지 수정
         if (updateRequest.getTitle() != null && !updateRequest.getTitle().trim().isEmpty()) {
             auction.updateTitle(updateRequest.getTitle());
         }
         if (updateRequest.getDescription() != null && !updateRequest.getDescription().trim().isEmpty()) {
             auction.updateDescription(updateRequest.getDescription());
+        }
+
+        // 6. 이미지 수정 (imageUrls가 제공된 경우에만)
+        if (updateRequest.getImageUrls() != null) {
+            // 기존 이미지 삭제
+            auctionImageRepository.deleteByAuctionId(auctionId);
+
+            // 새 이미지 추가
+            List<AuctionImage> newImages = new ArrayList<>();
+            for (int i = 0; i < updateRequest.getImageUrls().size(); i++) {
+                AuctionImage image = AuctionImage.builder()
+                        .auction(auction)
+                        .imageUrl(updateRequest.getImageUrls().get(i))
+                        .sortOrder(i)
+                        .build();
+                newImages.add(image);
+            }
+            auctionImageRepository.saveAll(newImages);
         }
 
         Auction updatedAuction = auctionRepository.save(auction);
@@ -824,5 +961,157 @@ public class AuctionService {
                 chatRoomId
             )
         );
+    }
+
+    // ==================== GPS 위치 기반 검색 메서드 ====================
+
+    /**
+     * 내 주변 경매 검색 (복합 필터 지원)
+     *
+     * @param searchRequest 검색 조건 (latitude, longitude, maxDistanceKm, 기타 필터)
+     * @param pageable 페이징 정보
+     * @param userId 사용자 ID (북마크 정보 조회용)
+     * @return 거리 정보가 포함된 경매 목록
+     */
+    public Page<AuctionResponse> searchNearbyAuctions(AuctionSearchRequest searchRequest, Pageable pageable, Long userId) {
+        // 위치 정보 검증
+        if (searchRequest.getLatitude() == null || searchRequest.getLongitude() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "위도와 경도는 필수입니다.");
+        }
+
+        if (!locationService.isValidKoreanCoordinate(searchRequest.getLatitude(), searchRequest.getLongitude())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "유효하지 않은 좌표입니다. 대한민국 범위 내의 좌표를 입력해주세요.");
+        }
+
+        // 기본 거리 제한 (제공되지 않으면 10km)
+        Double maxDistanceKm = searchRequest.getMaxDistanceKm() != null ? searchRequest.getMaxDistanceKm() : 10.0;
+
+        // 정렬 조건 설정 (Native Query이므로 컬럼명/Alias 사용)
+        Sort sort;
+        if (searchRequest.getSortBy() != null) {
+            switch (searchRequest.getSortBy()) {
+                case PRICE_ASC -> sort = Sort.by("current_price").ascending();
+                case PRICE_DESC -> sort = Sort.by("current_price").descending();
+                case CREATED_DESC -> sort = Sort.by("created_at").descending();
+                case CREATED_ASC -> sort = Sort.by("created_at").ascending();
+                case ENDING_SOON -> sort = Sort.by("end_at").ascending();
+                case VIEW_COUNT_DESC -> sort = Sort.by("view_count").descending();
+                case BID_COUNT_DESC -> sort = Sort.by("bid_count").descending();
+                case DISTANCE_ASC -> sort = Sort.by("distance").ascending();
+                default -> sort = Sort.by("distance").ascending();
+            }
+        } else {
+            sort = Sort.by("distance").ascending();
+        }
+        
+        // 정렬이 적용된 Pageable 생성
+        Pageable sortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
+
+        // Repository를 통해 거리 기반 검색
+        Page<Auction> auctionPage = auctionRepository.searchNearbyAuctions(
+                searchRequest.getLatitude(),
+                searchRequest.getLongitude(),
+                maxDistanceKm,
+                searchRequest.getKeyword(),
+                searchRequest.getCategory() != null ? searchRequest.getCategory().name() : null,
+                searchRequest.getMinPrice(),
+                searchRequest.getMaxPrice(),
+                AuctionStatus.ACTIVE.name(),
+                sortedPageable
+        );
+
+        // AuctionResponse 변환 및 거리 계산
+        return auctionPage.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            AuctionResponse response = AuctionResponse.from(auction, images);
+
+            // 거리 계산 (Haversine)
+            if (auction.getLatitude() != null && auction.getLongitude() != null) {
+                double distance = locationService.calculateDistance(
+                        searchRequest.getLatitude(),
+                        searchRequest.getLongitude(),
+                        auction.getLatitude(),
+                        auction.getLongitude()
+                );
+                response.setDistanceKm(Math.round(distance * 10.0) / 10.0); // 소수점 1자리 반올림
+            }
+
+            // 북마크 정보 설정
+            if (userId != null) {
+                User user = userRepository.findById(userId).orElse(null);
+                if (user != null) {
+                    boolean isBookmarked = bookmarkRepository.existsByAuctionAndUser(auction, user);
+                    response.setBookmarked(isBookmarked);
+                }
+            }
+
+            return response;
+        });
+    }
+
+    /**
+     * 내 주변 경매 간단 검색 (필터 없음)
+     *
+     * @param latitude 사용자 위도
+     * @param longitude 사용자 경도
+     * @param radiusKm 검색 반경 (km)
+     * @param status 경매 상태
+     * @param pageable 페이징 정보
+     * @param userId 사용자 ID (북마크 정보 조회용)
+     * @return 거리 정보가 포함된 경매 목록
+     */
+    public Page<AuctionResponse> findNearbyAuctions(
+            Double latitude,
+            Double longitude,
+            Double radiusKm,
+            AuctionStatus status,
+            Pageable pageable,
+            Long userId) {
+
+        // 위치 정보 검증
+        if (latitude == null || longitude == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "위도와 경도는 필수입니다.");
+        }
+
+        if (!locationService.isValidKoreanCoordinate(latitude, longitude)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "유효하지 않은 좌표입니다. 대한민국 범위 내의 좌표를 입력해주세요.");
+        }
+
+        // Repository를 통해 거리 기반 검색
+        Page<Auction> auctionPage = auctionRepository.findNearbyAuctions(
+                latitude,
+                longitude,
+                radiusKm,
+                status.name(),
+                pageable
+        );
+
+        // AuctionResponse 변환 및 거리 계산
+        return auctionPage.map(auction -> {
+            List<AuctionImage> images = auctionImageRepository.findByAuctionIdOrderBySortOrder(auction.getId());
+            AuctionResponse response = AuctionResponse.from(auction, images);
+
+            // 거리 계산 (Haversine)
+            if (auction.getLatitude() != null && auction.getLongitude() != null) {
+                double distance = locationService.calculateDistance(
+                        latitude,
+                        longitude,
+                        auction.getLatitude(),
+                        auction.getLongitude()
+                );
+                response.setDistanceKm(Math.round(distance * 10.0) / 10.0); // 소수점 1자리 반올림
+            }
+
+            // 북마크 정보 설정
+            if (userId != null) {
+                User user = userRepository.findById(userId).orElse(null);
+                if (user != null) {
+                    boolean isBookmarked = bookmarkRepository.existsByAuctionAndUser(auction, user);
+                    response.setBookmarked(isBookmarked);
+                }
+            }
+
+            return response;
+        });
     }
 }
