@@ -38,9 +38,10 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       
-      # JWT Configuration  
+      # JWT Configuration
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRATION=${JWT_EXPIRATION:-86400000}
+      # 토큰 만료: 2주(14일) = 1209600000ms
+      - JWT_EXPIRATION=${JWT_EXPIRATION:-1209600000}
       
       # NCP Object Storage Configuration
       - NCP_OBJECT_STORAGE_ENDPOINT=${NCP_OBJECT_STORAGE_ENDPOINT:-https://kr.object.ncloudstorage.com}
