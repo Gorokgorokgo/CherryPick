@@ -1,15 +1,15 @@
 # OAuth 설정 (환경별 분리)
 oauth:
   google:
-    client-id: ${GOOGLE_CLIENT_ID:your-google-client-id}
+    client-id: ${GOOGLE_WEB_CLIENT_ID:${GOOGLE_CLIENT_ID:your-google-client-id}}
     client-secret: ${GOOGLE_CLIENT_SECRET:your-google-client-secret}
     redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:3000/auth/google/callback}
-    
+
   kakao:
     client-id: ${KAKAO_REST_API_KEY:your-kakao-rest-api-key}
     client-secret: ${KAKAO_CLIENT_SECRET:your-kakao-client-secret}
     redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/auth/kakao/callback}
-    
+
   naver:
     client-id: ${NAVER_CLIENT_ID:your-naver-client-id}
     client-secret: ${NAVER_CLIENT_SECRET:your-naver-client-secret}

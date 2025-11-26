@@ -1,6 +1,7 @@
 package com.cherrypick.app.domain.auth.controller;
 
 import com.cherrypick.app.domain.auth.service.AuthService;
+import com.cherrypick.app.domain.auth.service.OAuthAuthService;
 import com.cherrypick.app.domain.auth.dto.request.PhoneVerificationRequest;
 import com.cherrypick.app.domain.auth.dto.request.VerifyCodeRequest;
 import com.cherrypick.app.domain.auth.dto.request.SignupRequest;
@@ -8,7 +9,9 @@ import com.cherrypick.app.domain.auth.dto.request.LoginRequest;
 import com.cherrypick.app.domain.auth.dto.request.PhoneLoginRequest;
 import com.cherrypick.app.domain.auth.dto.request.NicknameCheckRequest;
 import com.cherrypick.app.domain.auth.dto.request.EmailCheckRequest;
+import com.cherrypick.app.domain.auth.dto.request.OAuthLoginRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
+import com.cherrypick.app.domain.auth.dto.response.OAuthLoginResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -24,9 +27,11 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final OAuthAuthService oauthAuthService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, OAuthAuthService oauthAuthService) {
         this.authService = authService;
+        this.oauthAuthService = oauthAuthService;
     }
 
     @PostMapping("/send-code")
@@ -271,11 +276,11 @@ public class AuthController {
     @Operation(summary = "회원 탈퇴",
                description = """
                    현재 사용자의 계정을 삭제합니다.
-                   
+
                    **주의사항:**
                    - 삭제된 계정은 복구할 수 없습니다.
                    - 모든 사용자 데이터가 영구적으로 삭제됩니다.
-                   
+
                    **응답 예시:**
                    ```json
                    {
@@ -291,5 +296,133 @@ public class AuthController {
         authService.deleteAccount(userId);
         AuthResponse response = new AuthResponse("계정이 성공적으로 삭제되었습니다");
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/google")
+    @Operation(summary = "Google OAuth 로그인",
+               description = """
+                   Google OAuth 액세스 토큰으로 로그인합니다.
+
+                   **사용 흐름:**
+                   1. 클라이언트에서 Google OAuth로 액세스 토큰 획득
+                   2. 획득한 액세스 토큰을 서버로 전송
+                   3. 서버에서 사용자 정보 검증 및 JWT 토큰 발급
+
+                   **특징:**
+                   - 기존 사용자: 자동 로그인
+                   - 신규 사용자: 자동 회원가입 후 로그인
+                   - 이메일이 없는 경우 google_providerId@cherrypick.oauth 형식으로 생성
+
+                   **요청 예시:**
+                   ```json
+                   {
+                     "accessToken": "ya29.a0AfH6SMBx...",
+                     "provider": "google"
+                   }
+                   ```
+
+                   **성공 응답:**
+                   ```json
+                   {
+                     "success": true,
+                     "data": {
+                       "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                       "userId": 1,
+                       "phoneNumber": "01012345678",
+                       "nickname": "체리유저",
+                       "profileImageUrl": "https://example.com/profile.jpg",
+                       "address": "서울시 강남구",
+                       "bio": "안녕하세요!",
+                       "message": "로그인 성공"
+                     }
+                   }
+                   ```
+
+                   **에러 응답:**
+                   ```json
+                   {
+                     "success": false,
+                     "error": "유효하지 않은 액세스 토큰입니다."
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Google OAuth 로그인 성공 - JWT 토큰 발급"),
+            @ApiResponse(responseCode = "401", description = "유효하지 않은 액세스 토큰"),
+            @ApiResponse(responseCode = "500", description = "OAuth API 통신 실패")
+    })
+    public ResponseEntity<OAuthLoginResponse> googleLogin(@Valid @RequestBody OAuthLoginRequest request) {
+        request.setProvider("google");
+        OAuthLoginResponse response = oauthAuthService.oauthLogin(request);
+
+        if (response.isSuccess()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.status(401).body(response);
+        }
+    }
+
+    @PostMapping("/kakao")
+    @Operation(summary = "Kakao OAuth 로그인",
+               description = """
+                   Kakao OAuth 액세스 토큰으로 로그인합니다.
+
+                   **사용 흐름:**
+                   1. 클라이언트에서 Kakao OAuth로 액세스 토큰 획득
+                   2. 획득한 액세스 토큰을 서버로 전송
+                   3. 서버에서 사용자 정보 검증 및 JWT 토큰 발급
+
+                   **특징:**
+                   - 기존 사용자: 자동 로그인
+                   - 신규 사용자: 자동 회원가입 후 로그인
+                   - 이메일이 없는 경우 kakao_providerId@cherrypick.oauth 형식으로 생성
+
+                   **요청 예시:**
+                   ```json
+                   {
+                     "accessToken": "vy1lEXqt8sQYDGz...",
+                     "provider": "kakao"
+                   }
+                   ```
+
+                   **성공 응답:**
+                   ```json
+                   {
+                     "success": true,
+                     "data": {
+                       "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                       "userId": 1,
+                       "phoneNumber": "01012345678",
+                       "nickname": "체리유저",
+                       "profileImageUrl": "https://example.com/profile.jpg",
+                       "address": "서울시 강남구",
+                       "bio": "안녕하세요!",
+                       "message": "로그인 성공"
+                     }
+                   }
+                   ```
+
+                   **에러 응답:**
+                   ```json
+                   {
+                     "success": false,
+                     "error": "유효하지 않은 액세스 토큰입니다."
+                   }
+                   ```
+                   """)
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Kakao OAuth 로그인 성공 - JWT 토큰 발급"),
+            @ApiResponse(responseCode = "401", description = "유효하지 않은 액세스 토큰"),
+            @ApiResponse(responseCode = "500", description = "OAuth API 통신 실패")
+    })
+    public ResponseEntity<OAuthLoginResponse> kakaoLogin(@Valid @RequestBody OAuthLoginRequest request) {
+        request.setProvider("kakao");
+        OAuthLoginResponse response = oauthAuthService.oauthLogin(request);
+
+        if (response.isSuccess()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.status(401).body(response);
+        }
     }
 }

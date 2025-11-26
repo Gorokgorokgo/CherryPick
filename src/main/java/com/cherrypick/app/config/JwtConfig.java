@@ -16,10 +16,10 @@ import java.util.function.Function;
 @Component
 public class JwtConfig {
 
-    @Value("${jwt.secret:cherrypick-secret-key-must-be-at-least-32-characters}")
+    @Value("${jwt.secret}")
     private String secret;
 
-    @Value("${jwt.expiration:86400000}") // 24시간 (밀리초)
+    @Value("${jwt.expiration:1209600000}") // 2주 (밀리초)
     private Long expiration;
 
     private SecretKey getSigningKey() {
