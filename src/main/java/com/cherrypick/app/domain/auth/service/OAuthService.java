@@ -186,4 +186,18 @@ public class OAuthService {
         return socialAccountRepository.findByProviderAndProviderIdAndIsActiveTrue(provider, providerId)
                 .map(SocialAccount::getUser);
     }
+
+    /**
+     * AccessToken으로 직접 사용자 정보 가져오기 (클라이언트가 이미 토큰을 획득한 경우)
+     */
+    public SocialUserInfo getUserInfoByAccessToken(SocialAccount.SocialProvider provider, String accessToken) {
+        try {
+            return getUserInfoFromProvider(provider, accessToken);
+        } catch (OAuthException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("소셜 로그인 정보 조회 실패 - provider: {}, error: {}", provider, e.getMessage());
+            throw new OAuthException(provider.name(), "USER_INFO_ERROR", "소셜 로그인 정보 조회 실패: " + e.getMessage(), e);
+        }
+    }
 }
