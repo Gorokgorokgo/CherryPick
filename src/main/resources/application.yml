@@ -56,7 +56,9 @@ springdoc:
 
 jwt:
   secret: ${JWT_SECRET}
-  expiration: ${JWT_EXPIRATION:86400000}
+  # 모바일 앱 토큰 만료 시간: 2주(14일) = 1209600000ms
+  # 개인 기기이므로 편의성을 위해 긴 만료 시간 설정
+  expiration: ${JWT_EXPIRATION:1209600000}
 
 # AWS Configuration (기존 설정 보관)
 # aws:
