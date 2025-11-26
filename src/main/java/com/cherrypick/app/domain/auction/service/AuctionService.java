@@ -505,14 +505,23 @@ public class AuctionService {
                         double distance = locationService.calculateDistance(
                                 latitude, longitude,
                                 auction.getLatitude(), auction.getLongitude());
-                        boolean withinRadius = distance <= radiusKm;
+                        
+                        // 1. 구매자가 설정한 반경 내에 있는지 확인
+                        boolean withinBuyerRadius = distance <= radiusKm;
 
-                        log.info("📍 경매 ID={}, 제목='{}', 경매위치=[lat={}, lng={}], 계산거리={:.2f}km, 반경내={}",
+                        // 2. 판매자가 설정한 반경 내에 구매자가 있는지 확인
+                        boolean withinSellerRadius = true;
+                        if (auction.getRegionRadiusKm() != null) {
+                            withinSellerRadius = distance <= auction.getRegionRadiusKm();
+                        }
+
+                        log.info("📍 경매 ID={}, 제목='{}', 거리={:.2f}km, 구매자반경({}km)내={}, 판매자반경({}km)내={}",
                                 auction.getId(), auction.getTitle(),
-                                auction.getLatitude(), auction.getLongitude(),
-                                distance, withinRadius);
+                                distance, radiusKm, withinBuyerRadius, 
+                                auction.getRegionRadiusKm() != null ? auction.getRegionRadiusKm() : "제한없음", 
+                                withinSellerRadius);
 
-                        return withinRadius;
+                        return withinBuyerRadius && withinSellerRadius;
                     })
                     .toList();
 

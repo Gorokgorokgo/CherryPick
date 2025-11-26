@@ -331,4 +331,30 @@ class AuctionRegionRadiusTest {
         request.setRegionRadiusKm(regionRadiusKm); // 거리 제한 설정
         return request;
     }
+
+    @Test
+    @DisplayName("홈 화면 조회(getAuctionsByStatus) - 판매자 거리 제한 적용 확인")
+    void getAuctionsByStatus_sellerRadiusLimit() {
+        // Given: 5km 제한 경매 생성
+        CreateAuctionRequest request = createAuctionRequest(5);
+        AuctionResponse createdAuction = auctionService.createAuction(seller.getId(), request);
+
+        // When: 가까운 사용자(약 12km)가 20km 반경으로 홈 화면 조회
+        // getAuctionsByStatus(status, category, sortBy, radiusKm, latitude, longitude, pageable, userId)
+        Page<AuctionResponse> results = auctionService.getAuctionsByStatus(
+            com.cherrypick.app.domain.auction.enums.AuctionStatus.ACTIVE,
+            null,
+            null,
+            20, // 구매자 반경 20km
+            NEARBY_USER_LATITUDE,
+            NEARBY_USER_LONGITUDE,
+            PageRequest.of(0, 10),
+            nearbyUser.getId()
+        );
+
+        // Then: 판매자의 5km 제한 때문에 조회되지 않아야 함
+        assertThat(results.getContent())
+            .extracting("id")
+            .doesNotContain(createdAuction.getId());
+    }
 }
