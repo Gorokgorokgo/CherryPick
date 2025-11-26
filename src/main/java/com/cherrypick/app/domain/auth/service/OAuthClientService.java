@@ -108,4 +108,24 @@ public class OAuthClientService {
             throw new OAuthUserInfoException(provider, "사용자 정보 획득 중 오류 발생", e);
         }
     }
+
+    public Map<String, Object> getTokenInfo(String provider, String tokenInfoUrl) {
+        try {
+            WebClient webClient = webClientBuilder.build();
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> responseBody = (Map<String, Object>) webClient
+                .get()
+                .uri(tokenInfoUrl)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .block();
+            
+            return responseBody;
+            
+        } catch (Exception e) {
+            log.error("{} Token Info 조회 실패: {}", provider, e.getMessage());
+            throw new OAuthTokenException(provider, "토큰 정보 조회 중 오류 발생", e);
+        }
+    }
 }

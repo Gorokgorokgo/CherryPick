@@ -47,7 +47,16 @@ public class SocialAuthService {
             // 4. JWT 토큰 생성
             String token = jwtConfig.generateToken(user.getEmail(), user.getId());
 
-            return new AuthResponse(token, user.getId(), user.getEmail(), user.getNickname());
+            return new AuthResponse(
+                token, 
+                user.getId(), 
+                user.getEmail(), 
+                user.getNickname(),
+                user.getProfileImageUrl(),
+                user.getAddress(),
+                user.getBio(),
+                "로그인 성공"
+            );
 
         } catch (Exception e) {
             return new AuthResponse("소셜 로그인 실패: " + e.getMessage());
@@ -111,7 +120,16 @@ public class SocialAuthService {
             // 9. JWT 토큰 생성
             String token = jwtConfig.generateToken(savedUser.getEmail(), savedUser.getId());
 
-            return new AuthResponse(token, savedUser.getId(), savedUser.getEmail(), savedUser.getNickname(), "소셜 회원가입 성공");
+            return new AuthResponse(
+                token, 
+                savedUser.getId(), 
+                savedUser.getEmail(), 
+                savedUser.getNickname(),
+                savedUser.getProfileImageUrl(),
+                savedUser.getAddress(),
+                savedUser.getBio(),
+                "소셜 회원가입 성공"
+            );
 
         } catch (Exception e) {
             return new AuthResponse("소셜 회원가입 실패: " + e.getMessage());

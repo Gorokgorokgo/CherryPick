@@ -56,7 +56,7 @@ springdoc:
 
 jwt:
   secret: ${JWT_SECRET}
-  expiration: ${JWT_EXPIRATION:86400000}
+  expiration: ${JWT_EXPIRATION:1209600000}
 
 # AWS Configuration (기존 설정 보관)
 # aws:
