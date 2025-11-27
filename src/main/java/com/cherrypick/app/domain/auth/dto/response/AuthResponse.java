@@ -31,6 +31,9 @@ public class AuthResponse {
     @Schema(description = "거래 지역", example = "서울시 강남구")
     private String address;
 
+    @Schema(description = "인증된 동네 (GPS)", example = "역삼1동")
+    private String verifiedRegion;
+
     @Schema(description = "자기소개", example = "안녕하세요!")
     private String bio;
 
@@ -57,13 +60,14 @@ public class AuthResponse {
 
     // 성공 시 사용하는 생성자 (전체 프로필 포함)
     public AuthResponse(String token, Long userId, String email, String nickname, 
-                       String profileImageUrl, String address, String bio, String message) {
+                       String profileImageUrl, String address, String verifiedRegion, String bio, String message) {
         this.token = token;
         this.userId = userId;
         this.email = email;
         this.nickname = nickname;
         this.profileImageUrl = profileImageUrl;
         this.address = address;
+        this.verifiedRegion = verifiedRegion;
         this.bio = bio;
         this.message = message;
     }

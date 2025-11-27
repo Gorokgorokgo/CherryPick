@@ -124,6 +124,16 @@ public class NotificationEventListener {
     }
 
     /**
+     * 계정 복구 알림 이벤트 처리
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAccountRestoredNotification(AccountRestoredEvent event) {
+        processNotificationEvent(event);
+    }
+
+    /**
      * 알림 이벤트 공통 처리 로직
      */
     private void processNotificationEvent(NotificationEvent event) {
@@ -137,6 +147,12 @@ public class NotificationEventListener {
             // 알림 설정 확인
             NotificationSetting setting = getOrCreateNotificationSetting(user);
             boolean isEnabled = isNotificationEnabled(setting, event.getNotificationType());
+
+            // 계정 복구 알림은 설정과 무관하게 항상 발송 (중요 알림)
+            if (event instanceof AccountRestoredEvent) {
+                isEnabled = true;
+                log.info("  - ⚠️ [강제 발송] 계정 복구 알림은 설정을 무시하고 발송합니다.");
+            }
 
             log.info("  - 알림 타입: {}, 설정 활성화 여부: {}", event.getNotificationType(), isEnabled);
 
