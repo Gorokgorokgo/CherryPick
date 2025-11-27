@@ -123,6 +123,7 @@ public class AuthService {
             savedUser.getNickname(),
             savedUser.getProfileImageUrl(),
             savedUser.getAddress(),
+            savedUser.getVerifiedRegion(),
             savedUser.getBio(),
             "회원가입 성공"
         );
@@ -154,6 +155,7 @@ public class AuthService {
             user.getNickname(),
             user.getProfileImageUrl(),
             user.getAddress(),
+            user.getVerifiedRegion(),
             user.getBio(),
             "로그인 성공"
         );
@@ -188,6 +190,7 @@ public class AuthService {
             user.getNickname(),
             user.getProfileImageUrl(),
             user.getAddress(),
+            user.getVerifiedRegion(),
             user.getBio(),
             "로그인 성공"
         );

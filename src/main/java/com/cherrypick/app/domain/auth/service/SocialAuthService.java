@@ -8,9 +8,13 @@ import com.cherrypick.app.domain.auth.dto.response.SocialUserInfo;
 import com.cherrypick.app.domain.auth.entity.SocialAccount;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.notification.event.AccountRestoredEvent;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @Transactional
 public class SocialAuthService {
@@ -18,22 +22,36 @@ public class SocialAuthService {
     private final OAuthService oAuthService;
     private final UserRepository userRepository;
     private final JwtConfig jwtConfig;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public SocialAuthService(OAuthService oAuthService, UserRepository userRepository, JwtConfig jwtConfig) {
+    public SocialAuthService(OAuthService oAuthService, UserRepository userRepository, JwtConfig jwtConfig, ApplicationEventPublisher eventPublisher) {
         this.oAuthService = oAuthService;
         this.userRepository = userRepository;
         this.jwtConfig = jwtConfig;
+        this.eventPublisher = eventPublisher;
     }
 
     public AuthResponse socialLogin(SocialLoginRequest request) {
         try {
-            // 1. OAuth 제공자에서 사용자 정보 조회 (State 검증 포함)
-            SocialUserInfo socialUserInfo = oAuthService.getSocialUserInfo(
-                    request.getProvider(), 
-                    request.getCode(),
-                    request.getState(),
-                    request.getRedirectUri()
-            );
+            SocialUserInfo socialUserInfo;
+
+            // Access Token이 있는 경우 (모바일 앱)
+            if (request.getAccessToken() != null && !request.getAccessToken().isEmpty()) {
+                socialUserInfo = oAuthService.getUserInfoByAccessToken(
+                        request.getProvider(),
+                        request.getAccessToken()
+                );
+            } 
+            // Authorization Code가 있는 경우 (웹)
+            else {
+                // 1. OAuth 제공자에서 사용자 정보 조회 (State 검증 포함)
+                socialUserInfo = oAuthService.getSocialUserInfo(
+                        request.getProvider(), 
+                        request.getCode(),
+                        request.getState(),
+                        request.getRedirectUri()
+                );
+            }
 
             // 2. 기존 연동된 계정 확인
             if (!socialUserInfo.isExistingUser()) {
@@ -44,8 +62,30 @@ public class SocialAuthService {
             User user = userRepository.findById(socialUserInfo.getUserId())
                     .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
 
+            // 정지된 사용자 체크 (자동 복구 불가)
+            if (user.getRole() == User.Role.BANNED) {
+                return new AuthResponse("운영 정책 위반으로 이용이 정지된 계정입니다.");
+            }
+
+            boolean isRestored = false;
+
+            // 탈퇴한 사용자 자동 복구 (자진 탈퇴만 해당)
+            if (user.isDeleted() || !user.isEnabled()) {
+                log.info("탈퇴한 사용자 자동 복구: userId={}", user.getId());
+                user.restore();
+                userRepository.save(user);
+                isRestored = true;
+                
+                // 복구 알림 이벤트 발행
+                eventPublisher.publishEvent(new AccountRestoredEvent(this, user.getId()));
+            }
+
             // 4. JWT 토큰 생성
             String token = jwtConfig.generateToken(user.getEmail(), user.getId());
+
+            log.info("Social Login User Region: {}", user.getVerifiedRegion());
+
+            String message = isRestored ? "계정이 복구되었습니다. 다시 오신 것을 환영합니다!" : "로그인 성공";
 
             return new AuthResponse(
                 token, 
@@ -54,8 +94,9 @@ public class SocialAuthService {
                 user.getNickname(),
                 user.getProfileImageUrl(),
                 user.getAddress(),
+                user.getVerifiedRegion(),
                 user.getBio(),
-                "로그인 성공"
+                message
             );
 
         } catch (Exception e) {
@@ -70,13 +111,25 @@ public class SocialAuthService {
                 return new AuthResponse("필수 약관에 동의해주세요.");
             }
 
-            // 2. OAuth 제공자에서 사용자 정보 조회 (State 검증 포함)
-            SocialUserInfo socialUserInfo = oAuthService.getSocialUserInfo(
-                    request.getProvider(), 
-                    request.getCode(),
-                    request.getState(),
-                    request.getRedirectUri()
-            );
+            SocialUserInfo socialUserInfo;
+
+            // Access Token이 있는 경우 (모바일 앱)
+            if (request.getAccessToken() != null && !request.getAccessToken().isEmpty()) {
+                socialUserInfo = oAuthService.getUserInfoByAccessToken(
+                        request.getProvider(),
+                        request.getAccessToken()
+                );
+            } 
+            // Authorization Code가 있는 경우 (웹)
+            else {
+                // 2. OAuth 제공자에서 사용자 정보 조회 (State 검증 포함)
+                socialUserInfo = oAuthService.getSocialUserInfo(
+                        request.getProvider(), 
+                        request.getCode(),
+                        request.getState(),
+                        request.getRedirectUri()
+                );
+            }
 
             // 3. 이미 연동된 계정인지 확인
             if (socialUserInfo.isExistingUser()) {
@@ -127,6 +180,7 @@ public class SocialAuthService {
                 savedUser.getNickname(),
                 savedUser.getProfileImageUrl(),
                 savedUser.getAddress(),
+                savedUser.getVerifiedRegion(),
                 savedUser.getBio(),
                 "소셜 회원가입 성공"
             );

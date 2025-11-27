@@ -19,8 +19,11 @@ public class SocialSignupRequest {
     @NotNull(message = "소셜 로그인 제공자는 필수입니다.")
     private SocialAccount.SocialProvider provider;
     
-    @NotBlank(message = "OAuth 인증 코드는 필수입니다.")
+    // Authorization Code 방식
     private String code;
+    
+    // Access Token 방식 (모바일 앱용)
+    private String accessToken;
     
     @NotBlank(message = "닉네임은 필수입니다.")
     @Size(min = 2, max = 20, message = "닉네임은 2자 이상 20자 이하로 입력해주세요.")

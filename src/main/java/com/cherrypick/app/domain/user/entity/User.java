@@ -209,7 +209,8 @@ public class User extends BaseEntity {
     public enum Role {
         USER("일반 사용자"),
         ADMIN("관리자"),
-        SUPER_ADMIN("최고 관리자");
+        SUPER_ADMIN("최고 관리자"),
+        BANNED("정지된 사용자");
 
         private final String description;
 
