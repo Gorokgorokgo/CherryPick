@@ -104,8 +104,12 @@ public class OAuthService {
         Map<String, Object> userInfo = oAuthClientService.getUserInfo("GOOGLE", 
             OAuthConfig.Urls.GOOGLE_USER_INFO_URL, accessToken);
 
-        String providerId = userInfo.get("id").toString();
-        
+        // Google API 버전에 따라 id 또는 sub 사용
+        String providerId = (String) userInfo.get("id");
+        if (providerId == null) {
+            providerId = (String) userInfo.get("sub");
+        }
+
         // 기존 사용자 확인
         Optional<SocialAccount> existingSocialAccount = socialAccountRepository
                 .findByProviderAndProviderIdAndIsActiveTrue(SocialAccount.SocialProvider.GOOGLE, providerId);

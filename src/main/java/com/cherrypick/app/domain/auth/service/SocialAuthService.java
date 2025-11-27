@@ -53,14 +53,37 @@ public class SocialAuthService {
                 );
             }
 
-            // 2. 기존 연동된 계정 확인
+            // 2. 기존 연동된 계정 확인 및 자동 회원가입
+            User user;
             if (!socialUserInfo.isExistingUser()) {
-                return new AuthResponse("가입이 필요합니다. 회원가입을 먼저 진행해주세요.");
-            }
+                // 신규 회원가입
+                log.info("신규 소셜 회원가입 진행: provider={}, providerId={}", request.getProvider(), socialUserInfo.getProviderId());
+                
+                // 닉네임 중복 처리 (간단히 랜덤 숫자 추가)
+                String nickname = socialUserInfo.getName();
+                if (userRepository.existsByNickname(nickname)) {
+                    nickname = nickname + "_" + (int)(Math.random() * 10000);
+                }
 
-            // 3. 사용자 조회
-            User user = userRepository.findById(socialUserInfo.getUserId())
-                    .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
+                User newUser = User.builder()
+                        .email(socialUserInfo.getEmail())
+                        .nickname(nickname)
+                        .password("") // 소셜 로그인은 비밀번호 없음
+                        .profileImageUrl(socialUserInfo.getProfileImageUrl())
+                        .pointBalance(0L)
+                        .buyerLevel(1)
+                        .buyerExp(0)
+                        .sellerLevel(1)
+                        .sellerExp(0)
+                        .build();
+                
+                user = userRepository.save(newUser);
+                oAuthService.createSocialAccount(user, socialUserInfo);
+            } else {
+                // 기존 회원 조회
+                user = userRepository.findById(socialUserInfo.getUserId())
+                        .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
+            }
 
             // 정지된 사용자 체크 (자동 복구 불가)
             if (user.getRole() == User.Role.BANNED) {

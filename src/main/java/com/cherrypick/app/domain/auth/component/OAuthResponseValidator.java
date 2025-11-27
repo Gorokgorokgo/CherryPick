@@ -82,8 +82,12 @@ public class OAuthResponseValidator {
     }
 
     private void validateGoogleUserInfo(Map<String, Object> userInfo) {
-        if (!StringUtils.hasText((String) userInfo.get("sub"))) {
-            throw new OAuthUserInfoException("GOOGLE", "Google sub(사용자 ID)가 없습니다");
+        // Google API 버전에 따라 id 또는 sub 필드 사용
+        String sub = (String) userInfo.get("sub");
+        String id = (String) userInfo.get("id");
+        
+        if (!StringUtils.hasText(sub) && !StringUtils.hasText(id)) {
+            throw new OAuthUserInfoException("GOOGLE", "Google sub/id(사용자 ID)가 없습니다");
         }
         if (!StringUtils.hasText((String) userInfo.get("email"))) {
             throw new OAuthUserInfoException("GOOGLE", "Google 이메일이 없습니다");

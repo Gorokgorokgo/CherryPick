@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 public class OAuthConfig {
 
     // Google OAuth 설정
-    @Value("${android_google_client_id}")
+    @Value("${ANDROID_GOOGLE_CLIENT_ID}")
     private String androidGoogleClientId;
     
     @Value("${GOOGLE_CLIENT_ID}")

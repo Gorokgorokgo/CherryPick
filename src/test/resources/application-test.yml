@@ -49,7 +49,7 @@ migration:
     max-error-rate: 0.05
     emergency-code-length: 32
 
-android_google_client_id: test-android-google-client-id
+ANDROID_GOOGLE_CLIENT_ID: test-android-google-client-id
 GOOGLE_CLIENT_ID: test-google-client-id
 GOOGLE_CLIENT_SECRET: test-google-client-secret
 GOOGLE_REDIRECT_URI: http://localhost:3000/auth/google/callback
