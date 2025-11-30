@@ -39,6 +39,12 @@ spring:
 
 server:
   port: 8080
+  # HTTP 인코딩 설정 (한글 깨짐 방지)
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 # Actuator 설정 (헬스체크용)
 management:
