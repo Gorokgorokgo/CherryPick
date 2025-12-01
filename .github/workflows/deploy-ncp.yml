@@ -99,7 +99,7 @@ jobs:
     runs-on: self-hosted
     needs: test
     if: github.ref == 'refs/heads/main'
-    environment: production
+    # environment: production  <-- Removed to use Repository Secrets
 
     steps:
     - name: Cleanup workspace
@@ -111,15 +111,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Create .env file from Secrets
+    - name: Setup Environment
       run: |
-        echo "🔧 Creating .env file from GitHub Secrets..."
-        if [ -z "${{ secrets.ENV_FILE }}" ]; then
-          echo "❌ Error: ENV_FILE secret is not set! Please add it in GitHub Settings."
-          exit 1
+        echo "🔧 Setting up environment variables..."
+        # 서버의 .env 파일을 가져옵니다. (Runner가 읽을 수 있도록 권한 644 필요)
+        if [ -f /home/ubuntu/CherryPick/.env ]; then
+            cp /home/ubuntu/CherryPick/.env .
+            echo "✅ Loaded .env from /home/ubuntu/CherryPick/"
+        else
+            echo "❌ CRITICAL: .env file NOT found at /home/ubuntu/CherryPick/.env"
+            echo "👉 Please verify file exists and permissions (chmod 644)"
+            ls -la /home/ubuntu/CherryPick/ || echo "Cannot list directory"
+            exit 1
         fi
-        echo "${{ secrets.ENV_FILE }}" > .env
-        echo "✅ .env created successfully!"
 
     - name: Build and Deploy
       run: |
