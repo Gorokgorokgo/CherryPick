@@ -27,49 +27,6 @@ services:
     env_file: .env
     ports:
       - "8080:8080"
-    environment:
-      # Database Configuration (NCP Cloud DB for PostgreSQL)
-      - DB_HOST=${NCP_DB_HOST}
-      - DB_PORT=${NCP_DB_PORT:-5432}
-      - DB_NAME=${NCP_DB_NAME:-cherrypick}
-      - DB_USERNAME=${NCP_DB_USERNAME}
-      - DB_PASSWORD=${NCP_DB_PASSWORD}
-      
-      # Redis Configuration
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      
-      # JWT Configuration
-      - JWT_SECRET=${JWT_SECRET}
-      # 토큰 만료: 2주(14일) = 1209600000ms
-      - JWT_EXPIRATION=${JWT_EXPIRATION:-1209600000}
-      
-      # NCP Object Storage Configuration
-      - NCP_OBJECT_STORAGE_ENDPOINT=${NCP_OBJECT_STORAGE_ENDPOINT:-https://kr.object.ncloudstorage.com}
-      - NCP_OBJECT_STORAGE_BUCKET=${NCP_OBJECT_STORAGE_BUCKET}
-      - NCP_REGION=${NCP_REGION:-kr-standard}
-      - NCP_ACCESS_KEY_ID=${NCP_ACCESS_KEY_ID}
-      - NCP_SECRET_ACCESS_KEY=${NCP_SECRET_ACCESS_KEY}
-      
-      # NCP Container Registry Configuration
-      - NCP_CONTAINER_REGISTRY=${NCP_CONTAINER_REGISTRY}
-
-      # OAuth Configuration (Google, Kakao, Naver)
-      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
-      - KAKAO_REST_API_KEY=${KAKAO_REST_API_KEY}
-      - KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}
-      - KAKAO_REDIRECT_URI=${KAKAO_REDIRECT_URI}
-      - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
-      - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
-      - NAVER_REDIRECT_URI=${NAVER_REDIRECT_URI}
-      - android_google_client_id=${ANDROID_GOOGLE_CLIENT_ID}
-
-      # Spring Profile
-      - SPRING_PROFILES_ACTIVE=prod,oauth
     depends_on:
       redis:
         condition: service_healthy
