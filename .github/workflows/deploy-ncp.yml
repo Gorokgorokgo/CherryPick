@@ -111,40 +111,28 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Stop Legacy Service
+    - name: Create .env file from Secrets
       run: |
-        echo "🛑 Stopping legacy systemd service to free up port 8080..."
-        sudo systemctl stop cherrypick-app || echo "Service not running"
-        sudo systemctl disable cherrypick-app || echo "Service not enabled"
-
-    - name: Setup Environment
-      run: |
-        echo "🔧 Setting up environment variables..."
-        # 서버의 홈 디렉토리에 있는 .env 파일을 가져옵니다.
-        # 주의: Runner가 읽을 수 있도록 서버에서 'chmod 644 /home/ubuntu/CherryPick/.env' 필요
-        if [ -f /home/ubuntu/CherryPick/.env ]; then
-            cp /home/ubuntu/CherryPick/.env .
-            echo "✅ Loaded .env from /home/ubuntu/CherryPick/"
-        else
-            echo "❌ CRITICAL: .env file NOT found at /home/ubuntu/CherryPick/.env"
-            exit 1
+        echo "🔧 Creating .env file from GitHub Secrets..."
+        if [ -z "${{ secrets.ENV_FILE }}" ]; then
+          echo "❌ Error: ENV_FILE secret is not set! Please add it in GitHub Settings."
+          exit 1
         fi
+        echo "${{ secrets.ENV_FILE }}" > .env
+        echo "✅ .env created successfully!"
 
     - name: Build and Deploy
       run: |
         echo "🚀 Starting Docker Compose deployment..."
         
-        # 기존 컨테이너 정리 (포트 설정 변경 적용을 위해 필수)
+        # 기존 컨테이너 정리 (포트 충돌 방지)
         docker-compose -f docker-compose.prod.yml down --remove-orphans || true
         
         # 최신 코드로 빌드 및 실행
-        # --build: 이미지 강제 재생성
-        # -d: 백그라운드 실행
         docker-compose -f docker-compose.prod.yml up -d --build
 
     - name: Prune Docker System
       run: |
-        echo "🧹 Pruning unused Docker objects..."
         docker image prune -f
 
     - name: Health Check
