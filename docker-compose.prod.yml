@@ -53,9 +53,22 @@ services:
       
       # NCP Container Registry Configuration
       - NCP_CONTAINER_REGISTRY=${NCP_CONTAINER_REGISTRY}
-      
+
+      # OAuth Configuration (Google, Kakao, Naver)
+      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - KAKAO_REST_API_KEY=${KAKAO_REST_API_KEY}
+      - KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}
+      - KAKAO_REDIRECT_URI=${KAKAO_REDIRECT_URI}
+      - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
+      - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
+      - NAVER_REDIRECT_URI=${NAVER_REDIRECT_URI}
+      - android_google_client_id=${ANDROID_GOOGLE_CLIENT_ID}
+
       # Spring Profile
-      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_PROFILES_ACTIVE=prod,oauth
     depends_on:
       redis:
         condition: service_healthy

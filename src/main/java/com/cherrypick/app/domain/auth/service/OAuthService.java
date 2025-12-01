@@ -104,7 +104,7 @@ public class OAuthService {
         Map<String, Object> userInfo = oAuthClientService.getUserInfo("GOOGLE", 
             OAuthConfig.Urls.GOOGLE_USER_INFO_URL, accessToken);
 
-        String providerId = userInfo.get("id").toString();
+        String providerId = userInfo.get("sub").toString();
         
         // 기존 사용자 확인
         Optional<SocialAccount> existingSocialAccount = socialAccountRepository
