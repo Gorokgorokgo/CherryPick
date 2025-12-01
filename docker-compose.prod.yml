@@ -25,6 +25,8 @@ services:
     image: cherrypick-app:latest
     container_name: cherrypick-app-prod
     env_file: .env
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
     ports:
       - "8080:8080"
     depends_on:
