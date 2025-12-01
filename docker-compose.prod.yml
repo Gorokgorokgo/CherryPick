@@ -21,7 +21,8 @@ services:
 
   # Spring Boot Application
   app:
-    image: ${NCP_CONTAINER_REGISTRY}/cherrypick-app:latest
+    build: .
+    image: cherrypick-app:latest
     container_name: cherrypick-app-prod
     ports:
       - "8080:8080"
