@@ -129,7 +129,17 @@ jobs:
       run: |
         echo "🚀 Starting Docker Compose deployment..."
         
-        # 기존 컨테이너 정리 (포트 충돌 방지)
+        # .env 파일을 쉘 환경 변수로 로드 (가장 확실한 방법)
+        if [ -f .env ]; then
+          set -a
+          source .env
+          set +a
+          echo "✅ Environment variables loaded into shell."
+        else
+          echo "⚠️ .env file missing, skipping shell load."
+        fi
+        
+        # 기존 컨테이너 정리
         docker-compose -f docker-compose.prod.yml down --remove-orphans || true
         
         # 최신 코드로 빌드 및 실행
