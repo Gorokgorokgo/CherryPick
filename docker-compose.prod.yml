@@ -48,6 +48,7 @@ services:
       - SPRING_PROFILES_ACTIVE=prod
       # 컨테이너 내부에서는 DB 호스트를 서비스 이름(db)으로 설정
       - NCP_DB_HOST=db
+      - REDIS_HOST=redis
     ports:
       - "8080:8080"
     depends_on:
