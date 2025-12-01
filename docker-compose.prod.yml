@@ -24,6 +24,7 @@ services:
     build: .
     image: cherrypick-app:latest
     container_name: cherrypick-app-prod
+    env_file: .env
     ports:
       - "8080:8080"
     environment:

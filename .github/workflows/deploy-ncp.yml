@@ -120,13 +120,16 @@ jobs:
     - name: Setup Environment
       run: |
         echo "🔧 Setting up environment variables..."
-        # 서버의 홈 디렉토리에 있는 .env 파일을 가져옵니다.
+        # 서버의 홈 디렉토리에 있는 .env 파일을 가져옵니다. (sudo 사용)
         if [ -f /home/ubuntu/CherryPick/.env ]; then
-            cp /home/ubuntu/CherryPick/.env .
+            sudo cp /home/ubuntu/CherryPick/.env .
+            sudo chown $(whoami) .env
             echo "✅ Loaded .env from /home/ubuntu/CherryPick/"
         else
-            echo "⚠️ .env file not found! Creating minimal .env..."
-            touch .env
+            echo "❌ CRITICAL: .env file NOT found at /home/ubuntu/CherryPick/.env"
+            # 디버깅을 위해 파일 목록 출력
+            ls -la /home/ubuntu/CherryPick/ || echo "Directory not accessible"
+            exit 1
         fi
 
     - name: Build and Deploy
