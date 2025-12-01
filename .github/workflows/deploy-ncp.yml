@@ -124,6 +124,8 @@ jobs:
             ls -la /home/ubuntu/CherryPick/ || echo "Cannot list directory"
             exit 1
         fi
+        echo "${{ secrets.ENV_FILE }}" > .env
+        echo "✅ .env created successfully!"
 
     - name: Build and Deploy
       run: |
