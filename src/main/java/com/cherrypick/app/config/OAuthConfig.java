@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 public class OAuthConfig {
 
     // Google OAuth 설정
-    @Value("${android_google_client_id}")
+    @Value("${ANDROID_GOOGLE_CLIENT_ID}")
     private String androidGoogleClientId;
     
     @Value("${GOOGLE_CLIENT_ID}")
@@ -44,7 +44,7 @@ public class OAuthConfig {
     // OAuth URL 설정
     public static class Urls {
         public static final String GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-        public static final String GOOGLE_USER_INFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
+        public static final String GOOGLE_USER_INFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
         
         public static final String KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token";
         public static final String KAKAO_USER_INFO_URL = "https://kapi.kakao.com/v2/user/me";
