@@ -8,7 +8,6 @@ WORKDIR /app
 COPY gradlew .
 COPY gradle gradle/
 COPY build.gradle .
-COPY settings.gradle .
 
 # 소스 코드 복사
 COPY src src/
