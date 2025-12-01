@@ -113,19 +113,18 @@ jobs:
 
     - name: Setup Environment
       run: |
-        echo "🔧 Setting up environment variables..."
-        # 서버의 .env 파일을 가져옵니다. (Runner가 읽을 수 있도록 권한 644 필요)
-        if [ -f /home/ubuntu/CherryPick/.env ]; then
-            cp /home/ubuntu/CherryPick/.env .
-            echo "✅ Loaded .env from /home/ubuntu/CherryPick/"
-        else
-            echo "❌ CRITICAL: .env file NOT found at /home/ubuntu/CherryPick/.env"
-            echo "👉 Please verify file exists and permissions (chmod 644)"
-            ls -la /home/ubuntu/CherryPick/ || echo "Cannot list directory"
-            exit 1
+        echo "🔧 Creating .env file from GitHub Secrets..."
+        if [ -z "${{ secrets.ENV_FILE }}" ]; then
+          echo "❌ Error: ENV_FILE secret is not set! Please check GitHub Repository Settings > Secrets > Actions."
+          exit 1
         fi
+        
+        # Secret 내용을 .env 파일로 저장
         echo "${{ secrets.ENV_FILE }}" > .env
+        
         echo "✅ .env created successfully!"
+        # 디버깅: 파일이 잘 생성되었는지 확인 (내용은 출력하지 않음)
+        ls -l .env
 
     - name: Build and Deploy
       run: |
