@@ -123,7 +123,8 @@ jobs:
         # 서버의 홈 디렉토리에 있는 .env 파일을 가져옵니다.
         # 주의: Runner가 읽을 수 있도록 서버에서 'chmod 644 /home/ubuntu/CherryPick/.env' 필요
         if [ -f /home/ubuntu/CherryPick/.env ]; then
-            cp /home/ubuntu/CherryPick/.env .
+            sudo cp /home/ubuntu/CherryPick/.env .
+            sudo chown $(whoami) .env
             echo "✅ Loaded .env from /home/ubuntu/CherryPick/"
         else
             echo "❌ CRITICAL: .env file NOT found at /home/ubuntu/CherryPick/.env"
