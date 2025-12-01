@@ -1,8 +1,8 @@
-name: Deploy to NCP (Self-hosted)
+name: Deploy to NCP (Docker)
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -15,12 +15,11 @@ permissions:
 
 env:
   APP_NAME: cherrypick
-  JAR_FILE: CherryPick-0.0.1-SNAPSHOT.jar
 
 jobs:
   test:
     name: Run Tests
-    runs-on: ubuntu-latest  # 테스트는 GitHub-hosted runner 사용 (Docker services 필요)
+    runs-on: ubuntu-latest
     
     services:
       postgres:
@@ -52,7 +51,6 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK 17
-      id: setup-java
       uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -92,22 +90,13 @@ jobs:
         EOF
 
     - name: Run tests
-      run: ./gradlew test --parallel --build-cache || echo "Tests failed but continuing with deployment..."
+      run: ./gradlew test --parallel --build-cache || echo "Tests failed but continuing..."
       env:
         SPRING_PROFILES_ACTIVE: test
-        JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
 
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: build/test-results/test/*.xml
-        retention-days: 7
-
-  build-and-deploy:
-    name: Build and Deploy
-    runs-on: self-hosted  # 🎯 Self-hosted runner 사용!
+  deploy-docker:
+    name: Deploy (Docker Compose)
+    runs-on: self-hosted
     needs: test
     if: github.ref == 'refs/heads/main'
     environment: production
@@ -115,185 +104,66 @@ jobs:
     steps:
     - name: Cleanup workspace
       run: |
-        # 이전 빌드 결과 정리
+        echo "🧹 Cleaning workspace..."
         rm -rf $GITHUB_WORKSPACE/* || true
         rm -rf $GITHUB_WORKSPACE/.[!.]* || true
 
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Build application
+    - name: Stop Legacy Service
       run: |
-        echo "🚀 Starting build on self-hosted runner..."
-        echo "Java version: $(java -version 2>&1 | head -1)"
-        echo "JAVA_HOME: $JAVA_HOME"
-        echo "Java which: $(which java)"
-        echo "Hostname: $(hostname)"
-        echo "User: $(whoami)"
-        
-        # 환경 확인
-        source ~/.bashrc
-        
-        # Gradle 빌드
-        ./gradlew clean bootJar --parallel --no-daemon
-      env:
-        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        echo "🛑 Stopping legacy systemd service to free up port 8080..."
+        sudo systemctl stop cherrypick-app || echo "Service not running"
+        sudo systemctl disable cherrypick-app || echo "Service not enabled"
 
-    - name: Verify build
+    - name: Setup Environment
       run: |
-        if [ ! -f "build/libs/${{ env.JAR_FILE }}" ]; then
-          echo "❌ Build failed: JAR not found"
-          ls -la build/libs/ || echo "build/libs directory not found"
-          exit 1
-        fi
-        echo "✅ Build success: $(ls -lh build/libs/${{ env.JAR_FILE }})"
-
-    - name: Prepare deployment directories
-      run: |
-        echo "🔧 Preparing deployment directories..."
-        # 현재 워크스페이스 사용
-        echo "✅ Directories ready (using existing .env file)"
-
-    - name: Deploy application
-      run: |
-        echo "🚀 Starting deployment..."
-        
-        # 백업 생성
-        if [ -f "${{ env.JAR_FILE }}" ]; then
-          echo "📦 Creating backup..."
-          cp "${{ env.JAR_FILE }}" "${{ env.JAR_FILE }}.backup.$(date +%Y%m%d_%H%M%S)" || true
-          # 오래된 백업 정리 (최근 5개만 보관)
-          find . -name "*.backup.*" -type f | sort -r | tail -n +6 | xargs rm -f || true
-          echo "✅ Backup created"
+        echo "🔧 Setting up environment variables..."
+        # 서버의 홈 디렉토리에 있는 .env 파일을 가져옵니다.
+        if [ -f /home/ubuntu/CherryPick/.env ]; then
+            cp /home/ubuntu/CherryPick/.env .
+            echo "✅ Loaded .env from /home/ubuntu/CherryPick/"
+        else
+            echo "⚠️ .env file not found! Creating minimal .env..."
+            touch .env
         fi
 
-        # 서비스 중지 (sudo 필요)
-        echo "🛑 Stopping service..."
-        sudo systemctl stop cherrypick-app || echo "Service was not running"
-
-        # 새 버전 배포
-        echo "📦 Deploying new version..."
-        cp "build/libs/${{ env.JAR_FILE }}" .
-        chmod 755 "${{ env.JAR_FILE }}"
-
-        # systemd 서비스 파일이 없으면 생성 (한 번만)
-        if [ ! -f "/etc/systemd/system/cherrypick-app.service" ]; then
-          echo "📝 Creating systemd service file..."
-          sudo tee /etc/systemd/system/cherrypick-app.service > /dev/null << 'SERVICEEOF'
-        [Unit]
-        Description=CherryPick Auction Service
-        After=network.target
-
-        [Service]
-        Type=simple
-        User=ubuntu
-        Group=ubuntu
-        WorkingDirectory=/home/ubuntu/CherryPick
-        ExecStart=/usr/bin/java -jar -Dspring.profiles.active=prod CherryPick-0.0.1-SNAPSHOT.jar
-        SuccessExitStatus=143
-        TimeoutStopSec=10
-        Restart=on-failure
-        RestartSec=5
-
-        # Environment
-        Environment="SPRING_PROFILES_ACTIVE=prod"
-        EnvironmentFile=/home/ubuntu/CherryPick/.env
-
-        # Security
-        NoNewPrivileges=true
-        ProtectSystem=strict
-        ProtectHome=true
-        ReadWritePaths=/home/ubuntu/CherryPick
-
-        # Logging
-        StandardOutput=journal
-        StandardError=journal
-        SyslogIdentifier=cherrypick-app
-
-        [Install]
-        WantedBy=multi-user.target
-        SERVICEEOF
-
-          sudo systemctl daemon-reload
-        fi
-
-        # 서비스 시작
-        sudo systemctl enable cherrypick-app
-        sudo systemctl start cherrypick-app
-        echo "✅ Service started"
-
-    - name: Health check and rollback
+    - name: Build and Deploy
       run: |
-        echo "⏳ Health check..."
+        echo "🚀 Starting Docker Compose deployment..."
         
-        # 헬스체크 (30회 시도, 총 5분)
-        for i in {1..30}; do
-          if nc -z localhost 8080 2>/dev/null; then
-            echo "✅ Deployment successful!"
-            echo "📊 Service status:"
-            sudo systemctl status cherrypick-app --no-pager -l
-            echo ""
-            echo "🏥 Health check result:"
-            curl -s http://localhost:8080/test
-            break
+        # 최신 코드로 빌드 및 실행
+        # --build: 이미지 강제 재생성
+        # -d: 백그라운드 실행
+        docker-compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+    - name: Prune Docker System
+      run: |
+        echo "🧹 Pruning unused Docker objects..."
+        docker image prune -f
+
+    - name: Health Check
+      run: |
+        echo "🏥 Checking service health..."
+        for i in {1..12}; do
+          if curl -f -s http://localhost:8080/actuator/health > /dev/null; then
+            echo "✅ Service is UP and Healthy!"
+            exit 0
           fi
-          
-          if [ $i -eq 30 ]; then
-            echo "❌ Health check failed!"
-            echo "🔄 Attempting automatic rollback..."
-            
-            # 자동 롤백
-            sudo systemctl stop cherrypick-app
-            LATEST_BACKUP=$(ls -t *.backup.* 2>/dev/null | head -1)
-            if [ -n "$LATEST_BACKUP" ]; then
-              echo "🔄 Rolling back to: $(basename $LATEST_BACKUP)"
-              cp "$LATEST_BACKUP" "${{ env.JAR_FILE }}"
-              sudo systemctl start cherrypick-app
-              sleep 15
-              
-              if curl -f --connect-timeout 3 http://localhost:8080/test >/dev/null 2>&1; then
-                echo "✅ Rollback successful!"
-                echo "⚠️ Deployment failed but service restored to previous version"
-                exit 2  # Exit with code 2 to indicate rollback occurred
-              fi
-            fi
-            
-            echo "❌ Rollback failed!"
-            echo "📋 Service logs:"
-            sudo journalctl -u cherrypick-app --no-pager -l -n 20
-            exit 1
-          fi
-          
-          echo "Waiting... ($i/30)"
-          sleep 10
+          echo "Waiting for service... ($i/12)"
+          sleep 5
         done
-
-    - name: Final verification
-      run: |
-        echo "🔍 Final deployment verification..."
-        echo "📊 System status:"
-        systemctl is-active cherrypick-app
-        echo "🏥 Application health:"
-        curl -s http://localhost:8080/test
-        echo "🎉 Deployment completed successfully!"
-
-    - name: Cleanup build artifacts
-      if: always()
-      run: |
-        # 빌드 결과물 정리 (디스크 공간 절약)
-        rm -rf build/ 2>/dev/null || true
-        rm -rf .gradle/ 2>/dev/null || true
-        echo "🧹 Build artifacts cleaned up"
+        echo "❌ Health check failed!"
+        docker-compose -f docker-compose.prod.yml logs --tail=50 app
+        exit 1
 
     - name: Notify Slack - Success
       if: success()
       run: |
-        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"✅ CherryPick 배포 성공! 🎉 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }}\"}" "${{ secrets.SLACK_WEBHOOK }}"
+        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"✅ CherryPick(Docker) 배포 성공! 🐳\"}" "${{ secrets.SLACK_WEBHOOK }}"
         
     - name: Notify Slack - Failure
       if: failure()
       run: |
-        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"❌ CherryPick 배포 실패! 🚨 브랜치: ${{ github.ref_name }}, 작성자: ${{ github.actor }} - 즉시 확인 필요!\"}" "${{ secrets.SLACK_WEBHOOK }}"
+        curl -X POST -H "Content-type: application/json" --data "{\"text\":\"❌ CherryPick(Docker) 배포 실패! 🚨\"}" "${{ secrets.SLACK_WEBHOOK }}"
