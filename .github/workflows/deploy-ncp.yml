@@ -131,21 +131,22 @@ jobs:
       run: |
         echo "🚀 Starting Docker Compose deployment..."
         
-        # .env 파일을 쉘 환경 변수로 로드 (가장 확실한 방법)
+        # .env 파일 존재 확인 및 디버깅
         if [ -f .env ]; then
-          set -a
-          source .env
-          set +a
-          echo "✅ Environment variables loaded into shell."
+          echo "✅ .env file exists."
+          # 파일 내용 살짝 확인 (민감 정보 제외하고 포맷 확인용)
+          head -n 3 .env
         else
-          echo "⚠️ .env file missing, skipping shell load."
+          echo "❌ .env file missing!"
+          exit 1
         fi
         
         # 기존 컨테이너 정리
-        docker-compose -f docker-compose.prod.yml down --remove-orphans || true
+        # --env-file 옵션으로 환경 변수 파일 명시
+        docker-compose --env-file .env -f docker-compose.prod.yml down --remove-orphans || true
         
         # 최신 코드로 빌드 및 실행
-        docker-compose -f docker-compose.prod.yml up -d --build
+        docker-compose --env-file .env -f docker-compose.prod.yml up -d --build
 
     - name: Prune Docker System
       run: |
