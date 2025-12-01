@@ -101,7 +101,23 @@ public class AuctionService {
         // 판매자 존재 확인
         User seller = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
-        
+
+        // 동네인증 검증 (경매 등록 시 필수)
+        if (seller.getVerifiedRegion() == null || seller.getVerifiedRegion().trim().isEmpty()) {
+            throw new IllegalStateException("경매를 등록하려면 동네인증이 필요합니다.");
+        }
+
+        // 동네인증 유효기간 검증 (30일)
+        if (seller.getLocationUpdatedAt() != null) {
+            LocalDateTime updatedAt = seller.getLocationUpdatedAt();
+            LocalDateTime now = LocalDateTime.now();
+            long daysDiff = java.time.Duration.between(updatedAt, now).toDays();
+
+            if (daysDiff > 30) {
+                throw new IllegalStateException("동네인증이 만료되었습니다. 다시 인증해주세요. (30일 경과)");
+            }
+        }
+
         // 경매 엔티티 생성 (정적 팩토리 메서드에서 시간 자동 계산)
         Auction auction = Auction.createAuction(
                 seller,
