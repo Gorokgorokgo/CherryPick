@@ -3,6 +3,7 @@ package com.cherrypick.app.domain.common.controller;
 import com.cherrypick.app.domain.common.dto.ImageUploadResponse;
 import com.cherrypick.app.domain.common.entity.UploadedImage;
 import com.cherrypick.app.domain.common.service.ImageUploadService;
+import com.cherrypick.app.domain.image.service.ImageUploadWithThumbnailService;
 import com.cherrypick.app.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,11 +27,12 @@ import java.util.Map;
 @RequestMapping("/api/images")
 @RequiredArgsConstructor
 public class ImageUploadController {
-    
+
     private final ImageUploadService imageUploadService;
+    private final ImageUploadWithThumbnailService imageUploadWithThumbnailService;
     private final UserService userService;
     
-    @Operation(summary = "단일 이미지 업로드", description = "단일 이미지 파일을 AWS S3에 업로드합니다. JPG, PNG, WEBP 형식만 지원하며, 최대 5MB까지 업로드 가능합니다.")
+    @Operation(summary = "단일 이미지 업로드", description = "단일 이미지 파일을 AWS S3에 업로드합니다. JPG, PNG, WEBP 형식만 지원하며, 최대 5MB까지 업로드 가능합니다. 썸네일도 자동으로 생성됩니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "이미지 업로드 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류"),
@@ -41,19 +43,19 @@ public class ImageUploadController {
             @Parameter(description = "업로드할 이미지 파일") @RequestParam("file") MultipartFile file,
             @Parameter(description = "저장할 폴더명 (기본: general)") @RequestParam(value = "folder", defaultValue = "general") String folder,
             @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
-        
+
         try {
             Long userId = userService.getUserIdByEmail(userDetails.getUsername());
-            UploadedImage uploadedImage = imageUploadService.uploadImage(file, folder, userId);
+            UploadedImage uploadedImage = imageUploadWithThumbnailService.uploadImageWithThumbnail(file, folder, userId);
             ImageUploadResponse response = ImageUploadResponse.from(uploadedImage);
-            
+
             return ResponseEntity.ok(response);
         } catch (IOException e) {
             return ResponseEntity.badRequest().build();
         }
     }
     
-    @Operation(summary = "다중 이미지 업로드", description = "여러 이미지 파일을 동시에 AWS S3에 업로드합니다. 최대 10개 파일까지 업로드 가능합니다.")
+    @Operation(summary = "다중 이미지 업로드", description = "여러 이미지 파일을 동시에 AWS S3에 업로드합니다. 최대 10개 파일까지 업로드 가능합니다. 썸네일도 자동으로 생성됩니다.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "이미지 업로드 성공"),
             @ApiResponse(responseCode = "400", description = "잘못된 파일 형식 또는 파일 오류"),
@@ -64,14 +66,14 @@ public class ImageUploadController {
             @Parameter(description = "업로드할 이미지 파일 목록") @RequestParam("files") List<MultipartFile> files,
             @Parameter(description = "저장할 폴더명 (기본: general)") @RequestParam(value = "folder", defaultValue = "general") String folder,
             @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
-        
+
         try {
             Long userId = userService.getUserIdByEmail(userDetails.getUsername());
-            List<UploadedImage> uploadedImages = imageUploadService.uploadMultipleImages(files, folder, userId);
+            List<UploadedImage> uploadedImages = imageUploadWithThumbnailService.uploadMultipleImagesWithThumbnail(files, folder, userId);
             List<ImageUploadResponse> responses = uploadedImages.stream()
                     .map(ImageUploadResponse::from)
                     .toList();
-            
+
             return ResponseEntity.ok(responses);
         } catch (IOException e) {
             return ResponseEntity.badRequest().build();

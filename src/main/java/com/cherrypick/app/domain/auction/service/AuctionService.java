@@ -5,6 +5,7 @@ import com.cherrypick.app.domain.auction.dto.AuctionSearchRequest;
 import com.cherrypick.app.domain.auction.dto.CreateAuctionRequest;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.entity.AuctionImage;
+import com.cherrypick.app.domain.common.entity.UploadedImage;
 import com.cherrypick.app.domain.auction.enums.AuctionStatus;
 import com.cherrypick.app.domain.auction.enums.Category;
 import com.cherrypick.app.domain.auction.enums.RegionScope;
@@ -69,6 +70,7 @@ public class AuctionService {
     private final WebSocketMessagingService webSocketMessagingService;
     private final TransactionService transactionService;
     private final LocationService locationService;
+    private final com.cherrypick.app.domain.common.service.ImageUploadService imageUploadService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -146,7 +148,7 @@ public class AuctionService {
         Auction savedAuction = auctionRepository.save(auction);
         
         // 상품 이미지 저장 (순서 보장)
-        List<AuctionImage> images = saveAuctionImages(savedAuction, request.getImageUrls());
+        List<AuctionImage> images = saveAuctionImages(auction, request.getImageUrls());
         
         return AuctionResponse.from(savedAuction, images);
     }
@@ -221,15 +223,49 @@ public class AuctionService {
     }
     
     private List<AuctionImage> saveAuctionImages(Auction auction, List<String> imageUrls) {
-        List<AuctionImage> images = imageUrls.stream()
-                .map(url -> AuctionImage.builder()
-                        .auction(auction)
-                        .imageUrl(url)
-                        .sortOrder(imageUrls.indexOf(url))
-                        .build())
-                .toList();
+        // 이미지 정보 일괄 조회 (N+1 방지)
+        List<UploadedImage> uploadedImages = imageUploadService.getImageInfos(imageUrls);
+        
+        // URL을 키로 하는 맵 생성
+        Map<String, String> thumbnailMap = uploadedImages.stream()
+                .collect(Collectors.toMap(UploadedImage::getS3Url, UploadedImage::getThumbnailUrl, (a, b) -> a));
+
+        List<AuctionImage> images = new ArrayList<>();
+        for (int i = 0; i < imageUrls.size(); i++) {
+            String imageUrl = imageUrls.get(i);
+            String thumbnailUrl = thumbnailMap.get(imageUrl);
+
+            if (thumbnailUrl == null) {
+                log.warn("썸네일 정보를 찾을 수 없습니다: {}", imageUrl);
+            }
+
+            AuctionImage image = AuctionImage.builder()
+                    .auction(auction)
+                    .imageUrl(imageUrl)
+                    .thumbnailUrl(thumbnailUrl)
+                    .sortOrder(i)
+                    .build();
+            images.add(image);
+        }
+
+        // 이미지를 영구 저장 상태로 전환 (경매 등록 완료)
+        markImagesAsPermanent(imageUrls);
 
         return auctionImageRepository.saveAll(images);
+    }
+
+    /**
+     * 이미지를 임시 → 영구 저장 상태로 전환
+     */
+    private void markImagesAsPermanent(List<String> imageUrls) {
+        for (String imageUrl : imageUrls) {
+            try {
+                imageUploadService.markImageAsPermanent(imageUrl);
+            } catch (Exception e) {
+                log.warn("⚠️ 이미지 영구 전환 실패: {}", imageUrl, e);
+                // 경매 등록은 성공했으므로 로그만 남기고 계속 진행
+            }
+        }
     }
 
     /**
@@ -871,6 +907,8 @@ public class AuctionService {
                 AuctionImage image = AuctionImage.builder()
                         .auction(auction)
                         .imageUrl(updateRequest.getImageUrls().get(i))
+                        .thumbnailUrl(updateRequest.getThumbnailUrls() != null && i < updateRequest.getThumbnailUrls().size() 
+                                ? updateRequest.getThumbnailUrls().get(i) : null)
                         .sortOrder(i)
                         .build();
                 newImages.add(image);
