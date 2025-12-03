@@ -63,7 +63,10 @@ dependencies {
     // HTTP 클라이언트 (OAuth API 호출용)
     implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebClient
 
-    
+    // 이미지 썸네일 생성
+    implementation 'net.coobird:thumbnailator:0.4.20' // 이미지 리사이징 및 썸네일 생성
+
+
     runtimeOnly 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

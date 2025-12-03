@@ -16,8 +16,12 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import net.coobird.thumbnailator.Thumbnails;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -56,7 +60,9 @@ public class ImageUploadService {
     private String secretKey;
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "webp");
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-    
+    private static final int THUMBNAIL_WIDTH = 300; // 썸네일 너비
+    private static final int THUMBNAIL_HEIGHT = 300; // 썸네일 높이
+
     private S3Client s3Client;
     
     private S3Client getS3Client() {
@@ -73,27 +79,52 @@ public class ImageUploadService {
     
     public UploadedImage uploadImage(MultipartFile file, String folder, Long uploaderId) throws IOException {
         validateFile(file);
-        
+
         String originalFilename = file.getOriginalFilename();
         String storedFilename = generateFileName(originalFilename);
-        String fullPath = folder + "/" + storedFilename;
-        // NCP Object Storage URL 형식
-        String imageUrl = String.format("https://%s.kr.object.ncloudstorage.com/%s", bucketName, fullPath);
-        
+
+        // 원본 이미지 경로 (original 폴더에 저장)
+        String originalPath = folder + "/original/" + storedFilename;
+        String originalUrl = String.format("https://%s.kr.object.ncloudstorage.com/%s", bucketName, originalPath);
+
+        // 썸네일 이미지 경로 (thumbnail 폴더에 저장)
+        String thumbnailPath = folder + "/thumbnail/" + storedFilename;
+        String thumbnailUrl = String.format("https://%s.kr.object.ncloudstorage.com/%s", bucketName, thumbnailPath);
+
+        // 썸네일 생성
+        ByteArrayOutputStream thumbnailOutputStream = new ByteArrayOutputStream();
+        Thumbnails.of(file.getInputStream())
+                .size(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
+                .outputFormat(getFileExtension(originalFilename))
+                .toOutputStream(thumbnailOutputStream);
+
+        byte[] thumbnailBytes = thumbnailOutputStream.toByteArray();
+        long thumbnailFileSize = thumbnailBytes.length;
+
+        log.info("썸네일 생성 완료 - 원본: {}bytes, 썸네일: {}bytes", file.getSize(), thumbnailFileSize);
+
         // 1단계: 데이터베이스에 이미지 정보 먼저 저장
-        UploadedImage uploadedImage = saveImageRecord(originalFilename, storedFilename, 
-                file.getSize(), file.getContentType(), folder, imageUrl, uploaderId);
-        
+        UploadedImage uploadedImage = saveImageRecord(
+                originalFilename, storedFilename,
+                file.getSize(), file.getContentType(), folder,
+                originalUrl, thumbnailUrl, thumbnailFileSize, uploaderId
+        );
+
         log.info("DB 저장 완료 - ID: {}, 원본: {}", uploadedImage.getId(), originalFilename);
-        
+
         try {
-            // 2단계: S3에 업로드
-            uploadToS3(file, fullPath);
-            log.info("S3 업로드 완료: {}", imageUrl);
-            
-            log.info("이미지 업로드 완료 - ID: {}, URL: {}", uploadedImage.getId(), imageUrl);
+            // 2단계: 원본 이미지를 S3에 업로드
+            uploadToS3(file, originalPath);
+            log.info("원본 이미지 S3 업로드 완료: {}", originalUrl);
+
+            // 3단계: 썸네일 이미지를 S3에 업로드
+            uploadThumbnailToS3(thumbnailBytes, thumbnailPath, file.getContentType());
+            log.info("썸네일 이미지 S3 업로드 완료: {}", thumbnailUrl);
+
+            log.info("이미지 업로드 완료 - ID: {}, 원본 URL: {}, 썸네일 URL: {}",
+                    uploadedImage.getId(), originalUrl, thumbnailUrl);
             return uploadedImage;
-            
+
         } catch (Exception e) {
             // S3 업로드 실패 시 DB 레코드 삭제
             log.error("S3 업로드 실패, DB 레코드 삭제 - ID: {}", uploadedImage.getId(), e);
@@ -106,18 +137,21 @@ public class ImageUploadService {
      * 이미지 정보를 데이터베이스에 저장 (별도 트랜잭션)
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-    public UploadedImage saveImageRecord(String originalFilename, String storedFilename, 
-                                       long fileSize, String contentType, String folder, String imageUrl, Long uploaderId) {
+    public UploadedImage saveImageRecord(String originalFilename, String storedFilename,
+                                       long fileSize, String contentType, String folder,
+                                       String originalUrl, String thumbnailUrl, Long thumbnailFileSize, Long uploaderId) {
         UploadedImage uploadedImage = UploadedImage.builder()
                 .originalFilename(originalFilename)
                 .storedFilename(storedFilename)
                 .fileSize(fileSize)
                 .contentType(contentType)
                 .folderPath(folder)
-                .s3Url(imageUrl)
+                .s3Url(originalUrl) // 원본 이미지 URL
+                .thumbnailUrl(thumbnailUrl) // 썸네일 URL
+                .thumbnailFileSize(thumbnailFileSize) // 썸네일 파일 크기
                 .uploaderId(uploaderId) // 실제 업로더 ID 설정
                 .build();
-        
+
         return uploadedImageRepository.save(uploadedImage);
     }
     
@@ -285,6 +319,33 @@ public class ImageUploadService {
         } catch (Exception e) {
             log.error("S3 업로드 실패: path={}, error={}", path, e.getMessage(), e);
             throw new IOException("S3 업로드에 실패했습니다: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 썸네일을 S3에 업로드
+     */
+    private void uploadThumbnailToS3(byte[] thumbnailBytes, String path, String contentType) throws IOException {
+        try {
+            log.info("썸네일 S3 업로드 시작: bucket={}, path={}", bucketName, path);
+
+            // S3에 썸네일 업로드 (Public Read ACL 설정)
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(path)
+                    .contentType(contentType)
+                    .acl("public-read") // 공개 읽기 권한 설정
+                    .build();
+
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(thumbnailBytes);
+            getS3Client().putObject(putObjectRequest,
+                    RequestBody.fromInputStream(inputStream, thumbnailBytes.length));
+
+            log.info("썸네일 S3 업로드 완료: path={}", path);
+
+        } catch (Exception e) {
+            log.error("썸네일 S3 업로드 실패: path={}, error={}", path, e.getMessage(), e);
+            throw new IOException("썸네일 S3 업로드에 실패했습니다: " + e.getMessage());
         }
     }
     
