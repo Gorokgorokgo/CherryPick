@@ -87,18 +87,18 @@ public class ImageUploadService {
         log.info("DB 저장 완료 - ID: {}, 원본: {}", uploadedImage.getId(), originalFilename);
         
         try {
-            // 2단계: S3에 업로드
-            uploadToS3(file, fullPath);
-            log.info("S3 업로드 완료: {}", imageUrl);
+            // 2단계: NCP Object Storage에 업로드
+            uploadToNCP(file, fullPath);
+            log.info("NCP 업로드 완료: {}", imageUrl);
             
             log.info("이미지 업로드 완료 - ID: {}, URL: {}", uploadedImage.getId(), imageUrl);
             return uploadedImage;
             
         } catch (Exception e) {
-            // S3 업로드 실패 시 DB 레코드 삭제
-            log.error("S3 업로드 실패, DB 레코드 삭제 - ID: {}", uploadedImage.getId(), e);
+            // NCP 업로드 실패 시 DB 레코드 삭제
+            log.error("NCP 업로드 실패, DB 레코드 삭제 - ID: {}", uploadedImage.getId(), e);
             uploadedImageRepository.delete(uploadedImage);
-            throw new IOException("S3 업로드 실패: " + e.getMessage(), e);
+            throw new IOException("NCP 업로드 실패: " + e.getMessage(), e);
         }
     }
     
@@ -147,9 +147,9 @@ public class ImageUploadService {
         uploadedImageRepository.save(image);
         log.info("이미지 메타데이터 Soft Delete 완료: {}", imageUrl);
 
-        // 2. S3 파일은 배치 작업으로 정리 예정
+        // 2. NCP 파일은 배치 작업으로 정리 예정
         // TODO: 삭제된 이미지 배치 정리 작업 추가 (예: 30일 후 완전 삭제)
-        log.info("S3 파일은 배치 작업에서 정리됩니다: {}", imageUrl);
+        log.info("NCP 파일은 배치 작업에서 정리됩니다: {}", imageUrl);
     }
     
     /**
@@ -173,9 +173,9 @@ public class ImageUploadService {
         uploadedImageRepository.save(image);
         log.info("이미지 메타데이터 Soft Delete 완료 - ID: {}, URL: {}", imageId, image.getS3Url());
 
-        // 4. S3 파일은 배치 작업으로 정리 예정
+        // 4. NCP 파일은 배치 작업으로 정리 예정
         // TODO: 삭제된 이미지 배치 정리 작업 추가 (예: 30일 후 완전 삭제)
-        log.info("S3 파일은 배치 작업에서 정리됩니다 - ID: {}, URL: {}", imageId, image.getS3Url());
+        log.info("NCP 파일은 배치 작업에서 정리됩니다 - ID: {}, URL: {}", imageId, image.getS3Url());
     }
     
     /**
@@ -193,9 +193,9 @@ public class ImageUploadService {
         uploadedImageRepository.save(image);
         log.info("이미지 메타데이터 Soft Delete 완료 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
 
-        // 3. S3 파일은 배치 작업으로 정리 예정
+        // 3. NCP 파일은 배치 작업으로 정리 예정
         // TODO: 삭제된 이미지 배치 정리 작업 추가 (예: 30일 후 완전 삭제)
-        log.info("S3 파일은 배치 작업에서 정리됩니다 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
+        log.info("NCP 파일은 배치 작업에서 정리됩니다 (관리자) - ID: {}, URL: {}", imageId, image.getS3Url());
     }
     
     /**
@@ -231,7 +231,58 @@ public class ImageUploadService {
         return uploadedImageRepository.findByS3Url(imageUrl)
                 .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다: " + imageUrl));
     }
-    
+
+    /**
+     * URL 목록으로 이미지 정보 일괄 조회
+     */
+    @Transactional(readOnly = true)
+    public List<UploadedImage> getImageInfos(List<String> imageUrls) {
+        return uploadedImageRepository.findByS3UrlIn(imageUrls);
+    }
+
+    /**
+     * 이미지를 영구 저장 상태로 전환
+     *
+     * @param imageUrl 이미지 URL
+     */
+    public void markImageAsPermanent(String imageUrl) {
+        UploadedImage image = uploadedImageRepository.findByS3Url(imageUrl)
+                .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다: " + imageUrl));
+
+        image.markAsPermanent();
+        uploadedImageRepository.save(image);
+    }
+
+    /**
+     * 임시 파일 완전 삭제 (NCP + DB)
+     * 배치 정리 작업에서 사용
+     *
+     * @param imageId 삭제할 이미지 ID
+     */
+    public void deleteTempImageCompletely(Long imageId) {
+        UploadedImage image = uploadedImageRepository.findById(imageId)
+                .orElseThrow(() -> new IllegalArgumentException("이미지를 찾을 수 없습니다: " + imageId));
+
+        try {
+            // 1. 원본 이미지 NCP 삭제
+            deleteFromNCP(image.getS3Url());
+
+            // 2. 썸네일 이미지 NCP 삭제 (있는 경우)
+            if (image.getThumbnailUrl() != null && !image.getThumbnailUrl().isEmpty()) {
+                deleteFromNCP(image.getThumbnailUrl());
+            }
+
+            // 3. DB 레코드 삭제
+            uploadedImageRepository.delete(image);
+
+            log.info("✅ 임시 이미지 완전 삭제 완료 - ID: {}, URL: {}", imageId, image.getS3Url());
+
+        } catch (Exception e) {
+            log.error("❌ 임시 이미지 삭제 실패 - ID: {}, URL: {}", imageId, image.getS3Url(), e);
+            throw new RuntimeException("이미지 삭제 실패: " + e.getMessage(), e);
+        }
+    }
+
     private void validateFile(MultipartFile file) {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("빈 파일은 업로드할 수 없습니다.");
@@ -265,11 +316,11 @@ public class ImageUploadService {
         return filename.substring(lastDotIndex + 1);
     }
     
-    private void uploadToS3(MultipartFile file, String path) throws IOException {
+    private void uploadToNCP(MultipartFile file, String path) throws IOException {
         try {
-            log.info("S3 업로드 시작: bucket={}, path={}", bucketName, path);
+            log.info("NCP 업로드 시작: bucket={}, path={}", bucketName, path);
 
-            // S3에 파일 업로드 (Public Read ACL 설정)
+            // NCP에 파일 업로드 (Public Read ACL 설정)
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(path)
@@ -280,20 +331,20 @@ public class ImageUploadService {
             getS3Client().putObject(putObjectRequest,
                     RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
 
-            log.info("S3 업로드 완료: path={}", path);
+            log.info("NCP 업로드 완료: path={}", path);
 
         } catch (Exception e) {
-            log.error("S3 업로드 실패: path={}, error={}", path, e.getMessage(), e);
-            throw new IOException("S3 업로드에 실패했습니다: " + e.getMessage());
+            log.error("NCP 업로드 실패: path={}, error={}", path, e.getMessage(), e);
+            throw new IOException("NCP 업로드에 실패했습니다: " + e.getMessage());
         }
     }
     
-    private void deleteFromS3(String imageUrl) {
+    private void deleteFromNCP(String imageUrl) {
         try {
             // URL에서 Object Storage 키 추출 (NCP 형식)
             String key = imageUrl.substring(imageUrl.indexOf(bucketName) + bucketName.length() + 1);
             
-            log.info("S3 삭제 시작: bucket={}, key={}", bucketName, key);
+            log.info("NCP 삭제 시작: bucket={}, key={}", bucketName, key);
             
             DeleteObjectRequest deleteObjectRequest = DeleteObjectRequest.builder()
                     .bucket(bucketName)
@@ -302,14 +353,14 @@ public class ImageUploadService {
                     
             getS3Client().deleteObject(deleteObjectRequest);
             
-            log.info("S3 삭제 완료: {}", imageUrl);
+            log.info("NCP 삭제 완료: {}", imageUrl);
             
         } catch (NoSuchKeyException e) {
             // 이미 삭제된 파일 - 멱등성 보장으로 정상 처리
             log.info("파일이 이미 삭제됨 (멱등성 보장): {}", imageUrl);
             
         } catch (Exception e) {
-            log.error("S3 삭제 실패: url={}, error={}", imageUrl, e.getMessage(), e);
+            log.error("NCP 삭제 실패: url={}, error={}", imageUrl, e.getMessage(), e);
             throw e; // 다른 예외는 상위로 전달하여 재시도 로직에서 처리
         }
     }

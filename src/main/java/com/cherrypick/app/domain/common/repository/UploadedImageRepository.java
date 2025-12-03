@@ -12,12 +12,20 @@ import java.util.Optional;
 public interface UploadedImageRepository extends JpaRepository<UploadedImage, Long> {
     
     /**
-     * S3 URL로 이미지 조회
+     * NCP URL로 이미지 조회
      */
     @Query("SELECT ui FROM UploadedImage ui " +
            "WHERE ui.s3Url = :s3Url " +
            "AND ui.deletedAt IS NULL")
     Optional<UploadedImage> findByS3Url(@Param("s3Url") String s3Url);
+
+    /**
+     * NCP URL 목록으로 이미지 일괄 조회
+     */
+    @Query("SELECT ui FROM UploadedImage ui " +
+           "WHERE ui.s3Url IN :s3Urls " +
+           "AND ui.deletedAt IS NULL")
+    List<UploadedImage> findByS3UrlIn(@Param("s3Urls") List<String> s3Urls);
 
     /**
      * 업로더별 이미지 목록 조회
@@ -53,4 +61,14 @@ public interface UploadedImageRepository extends JpaRepository<UploadedImage, Lo
            "WHERE ui.uploaderId = :uploaderId " +
            "AND ui.deletedAt IS NULL")
     Long getTotalFileSizeByUploader(@Param("uploaderId") Long uploaderId);
+
+    /**
+     * 오래된 임시 이미지 조회 (배치 정리용)
+     * 지정된 시간보다 오래되고 TEMP 상태인 이미지 조회
+     */
+    @Query("SELECT ui FROM UploadedImage ui " +
+           "WHERE ui.status = 'TEMP' " +
+           "AND ui.createdAt < :before " +
+           "AND ui.deletedAt IS NULL")
+    List<UploadedImage> findOldTempImages(@Param("before") LocalDateTime before);
 }
