@@ -146,7 +146,7 @@ public class AuctionService {
         Auction savedAuction = auctionRepository.save(auction);
         
         // 상품 이미지 저장 (순서 보장)
-        List<AuctionImage> images = saveAuctionImages(savedAuction, request.getImageUrls());
+        List<AuctionImage> images = saveAuctionImages(auction, request.getImageUrls(), request.getThumbnailUrls());
         
         return AuctionResponse.from(savedAuction, images);
     }
@@ -220,15 +220,19 @@ public class AuctionService {
         return createAuctionResponsePage(auctions, userId);
     }
     
-    private List<AuctionImage> saveAuctionImages(Auction auction, List<String> imageUrls) {
-        List<AuctionImage> images = imageUrls.stream()
-                .map(url -> AuctionImage.builder()
-                        .auction(auction)
-                        .imageUrl(url)
-                        .sortOrder(imageUrls.indexOf(url))
-                        .build())
-                .toList();
+    private List<AuctionImage> saveAuctionImages(Auction auction, List<String> imageUrls, List<String> thumbnailUrls) {
+        List<AuctionImage> images = new ArrayList<>();
+        for (int i = 0; i < imageUrls.size(); i++) {
+            String thumbnailUrl = thumbnailUrls != null && i < thumbnailUrls.size() ? thumbnailUrls.get(i) : null;
 
+            AuctionImage image = AuctionImage.builder()
+                    .auction(auction)
+                    .imageUrl(imageUrls.get(i))
+                    .thumbnailUrl(thumbnailUrl)
+                    .sortOrder(i)
+                    .build();
+            images.add(image);
+        }
         return auctionImageRepository.saveAll(images);
     }
 
@@ -871,6 +875,8 @@ public class AuctionService {
                 AuctionImage image = AuctionImage.builder()
                         .auction(auction)
                         .imageUrl(updateRequest.getImageUrls().get(i))
+                        .thumbnailUrl(updateRequest.getThumbnailUrls() != null && i < updateRequest.getThumbnailUrls().size() 
+                                ? updateRequest.getThumbnailUrls().get(i) : null)
                         .sortOrder(i)
                         .build();
                 newImages.add(image);

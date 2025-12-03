@@ -58,10 +58,15 @@ public class CreateAuctionRequest {
     @Schema(description = "지역명", example = "서울특별시")
     private String regionName;
     
-    @Schema(description = "상품 이미지 URL 목록", example = "[\"https://example.com/image1.jpg\", \"https://example.com/image2.jpg\"]", required = true)
+    @Schema(description = "상품 이미지 URL 목록 (원본, 최대 1024px)", example = "[\"https://example.com/image1.jpg\", \"https://example.com/image2.jpg\"]", required = true)
     @NotEmpty(message = "상품 이미지는 최소 1개 이상 필요합니다.")
     @Size(max = 10, message = "상품 이미지는 최대 10개까지 가능합니다.")
     private List<String> imageUrls;
+
+    @Schema(description = "썸네일 이미지 URL 목록 (300px)", example = "[\"https://example.com/thumb_image1.jpg\", \"https://example.com/thumb_image2.jpg\"]", required = true)
+    @NotEmpty(message = "썸네일 이미지는 최소 1개 이상 필요합니다.")
+    @Size(max = 10, message = "썸네일 이미지는 최대 10개까지 가능합니다.")
+    private List<String> thumbnailUrls;
     
     @Schema(description = "상품 상태 (1-10점)", example = "8", required = true)
     @NotNull(message = "상품 상태는 필수입니다.")
