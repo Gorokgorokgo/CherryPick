@@ -156,6 +156,7 @@ public class SocialAuthService {
             );
 
         } catch (Exception e) {
+            log.error("소셜 로그인 처리 중 예외 발생", e);
             return new AuthResponse("소셜 로그인 실패: " + e.getMessage());
         }
     }
