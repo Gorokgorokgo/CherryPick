@@ -135,8 +135,19 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    public Long getUserIdByEmail(String email) {
-        User user = userRepository.findByEmail(email)
+    public Long getUserIdByEmail(String emailOrUserId) {
+        // subject가 숫자인 경우 (카카오 로그인 등 email이 없는 소셜 로그인)
+        if (emailOrUserId != null && emailOrUserId.matches("\\d+")) {
+            Long userId = Long.parseLong(emailOrUserId);
+            // userId가 유효한지 확인
+            if (userRepository.existsById(userId)) {
+                return userId;
+            }
+            throw new RuntimeException("사용자를 찾을 수 없습니다.");
+        }
+        
+        // email로 사용자 조회
+        User user = userRepository.findByEmail(emailOrUserId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
         return user.getId();
     }
