@@ -137,13 +137,16 @@ public class SocialAuthService {
             }
 
             // 4. JWT 토큰 생성
+            log.debug("JWT 토큰 생성 시작 - userId: {}, email: {}", user.getId(), user.getEmail());
             String token = jwtConfig.generateToken(user.getEmail(), user.getId());
+            log.debug("JWT 토큰 생성 완료 - token length: {}", token != null ? token.length() : 0);
 
             log.info("Social Login User Region: {}", user.getVerifiedRegion());
 
             String message = isRestored ? "계정이 복구되었습니다. 다시 오신 것을 환영합니다!" : "로그인 성공";
 
-            return new AuthResponse(
+            log.debug("AuthResponse 생성 시작");
+            AuthResponse authResponse = new AuthResponse(
                 token, 
                 user.getId(), 
                 user.getEmail(), 
@@ -154,9 +157,12 @@ public class SocialAuthService {
                 user.getBio(),
                 message
             );
+            log.info("소셜 로그인 성공 완료 - userId: {}, message: {}", user.getId(), message);
+            return authResponse;
 
         } catch (Exception e) {
-            log.error("소셜 로그인 처리 중 예외 발생", e);
+            log.error("소셜 로그인 처리 중 예외 발생 - 예외 타입: {}, 메시지: {}", 
+                e.getClass().getSimpleName(), e.getMessage(), e);
             return new AuthResponse("소셜 로그인 실패: " + e.getMessage());
         }
     }

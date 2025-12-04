@@ -97,16 +97,22 @@ public class SocialAuthController {
             @ApiResponse(responseCode = "400", description = "OAuth 인증 실패")
     })
     public ResponseEntity<AuthResponse> socialLogin(@Valid @RequestBody SocialLoginRequest request) {
+        log.info("소셜 로그인 요청 수신 - provider: {}, hasAccessToken: {}", 
+            request.getProvider(), request.getAccessToken() != null);
         try {
             AuthResponse response = socialAuthService.socialLogin(request);
+            log.info("소셜 로그인 서비스 처리 완료 - hasToken: {}", response.getToken() != null);
             
             if (response.getToken() != null) {
+                log.info("소셜 로그인 성공 응답 반환");
                 return ResponseEntity.ok(response);
             } else {
+                log.warn("소셜 로그인 실패 - message: {}", response.getMessage());
                 return ResponseEntity.badRequest().body(response);
             }
         } catch (Exception e) {
-            log.error("소셜 로그인 요청 처리 중 예상치 못한 오류 발생", e);
+            log.error("소셜 로그인 요청 처리 중 예상치 못한 오류 발생 - 예외: {}, 메시지: {}", 
+                e.getClass().getSimpleName(), e.getMessage(), e);
             return ResponseEntity.internalServerError().body(new AuthResponse("서버 내부 오류가 발생했습니다."));
         }
     }
