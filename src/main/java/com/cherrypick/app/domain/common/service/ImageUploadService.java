@@ -316,6 +316,95 @@ public class ImageUploadService {
         return filename.substring(lastDotIndex + 1);
     }
     
+    /**
+     * 외부 URL에서 이미지를 다운로드하여 NCP에 업로드
+     * 소셜 로그인 프로필 이미지 등에 사용
+     *
+     * @param externalUrl 외부 이미지 URL (카카오, 구글 등)
+     * @param folder 저장할 폴더
+     * @param uploaderId 업로더 ID (소셜 로그인의 경우 userId)
+     * @return 업로드된 NCP URL
+     */
+    public String uploadFromUrl(String externalUrl, String folder, Long uploaderId) {
+        if (externalUrl == null || externalUrl.isEmpty()) {
+            return null;
+        }
+        
+        try {
+            log.info("외부 URL에서 이미지 다운로드 시작: {}", externalUrl);
+            
+            // 1. 외부 URL에서 이미지 다운로드
+            java.net.URL url = new java.net.URL(externalUrl);
+            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+            
+            if (connection.getResponseCode() != 200) {
+                log.warn("외부 이미지 다운로드 실패 (HTTP {}): {}", connection.getResponseCode(), externalUrl);
+                return externalUrl; // 실패 시 원본 URL 반환
+            }
+            
+            String contentType = connection.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                log.warn("유효하지 않은 이미지 타입: {}", contentType);
+                return externalUrl;
+            }
+            
+            // 확장자 결정
+            String extension = "jpg";
+            if (contentType.contains("png")) extension = "png";
+            else if (contentType.contains("webp")) extension = "webp";
+            else if (contentType.contains("gif")) extension = "gif";
+            
+            // 2. 이미지 바이트 읽기
+            byte[] imageBytes;
+            try (java.io.InputStream inputStream = connection.getInputStream()) {
+                imageBytes = inputStream.readAllBytes();
+            }
+            
+            // 파일 크기 체크 (5MB 이상이면 원본 URL 사용)
+            if (imageBytes.length > MAX_FILE_SIZE) {
+                log.warn("이미지 크기가 너무 큼 ({} bytes), 원본 URL 사용", imageBytes.length);
+                return externalUrl;
+            }
+            
+            // 3. NCP에 업로드
+            String storedFilename = UUID.randomUUID().toString() + "." + extension;
+            String fullPath = folder + "/" + storedFilename;
+            String imageUrl = String.format("https://%s.kr.object.ncloudstorage.com/%s", bucketName, fullPath);
+            
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(fullPath)
+                    .contentType(contentType)
+                    .acl("public-read")
+                    .build();
+            
+            getS3Client().putObject(putObjectRequest, RequestBody.fromBytes(imageBytes));
+            
+            // 4. DB에 이미지 정보 저장
+            UploadedImage uploadedImage = UploadedImage.builder()
+                    .originalFilename("social_profile." + extension)
+                    .storedFilename(storedFilename)
+                    .fileSize((long) imageBytes.length)
+                    .contentType(contentType)
+                    .folderPath(folder)
+                    .s3Url(imageUrl)
+                    .uploaderId(uploaderId)
+                    .build();
+            uploadedImage.markAsPermanent(); // 프로필 이미지는 영구 저장
+            uploadedImageRepository.save(uploadedImage);
+            
+            log.info("외부 이미지 NCP 업로드 완료: {} -> {}", externalUrl, imageUrl);
+            return imageUrl;
+            
+        } catch (Exception e) {
+            log.error("외부 이미지 업로드 실패, 원본 URL 사용: {}", externalUrl, e);
+            return externalUrl; // 실패 시 원본 URL 반환
+        }
+    }
+    
     private void uploadToNCP(MultipartFile file, String path) throws IOException {
         try {
             log.info("NCP 업로드 시작: bucket={}, path={}", bucketName, path);
