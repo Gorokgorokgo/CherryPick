@@ -2,6 +2,7 @@
 ALTER TABLE users ADD COLUMN IF NOT EXISTS verified_region VARCHAR(100);
 
 -- 2. social_accounts 테이블 생성 (PostgreSQL)
+-- BaseEntity 상속 필드(deleted_at, deleted_by) 포함
 CREATE TABLE IF NOT EXISTS social_accounts (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
@@ -18,6 +19,8 @@ CREATE TABLE IF NOT EXISTS social_accounts (
     last_login_ip VARCHAR(45),
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
+    deleted_at TIMESTAMP,
+    deleted_by BIGINT,
     
     CONSTRAINT fk_social_accounts_user FOREIGN KEY (user_id) REFERENCES users(id),
     CONSTRAINT uk_provider_provider_id UNIQUE (provider, provider_id)
@@ -25,3 +28,4 @@ CREATE TABLE IF NOT EXISTS social_accounts (
 
 -- 인덱스 생성
 CREATE INDEX IF NOT EXISTS idx_social_accounts_user_id ON social_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_social_accounts_deleted_at ON social_accounts(deleted_at);
