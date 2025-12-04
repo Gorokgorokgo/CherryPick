@@ -60,6 +60,7 @@ public class SocialAuthController {
     @Operation(summary = "소셜 로그인", 
                description = """
                    이미 가입된 소셜 계정으로 로그인합니다.
+                   계정이 없으면 **자동으로 회원가입** 처리됩니다.
                    
                    **지원 제공자:**
                    - GOOGLE: Google 계정
@@ -91,59 +92,10 @@ public class SocialAuthController {
                    """)
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "소셜 로그인 성공 - JWT 토큰 발급"),
-            @ApiResponse(responseCode = "400", description = "미가입 사용자 또는 OAuth 인증 실패")
+            @ApiResponse(responseCode = "400", description = "OAuth 인증 실패")
     })
     public ResponseEntity<AuthResponse> socialLogin(@Valid @RequestBody SocialLoginRequest request) {
         AuthResponse response = socialAuthService.socialLogin(request);
-        
-        if (response.getToken() != null) {
-            return ResponseEntity.ok(response);
-        } else {
-            return ResponseEntity.badRequest().body(response);
-        }
-    }
-
-    @PostMapping("/signup")
-    @Operation(summary = "소셜 회원가입", 
-               description = """
-                   소셜 계정으로 신규 회원가입을 진행합니다.
-                   
-                   **특징:**
-                   - 전화번호 인증 불필요 (소셜 계정 인증으로 대체)
-                   - 닉네임만 입력하면 즉시 가입 완료
-                   - 소셜 계정의 프로필 정보 자동 연동
-                   
-                   **사용 예시:**
-                   ```json
-                   {
-                     "provider": "GOOGLE",
-                     "code": "4/0AX4XfWiX...",
-                     "nickname": "체리유저",
-                     "redirectUri": "http://localhost:3000/auth/callback",
-                     "agreeToTerms": true,
-                     "agreeToPrivacy": true
-                   }
-                   ```
-                   
-                   **성공 응답:**
-                   ```json
-                   {
-                     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                     "user": {
-                       "id": 1,
-                       "email": "user@gmail.com",
-                       "nickname": "체리유저"
-                     },
-                     "message": "소셜 회원가입 성공"
-                   }
-                   ```
-                   """)
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "소셜 회원가입 성공 - JWT 토큰 발급"),
-            @ApiResponse(responseCode = "400", description = "이미 가입된 계정, 닉네임 중복, 약관 미동의 등")
-    })
-    public ResponseEntity<AuthResponse> socialSignup(@Valid @RequestBody SocialSignupRequest request) {
-        AuthResponse response = socialAuthService.socialSignup(request);
         
         if (response.getToken() != null) {
             return ResponseEntity.ok(response);
