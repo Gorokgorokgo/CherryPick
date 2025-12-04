@@ -74,7 +74,7 @@ public class SocialAuthService {
                     socialUserInfo.setExistingUser(true);
                 } else {
                     // 완전 신규 가입
-                    String nickname = socialUserInfo.getNickname();
+                    String nickname = socialUserInfo.getName();
                     if (nickname == null || nickname.isEmpty()) {
                         nickname = "User_" + System.currentTimeMillis();
                     }
