@@ -54,7 +54,8 @@ public class AuctionResponse {
     
     // 이미지 목록
     private List<String> imageUrls;
-    
+    private List<String> thumbnailUrls;
+
     // 시간 관련 계산 필드
     private Long remainingTimeMs; // 남은 시간 (밀리초)
     private boolean isExpired;
@@ -115,6 +116,11 @@ public class AuctionResponse {
         // 이미지 URL 목록
         response.setImageUrls(images.stream()
                 .map(AuctionImage::getImageUrl)
+                .toList());
+
+        // 썸네일 URL 목록
+        response.setThumbnailUrls(images.stream()
+                .map(AuctionImage::getThumbnailUrl)
                 .toList());
         
         // 상품 메타정보 (기존 데이터 호환성을 위한 기본값 처리)

@@ -24,6 +24,9 @@ public class AuctionImage extends BaseEntity {
     @Column(name = "image_url", nullable = false)
     private String imageUrl;
 
+    @Column(name = "thumbnail_url", length = 500)
+    private String thumbnailUrl;
+
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
 }

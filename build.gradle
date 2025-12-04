@@ -60,6 +60,9 @@ dependencies {
     // .env 환경변수 자동 로드 (더 안정적인 라이브러리)
     implementation 'io.github.cdimascio:dotenv-java:3.0.0'
 
+    // 이미지 메타데이터 추출
+    implementation 'com.drewnoakes:metadata-extractor:2.19.0'
+
     // HTTP 클라이언트 (OAuth API 호출용)
     implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebClient
 

@@ -29,9 +29,13 @@ public class UpdateAuctionRequest {
     @Size(max = 2000, message = "상품 설명은 2000자를 넘을 수 없습니다.")
     private String description;
 
-    @Schema(description = "상품 이미지 URL 목록", example = "[\"https://s3.../image1.jpg\", \"https://s3.../image2.jpg\"]", required = false)
+    @Schema(description = "상품 이미지 URL 목록 (원본, 최대 1024px)", example = "[\"https://s3.../image1.jpg\", \"https://s3.../image2.jpg\"]", required = false)
     @Size(max = 10, message = "이미지는 최대 10개까지 등록 가능합니다.")
     private List<String> imageUrls;
+
+    @Schema(description = "썸네일 이미지 URL 목록 (300px)", example = "[\"https://s3.../thumb_image1.jpg\", \"https://s3.../thumb_image2.jpg\"]", required = false)
+    @Size(max = 10, message = "썸네일은 최대 10개까지 등록 가능합니다.")
+    private List<String> thumbnailUrls;
 
     /**
      * 수정 요청 검증
