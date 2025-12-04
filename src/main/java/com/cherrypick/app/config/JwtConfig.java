@@ -29,7 +29,9 @@ public class JwtConfig {
     public String generateToken(String email, Long userId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
-        return createToken(claims, email);
+        // email이 null인 경우 userId를 subject로 사용 (카카오 로그인 등)
+        String subject = (email != null && !email.isEmpty()) ? email : String.valueOf(userId);
+        return createToken(claims, subject);
     }
 
     private String createToken(Map<String, Object> claims, String subject) {
@@ -72,7 +74,15 @@ public class JwtConfig {
     }
 
     public Boolean validateToken(String token, String email) {
-        final String tokenEmail = extractEmail(token);
-        return (tokenEmail.equals(email) && !isTokenExpired(token));
+        final String tokenSubject = extractEmail(token); // subject는 email 또는 userId 문자열
+        if (tokenSubject == null) {
+            return false;
+        }
+        // email이 null이면 userId 기반 검증 (subject가 숫자인지 확인)
+        if (email == null || email.isEmpty()) {
+            // subject가 userId인 경우 (숫자인 경우)
+            return tokenSubject.matches("\\d+") && !isTokenExpired(token);
+        }
+        return (tokenSubject.equals(email) && !isTokenExpired(token));
     }
 }

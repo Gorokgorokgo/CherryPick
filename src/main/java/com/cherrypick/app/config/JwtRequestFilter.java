@@ -43,25 +43,26 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
         final String requestTokenHeader = request.getHeader("Authorization");
 
-        String email = null;
+        String subject = null; // email 또는 userId 문자열
         String jwtToken = null;
 
         if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
             jwtToken = requestTokenHeader.substring(7);
             try {
-                email = jwtConfig.extractEmail(jwtToken);
+                subject = jwtConfig.extractEmail(jwtToken); // subject 추출 (email 또는 userId)
             } catch (Exception e) {
                 logger.warn("JWT Token 추출 실패: " + e.getMessage());
             }
         }
 
-        if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            if (jwtConfig.validateToken(jwtToken, email)) {
+        // subject가 존재하고 아직 인증되지 않은 경우
+        if (subject != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (jwtConfig.validateToken(jwtToken, subject)) {
                 Long userId = jwtConfig.extractUserId(jwtToken);
                 
-                // UserDetails 객체 생성
+                // UserDetails 객체 생성 (username은 subject 사용)
                 UserDetails userDetails = User.builder()
-                    .username(email)
+                    .username(subject)
                     .password("") // JWT 기반이므로 패스워드 불필요
                     .authorities(new ArrayList<>())
                     .build();
