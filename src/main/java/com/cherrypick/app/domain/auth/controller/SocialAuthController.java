@@ -5,6 +5,7 @@ import com.cherrypick.app.domain.auth.dto.request.SocialSignupRequest;
 import com.cherrypick.app.domain.auth.dto.response.AuthResponse;
 import com.cherrypick.app.domain.auth.dto.response.SocialUserInfo;
 import com.cherrypick.app.domain.auth.service.SocialAuthService;
+import lombok.extern.slf4j.Slf4j;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -13,6 +14,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/auth/social")
 @CrossOrigin(origins = "*")
@@ -95,12 +97,17 @@ public class SocialAuthController {
             @ApiResponse(responseCode = "400", description = "OAuth 인증 실패")
     })
     public ResponseEntity<AuthResponse> socialLogin(@Valid @RequestBody SocialLoginRequest request) {
-        AuthResponse response = socialAuthService.socialLogin(request);
-        
-        if (response.getToken() != null) {
-            return ResponseEntity.ok(response);
-        } else {
-            return ResponseEntity.badRequest().body(response);
+        try {
+            AuthResponse response = socialAuthService.socialLogin(request);
+            
+            if (response.getToken() != null) {
+                return ResponseEntity.ok(response);
+            } else {
+                return ResponseEntity.badRequest().body(response);
+            }
+        } catch (Exception e) {
+            log.error("소셜 로그인 요청 처리 중 예상치 못한 오류 발생", e);
+            return ResponseEntity.internalServerError().body(new AuthResponse("서버 내부 오류가 발생했습니다."));
         }
     }
 
