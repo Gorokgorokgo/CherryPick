@@ -9,6 +9,7 @@ import com.cherrypick.app.domain.auth.entity.SocialAccount;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.notification.event.AccountRestoredEvent;
+import com.cherrypick.app.domain.common.service.ImageUploadService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -23,12 +24,15 @@ public class SocialAuthService {
     private final UserRepository userRepository;
     private final JwtConfig jwtConfig;
     private final ApplicationEventPublisher eventPublisher;
+    private final ImageUploadService imageUploadService;
 
-    public SocialAuthService(OAuthService oAuthService, UserRepository userRepository, JwtConfig jwtConfig, ApplicationEventPublisher eventPublisher) {
+    public SocialAuthService(OAuthService oAuthService, UserRepository userRepository, JwtConfig jwtConfig, 
+                             ApplicationEventPublisher eventPublisher, ImageUploadService imageUploadService) {
         this.oAuthService = oAuthService;
         this.userRepository = userRepository;
         this.jwtConfig = jwtConfig;
         this.eventPublisher = eventPublisher;
+        this.imageUploadService = imageUploadService;
     }
 
     public AuthResponse socialLogin(SocialLoginRequest request) {
@@ -99,12 +103,26 @@ public class SocialAuthService {
                             .sellerLevel(1)
                             .sellerExp(0);
 
-                    if (socialUserInfo.getProfileImageUrl() != null) {
-                        userBuilder.profileImageUrl(socialUserInfo.getProfileImageUrl());
-                    }
-
                     User newUser = userBuilder.build();
                     User savedUser = userRepository.save(newUser);
+
+                    // 소셜 프로필 이미지를 NCP에 업로드
+                    if (socialUserInfo.getProfileImageUrl() != null) {
+                        try {
+                            String ncpProfileUrl = imageUploadService.uploadFromUrl(
+                                    socialUserInfo.getProfileImageUrl(),
+                                    "profiles",
+                                    savedUser.getId()
+                            );
+                            savedUser.setProfileImageUrl(ncpProfileUrl);
+                            userRepository.save(savedUser);
+                            log.info("소셜 프로필 이미지 NCP 업로드 완료: userId={}", savedUser.getId());
+                        } catch (Exception e) {
+                            log.warn("소셜 프로필 이미지 업로드 실패, 원본 URL 사용: {}", e.getMessage());
+                            savedUser.setProfileImageUrl(socialUserInfo.getProfileImageUrl());
+                            userRepository.save(savedUser);
+                        }
+                    }
 
                     // 소셜 계정 정보 저장
                     oAuthService.createSocialAccount(savedUser, socialUserInfo);
