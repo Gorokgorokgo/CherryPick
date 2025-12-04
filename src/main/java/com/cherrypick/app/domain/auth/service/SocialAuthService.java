@@ -53,9 +53,65 @@ public class SocialAuthService {
                 );
             }
 
-            // 2. 기존 연동된 계정 확인
+            // 2. 기존 연동된 계정 확인 및 자동 회원가입
             if (!socialUserInfo.isExistingUser()) {
-                return new AuthResponse("가입이 필요합니다. 회원가입을 먼저 진행해주세요.");
+                // 자동 회원가입 로직 시작
+                log.info("신규 소셜 사용자 자동 가입 진행: email={}", socialUserInfo.getEmail());
+
+                // 이메일 중복 체크 (다른 소셜이나 일반 가입으로 이미 존재하는지)
+                if (socialUserInfo.getEmail() != null && userRepository.existsByEmail(socialUserInfo.getEmail())) {
+                    // 정책 결정: 이미 존재하는 이메일이면, 해당 계정에 연동할지 아니면 에러를 낼지.
+                    // 편의상 자동 연동을 시도하거나, 에러 메시지를 명확히 줍니다.
+                    // 여기서는 기존 계정이 있으면 소셜 계정을 연결하고 로그인 처리합니다.
+                    User existingUser = userRepository.findByEmail(socialUserInfo.getEmail())
+                            .orElseThrow(() -> new RuntimeException("사용자 조회 오류"));
+                    
+                    // 소셜 계정 연동
+                    oAuthService.createSocialAccount(existingUser, socialUserInfo);
+                    
+                    // 기존 유저로 로그인 진행
+                    socialUserInfo.setUserId(existingUser.getId());
+                    socialUserInfo.setExistingUser(true);
+                } else {
+                    // 완전 신규 가입
+                    String nickname = socialUserInfo.getNickname();
+                    if (nickname == null || nickname.isEmpty()) {
+                        nickname = "User_" + System.currentTimeMillis();
+                    }
+
+                    // 닉네임 중복 처리 (랜덤 접미사 추가)
+                    int retryCount = 0;
+                    String originalNickname = nickname;
+                    while (userRepository.existsByNickname(nickname)) {
+                        nickname = originalNickname + "_" + (int)(Math.random() * 10000);
+                        retryCount++;
+                        if (retryCount > 5) break; // 무한 루프 방지
+                    }
+
+                    User.UserBuilder userBuilder = User.builder()
+                            .nickname(nickname)
+                            .email(socialUserInfo.getEmail())
+                            .password("") // 소셜 로그인 사용자는 비밀번호 불필요
+                            .phoneNumber(null) // 소셜 로그인 사용자는 전화번호 선택
+                            .pointBalance(0L)
+                            .buyerLevel(1)
+                            .buyerExp(0)
+                            .sellerLevel(1)
+                            .sellerExp(0);
+
+                    if (socialUserInfo.getProfileImageUrl() != null) {
+                        userBuilder.profileImageUrl(socialUserInfo.getProfileImageUrl());
+                    }
+
+                    User newUser = userBuilder.build();
+                    User savedUser = userRepository.save(newUser);
+
+                    // 소셜 계정 정보 저장
+                    oAuthService.createSocialAccount(savedUser, socialUserInfo);
+                    
+                    // 생성된 ID 설정
+                    socialUserInfo.setUserId(savedUser.getId());
+                }
             }
 
             // 3. 사용자 조회
