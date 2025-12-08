@@ -40,6 +40,9 @@ public class AuthResponse {
     @Schema(description = "응답 메시지", example = "로그인 성공")
     private String message;
 
+    @Schema(description = "사용 가능 여부 (닉네임/이메일 중복 검사용)", example = "true")
+    private Boolean available;
+
     // 성공 시 사용하는 생성자 (기본)
     public AuthResponse(String token, Long userId, String email, String nickname) {
         this.token = token;
@@ -75,5 +78,11 @@ public class AuthResponse {
     // 실패 시 사용하는 생성자
     public AuthResponse(String message) {
         this.message = message;
+    }
+
+    // 닉네임/이메일 중복 검사용 생성자
+    public AuthResponse(String message, boolean available) {
+        this.message = message;
+        this.available = available;
     }
 }
