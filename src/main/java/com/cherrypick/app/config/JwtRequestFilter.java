@@ -59,6 +59,9 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         if (subject != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             if (jwtConfig.validateToken(jwtToken, subject)) {
                 Long userId = jwtConfig.extractUserId(jwtToken);
+
+                // userId를 request attribute로 저장 (Controller에서 직접 사용 가능)
+                request.setAttribute("userId", userId);
                 
                 // UserDetails 객체 생성 (username은 subject 사용)
                 UserDetails userDetails = User.builder()
