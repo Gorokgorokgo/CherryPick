@@ -532,9 +532,7 @@ public class AuctionController {
     @PostMapping("/{id}/bookmark")
     public ResponseEntity<Map<String, Object>> toggleBookmark(
             @Parameter(description = "경매 ID") @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-
-        Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
+            @RequestAttribute("userId") Long userId) {
         Map<String, Object> result = bookmarkService.toggleBookmark(id, userId);
         return ResponseEntity.ok(result);
     }
@@ -562,9 +560,8 @@ public class AuctionController {
     @GetMapping("/{id}/bookmark-status")
     public ResponseEntity<Map<String, Object>> getBookmarkStatus(
             @Parameter(description = "경매 ID") @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @RequestAttribute("userId") Long userId) {
 
-        Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
         boolean isBookmarked = bookmarkService.isBookmarked(id, userId);
         return ResponseEntity.ok(Map.of("isBookmarked", isBookmarked));
     }
@@ -578,9 +575,8 @@ public class AuctionController {
     @GetMapping("/{id}/bookmark-info")
     public ResponseEntity<Map<String, Object>> getBookmarkInfo(
             @Parameter(description = "경매 ID") @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @RequestAttribute("userId") Long userId) {
 
-        Long userId = userService.getUserByEmail(userDetails.getUsername()).getId();
         Map<String, Object> info = bookmarkService.getBookmarkInfo(id, userId);
         return ResponseEntity.ok(info);
     }
@@ -602,7 +598,7 @@ public class AuctionController {
     @PostMapping("/batch/bookmark-info")
     public ResponseEntity<Map<String, Object>> getBatchBookmarkInfo(
             @RequestBody Object body,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @RequestAttribute("userId") Long userId) {
 
         List<Long> auctionIds = null;
         if (body instanceof List<?>) {
@@ -635,7 +631,6 @@ public class AuctionController {
             );
         }
 
-        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
         Map<String, Object> batchInfo = bookmarkService.getBatchBookmarkInfo(auctionIds, userId);
 
         Map<String, Object> response = Map.of(

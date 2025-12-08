@@ -26,9 +26,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         // 순수 WebSocket 엔드포인트 설정 (STOMP 없음)
-        registry.addHandler(webSocketHandler, "/ws")
+        // /ws와 /ws/ 둘 다 등록하여 trailing slash 유무와 관계없이 연결 허용
+        registry.addHandler(webSocketHandler, "/ws", "/ws/")
                 .setAllowedOrigins(
-                    "https://cherrypick.co.kr", 
+                    "https://cherrypick.co.kr",
                     "https://app.cherrypick.co.kr",
                     "http://localhost:3000",    // 개발환경용
                     "http://localhost:8081",    // React Native 개발환경
