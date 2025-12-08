@@ -204,34 +204,60 @@ public class AuthService {
 
     /**
      * 닉네임 중복 검사
+     *
+     * 닉네임 규칙 (주요 서비스 표준 적용):
+     * - 2~12자
+     * - 한글, 영문, 숫자만 허용 (특수문자 불가)
+     * - 숫자로만 구성 불가
+     * - 공백 불가
+     * - 금지어 포함 불가
      */
     public AuthResponse checkNickname(String nickname) {
         try {
             // 닉네임 형식 검증
             if (nickname == null || nickname.trim().isEmpty()) {
-                return new AuthResponse("닉네임을 입력해주세요.");
+                return new AuthResponse("닉네임을 입력해주세요.", false);
             }
 
             String trimmedNickname = nickname.trim();
 
-            // 닉네임 길이 및 패턴 검증
+            // 1. 길이 검증 (2~12자)
             if (trimmedNickname.length() < 2 || trimmedNickname.length() > 12) {
-                return new AuthResponse("닉네임은 2~12자 사이여야 합니다.");
+                return new AuthResponse("닉네임은 2~12자 사이여야 합니다.", false);
             }
 
-            if (!trimmedNickname.matches("^[가-힣a-zA-Z0-9_-]+$")) {
-                return new AuthResponse("닉네임은 한글, 영문, 숫자, _, - 조합만 가능합니다.");
+            // 2. 허용 문자 검증 (한글, 영문, 숫자만 - 특수문자/공백 불가)
+            if (!trimmedNickname.matches("^[가-힣a-zA-Z0-9]+$")) {
+                return new AuthResponse("닉네임은 한글, 영문, 숫자만 사용 가능합니다.", false);
             }
 
-            // 중복 확인 (탈퇴하지 않은 사용자 기준)
+            // 3. 숫자로만 구성된 닉네임 불가
+            if (trimmedNickname.matches("^[0-9]+$")) {
+                return new AuthResponse("닉네임은 숫자로만 구성할 수 없습니다.", false);
+            }
+
+            // 4. 금지어 검사 (관리자, 운영자, 욕설 등)
+            String[] forbiddenWords = {
+                "관리자", "운영자", "admin", "administrator", "moderator", "root", "system",
+                "체리픽", "cherrypick", "official", "공식",
+                "시발", "씨발", "병신", "지랄", "개새끼", "fuck", "shit", "ass"
+            };
+            String lowerNickname = trimmedNickname.toLowerCase();
+            for (String forbidden : forbiddenWords) {
+                if (lowerNickname.contains(forbidden.toLowerCase())) {
+                    return new AuthResponse("사용할 수 없는 닉네임입니다.", false);
+                }
+            }
+
+            // 5. 중복 확인 (탈퇴하지 않은 사용자 기준)
             if (authRepository.findByNicknameAndNotDeleted(trimmedNickname).isPresent()) {
-                return new AuthResponse("이미 사용 중인 닉네임입니다.");
+                return new AuthResponse("이미 사용 중인 닉네임입니다.", false);
             }
 
-            return new AuthResponse("사용 가능한 닉네임입니다.");
+            return new AuthResponse("사용 가능한 닉네임입니다.", true);
         } catch (Exception e) {
             System.err.println("닉네임 중복 검사 오류: " + e.getMessage());
-            return new AuthResponse("닉네임 검사 중 오류가 발생했습니다.");
+            return new AuthResponse("닉네임 검사 중 오류가 발생했습니다.", false);
         }
     }
 
@@ -242,25 +268,25 @@ public class AuthService {
         try {
             // 이메일 형식 검증
             if (email == null || email.trim().isEmpty()) {
-                return new AuthResponse("이메일을 입력해주세요.");
+                return new AuthResponse("이메일을 입력해주세요.", false);
             }
 
             String trimmedEmail = email.trim().toLowerCase();
 
             // 기본 이메일 형식 검증
             if (!trimmedEmail.matches("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$")) {
-                return new AuthResponse("올바른 이메일 형식이 아닙니다.");
+                return new AuthResponse("올바른 이메일 형식이 아닙니다.", false);
             }
 
             // 중복 확인 (탈퇴하지 않은 사용자 기준)
             if (authRepository.findByEmailAndNotDeleted(trimmedEmail).isPresent()) {
-                return new AuthResponse("이미 가입된 이메일입니다.");
+                return new AuthResponse("이미 가입된 이메일입니다.", false);
             }
 
-            return new AuthResponse("사용 가능한 이메일입니다.");
+            return new AuthResponse("사용 가능한 이메일입니다.", true);
         } catch (Exception e) {
             System.err.println("이메일 중복 검사 오류: " + e.getMessage());
-            return new AuthResponse("이메일 검사 중 오류가 발생했습니다.");
+            return new AuthResponse("이메일 검사 중 오류가 발생했습니다.", false);
         }
     }
     /**
