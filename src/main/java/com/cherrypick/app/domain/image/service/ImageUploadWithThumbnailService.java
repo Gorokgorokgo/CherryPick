@@ -94,8 +94,8 @@ public class ImageUploadWithThumbnailService {
         String originalPath = folder + "/" + storedFilename;
         String thumbnailPath = folder + "/thumb_" + storedFilename;
 
-        String originalUrl = String.format("https://%s.kr.object.ncloudstorage.com/%s", bucketName, originalPath);
-        String thumbnailUrl = String.format("https://%s.kr.object.ncloudstorage.com/%s", bucketName, thumbnailPath);
+        String originalUrl = String.format("https://kr.object.ncloudstorage.com/%s/%s", bucketName, originalPath);
+        String thumbnailUrl = String.format("https://kr.object.ncloudstorage.com/%s/%s", bucketName, thumbnailPath);
 
         // 4. DB에 이미지 정보 저장
         UploadedImage uploadedImage = saveImageRecord(
