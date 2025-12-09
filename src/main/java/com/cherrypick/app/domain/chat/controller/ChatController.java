@@ -230,24 +230,69 @@ public class ChatController {
 
     /**
      * 채팅방 나가기 (비활성화)
-     * 
+     *
      * @param roomId 채팅방 ID
      * @param userDetails 인증된 사용자 정보
      * @return 성공 응답
      */
     @PostMapping("/rooms/{roomId}/leave")
-    @Operation(summary = "채팅방 나가기", description = "채팅방을 나가고 비활성화합니다")
+    @Operation(summary = "채팅방 나가기", description = "채팅방을 나가고 비활성화합니다. 상대방이 메시지를 보내면 자동으로 재입장됩니다.")
     public ResponseEntity<Void> leaveChatRoom(
             @PathVariable Long roomId,
             @AuthenticationPrincipal UserDetails userDetails) {
-        
+
         Long userId = userService.getUserIdByEmail(userDetails.getUsername());
-        
+
         log.info("채팅방 나가기: roomId={}, userId={}", roomId, userId);
-        
+
         chatService.leaveChatRoom(roomId, userId);
-        
+
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * 채팅방 재입장 (낙찰 알림을 통한 재입장)
+     *
+     * @param roomId 채팅방 ID
+     * @param userDetails 인증된 사용자 정보
+     * @return 채팅방 상세 정보
+     */
+    @PostMapping("/rooms/{roomId}/rejoin")
+    @Operation(summary = "채팅방 재입장", description = "나간 채팅방에 다시 입장합니다. 낙찰 알림을 통해 재입장할 때 사용합니다.")
+    public ResponseEntity<ChatRoomResponse> rejoinChatRoom(
+            @PathVariable Long roomId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+
+        log.info("채팅방 재입장: roomId={}, userId={}", roomId, userId);
+
+        ChatRoomResponse chatRoom = chatService.rejoinChatRoom(roomId, userId);
+
+        return ResponseEntity.ok(chatRoom);
+    }
+
+    /**
+     * 경매 ID로 채팅방 조회/재입장
+     * 낙찰 알림에서 채팅방 ID가 아닌 경매 ID만 있는 경우 사용
+     *
+     * @param auctionId 경매 ID
+     * @param userDetails 인증된 사용자 정보
+     * @return 채팅방 상세 정보
+     */
+    @GetMapping("/rooms/auction/{auctionId}")
+    @Operation(summary = "경매 ID로 채팅방 조회/재입장", description = "경매 ID로 채팅방을 조회하고, 나간 상태였다면 자동으로 재입장합니다.")
+    public ResponseEntity<ChatRoomResponse> getChatRoomByAuctionId(
+            @PathVariable Long auctionId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = userService.getUserIdByEmail(userDetails.getUsername());
+
+        log.info("경매 ID로 채팅방 조회/재입장: auctionId={}, userId={}", auctionId, userId);
+
+        ChatRoomResponse chatRoom = chatService.getChatRoomByAuctionIdAndRejoin(auctionId, userId);
+
+        return ResponseEntity.ok(chatRoom);
     }
 
     /**
