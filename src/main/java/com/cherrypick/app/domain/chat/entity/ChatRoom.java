@@ -9,6 +9,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "chat_rooms")
@@ -48,6 +50,10 @@ public class ChatRoom extends BaseEntity {
 
     @Column(name = "activated_at")
     private LocalDateTime activatedAt;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "chatRoom", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ChatRoomParticipant> participants = new ArrayList<>();
 
     // === 정적 팩토리 메서드 ===
     
@@ -143,11 +149,41 @@ public class ChatRoom extends BaseEntity {
     public boolean isActive() {
         return this.status == ChatRoomStatus.ACTIVE;
     }
-    
+
     /**
-     * 사용자가 채팅방 참여자인지 확인
+     * 사용자가 채팅방 참여자인지 확인 (seller 또는 buyer인지)
      */
     public boolean isParticipant(Long userId) {
         return seller.getId().equals(userId) || buyer.getId().equals(userId);
+    }
+
+    /**
+     * 특정 사용자의 참여 정보 조회
+     */
+    public ChatRoomParticipant getParticipant(Long userId) {
+        return participants.stream()
+                .filter(p -> p.isUser(userId))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * 사용자가 채팅방을 나갔는지 확인
+     */
+    public boolean hasUserLeft(Long userId) {
+        ChatRoomParticipant participant = getParticipant(userId);
+        return participant != null && participant.getIsLeft();
+    }
+
+    /**
+     * 사용자가 채팅방에 활성 상태로 참여 중인지 확인
+     */
+    public boolean isActiveParticipant(Long userId) {
+        if (!isParticipant(userId)) {
+            return false;
+        }
+        ChatRoomParticipant participant = getParticipant(userId);
+        // 참여자 정보가 없으면 아직 생성 전이므로 활성 상태로 간주
+        return participant == null || participant.isActive();
     }
 }

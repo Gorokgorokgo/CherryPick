@@ -10,9 +10,11 @@ import com.cherrypick.app.domain.chat.dto.response.ChatRoomListResponse;
 import com.cherrypick.app.domain.chat.dto.response.ChatRoomResponse;
 import com.cherrypick.app.domain.chat.entity.ChatMessage;
 import com.cherrypick.app.domain.chat.entity.ChatRoom;
+import com.cherrypick.app.domain.chat.entity.ChatRoomParticipant;
 import com.cherrypick.app.domain.chat.enums.ChatRoomStatus;
 import com.cherrypick.app.domain.chat.enums.MessageType;
 import com.cherrypick.app.domain.chat.repository.ChatMessageRepository;
+import com.cherrypick.app.domain.chat.repository.ChatRoomParticipantRepository;
 import com.cherrypick.app.domain.chat.repository.ChatRoomRepository;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.connection.entity.ConnectionService;
@@ -49,6 +51,7 @@ public class ChatService {
 
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatRoomParticipantRepository chatRoomParticipantRepository;
     private final UserRepository userRepository;
     private final AuctionRepository auctionRepository;
     private final WebSocketMessagingService webSocketMessagingService;
@@ -277,41 +280,55 @@ public class ChatService {
 
     /**
      * 내 채팅방 목록 조회
-     * 
+     * - 나간 채팅방은 목록에서 제외됨
+     *
      * @param userId 사용자 ID
      * @param status 채팅방 상태 필터 (optional)
      * @return 채팅방 목록
      */
     public List<ChatRoomListResponse> getMyChatRooms(Long userId, String status) {
         List<ChatRoom> chatRooms;
-        
+
         if (status != null) {
             ChatRoomStatus roomStatus = ChatRoomStatus.valueOf(status.toUpperCase());
             chatRooms = chatRoomRepository.findByUserIdAndStatus(userId, roomStatus);
         } else {
             chatRooms = chatRoomRepository.findByUserId(userId);
         }
-        
+
         return chatRooms.stream()
+                // 나간 채팅방 필터링
+                .filter(chatRoom -> !hasUserLeftChatRoom(chatRoom.getId(), userId))
                 .map(chatRoom -> {
                     // 마지막 메시지 조회
                     String lastMessage = chatMessageRepository
                             .findLatestMessageByChatRoomId(chatRoom.getId())
                             .map(ChatMessage::getContent)
                             .orElse("");
-                    
+
                     // 읽지 않은 메시지 개수
                     int unreadCount = chatMessageRepository
                             .countUnreadMessagesByChatRoomIdAndUserId(chatRoom.getId(), userId);
-                    
+
                     // 상대방 온라인 상태 (실시간 상태 추적)
-                    Long partnerId = chatRoom.getSeller().getId().equals(userId) ? 
+                    Long partnerId = chatRoom.getSeller().getId().equals(userId) ?
                             chatRoom.getBuyer().getId() : chatRoom.getSeller().getId();
                     boolean partnerOnline = userOnlineStatusService.isUserOnline(partnerId);
-                    
+
                     return ChatRoomListResponse.from(chatRoom, userId, lastMessage, unreadCount, partnerOnline);
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 사용자가 채팅방을 나갔는지 확인
+     *
+     * @param chatRoomId 채팅방 ID
+     * @param userId 사용자 ID
+     * @return 나간 경우 true
+     */
+    private boolean hasUserLeftChatRoom(Long chatRoomId, Long userId) {
+        return chatRoomParticipantRepository.hasUserLeftChatRoom(chatRoomId, userId);
     }
 
     /**
@@ -366,7 +383,8 @@ public class ChatService {
 
     /**
      * 채팅 메시지 전송 (동시성 제어 적용)
-     * 
+     * - 나간 참여자에게 메시지가 전송되면 자동으로 재입장 처리
+     *
      * @param roomId 채팅방 ID
      * @param userId 사용자 ID
      * @param request 메시지 전송 요청
@@ -376,57 +394,83 @@ public class ChatService {
     public ChatMessageResponse sendMessage(Long roomId, Long userId, SendMessageRequest request) {
         // 채팅방별 동시성 제어
         Object lock = getChatRoomLock(roomId);
-        
+
         synchronized (lock) {
             ChatRoom chatRoom = chatRoomRepository.findById(roomId)
                     .orElseThrow(EntityNotFoundException::chatRoom);
-            
+
             // 사용자가 채팅방 참여자인지 확인
             if (!chatRoom.isParticipant(userId)) {
                 throw new BusinessException(ErrorCode.FORBIDDEN);
             }
-            
+
             // 채팅방이 활성화되어 있는지 확인
             if (!chatRoom.isActive()) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST);
             }
-            
+
             User sender = userRepository.findById(userId)
                     .orElseThrow(EntityNotFoundException::user);
-            
+
+            // 발신자가 나간 상태였다면 자동 재입장
+            rejoinIfLeft(chatRoom, sender);
+
+            // 수신자(상대방)가 나간 상태였다면 자동 재입장
+            Long receiverId = chatRoom.getSeller().getId().equals(userId)
+                    ? chatRoom.getBuyer().getId()
+                    : chatRoom.getSeller().getId();
+            User receiver = userRepository.findById(receiverId)
+                    .orElseThrow(EntityNotFoundException::user);
+            rejoinIfLeft(chatRoom, receiver);
+
             // 메시지 생성 및 저장
             ChatMessage message = ChatMessage.createTextMessage(chatRoom, sender, request.getContent());
             ChatMessage savedMessage = chatMessageRepository.save(message);
-            
+
             // 채팅방 마지막 메시지 시간 업데이트 (동시성 보장)
             ChatRoom updatedRoom = chatRoom.updateLastMessageTime();
             chatRoomRepository.save(updatedRoom);
-            
+
             // 실시간 메시지 전송 (WebSocket)
             ChatMessageResponse response = ChatMessageResponse.from(savedMessage);
-            
+
             // WebSocket 전송은 동기화 블록 밖에서 수행 (성능 최적화)
             try {
                 webSocketMessagingService.sendChatMessage(roomId, response);
             } catch (Exception e) {
-                log.warn("WebSocket 메시지 전송 실패 (메시지는 저장됨): roomId={}, messageId={}, error={}", 
+                log.warn("WebSocket 메시지 전송 실패 (메시지는 저장됨): roomId={}, messageId={}, error={}",
                         roomId, savedMessage.getId(), e.getMessage());
             }
-            
+
             // 메시지 전송 시 타이핑 상태 자동 중단 이벤트 발행
             try {
                 eventPublisher.publishEvent(new TypingEvent(
                     this, roomId, userId, null, TypingEvent.TypingEventType.MESSAGE_SENT
                 ));
             } catch (Exception e) {
-                log.warn("타이핑 상태 자동 중단 이벤트 발행 실패: roomId={}, userId={}, error={}", 
+                log.warn("타이핑 상태 자동 중단 이벤트 발행 실패: roomId={}, userId={}, error={}",
                         roomId, userId, e.getMessage());
             }
-            
-            // 메시지 전송 완료
 
             return response;
         }
+    }
+
+    /**
+     * 나간 참여자 자동 재입장 처리
+     *
+     * @param chatRoom 채팅방
+     * @param user 사용자
+     */
+    private void rejoinIfLeft(ChatRoom chatRoom, User user) {
+        chatRoomParticipantRepository.findByChatRoomIdAndUserId(chatRoom.getId(), user.getId())
+                .ifPresent(participant -> {
+                    if (participant.getIsLeft()) {
+                        ChatRoomParticipant rejoinedParticipant = participant.rejoin();
+                        chatRoomParticipantRepository.save(rejoinedParticipant);
+                        log.info("채팅방 자동 재입장: roomId={}, userId={}", chatRoom.getId(), user.getId());
+                    }
+                });
     }
 
     /**
@@ -581,7 +625,7 @@ public class ChatService {
 
     /**
      * 채팅방 나가기
-     * 
+     *
      * @param roomId 채팅방 ID
      * @param userId 사용자 ID
      */
@@ -589,24 +633,111 @@ public class ChatService {
     public void leaveChatRoom(Long roomId, Long userId) {
         ChatRoom chatRoom = chatRoomRepository.findById(roomId)
                 .orElseThrow(EntityNotFoundException::chatRoom);
-        
+
         // 사용자가 채팅방 참여자인지 확인
         if (!chatRoom.isParticipant(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-        
-        // 채팅방 비활성화 처리 (추후 구현 필요)
-        // 현재는 로그만 남김
-        // 채팅방 나가기
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(EntityNotFoundException::user);
+
+        // 마지막 메시지 ID 조회
+        Long lastMessageId = chatMessageRepository.findLatestMessageByChatRoomId(roomId)
+                .map(ChatMessage::getId)
+                .orElse(null);
+
+        // 참여자 정보 조회 또는 생성
+        ChatRoomParticipant participant = chatRoomParticipantRepository
+                .findByChatRoomIdAndUserId(roomId, userId)
+                .orElseGet(() -> {
+                    // 기존 채팅방에 참여자 정보가 없으면 새로 생성
+                    ChatRoomParticipant newParticipant = ChatRoomParticipant.createParticipant(chatRoom, user);
+                    return chatRoomParticipantRepository.save(newParticipant);
+                });
+
+        // 이미 나간 상태인지 확인
+        if (participant.getIsLeft()) {
+            log.info("사용자가 이미 채팅방을 나간 상태입니다. roomId={}, userId={}", roomId, userId);
+            return;
+        }
+
+        // 참여자 상태를 '나감'으로 변경
+        ChatRoomParticipant leftParticipant = participant.leave(lastMessageId);
+        chatRoomParticipantRepository.save(leftParticipant);
+
+        log.info("채팅방 나가기 완료: roomId={}, userId={}, lastMessageId={}", roomId, userId, lastMessageId);
     }
 
     /**
      * 읽지 않은 메시지 총 개수 조회
-     * 
+     *
      * @param userId 사용자 ID
      * @return 읽지 않은 메시지 개수
      */
     public int getUnreadMessageCount(Long userId) {
         return chatMessageRepository.countUnreadMessagesByUserId(userId);
+    }
+
+    /**
+     * 채팅방 재입장 (수동)
+     *
+     * @param roomId 채팅방 ID
+     * @param userId 사용자 ID
+     * @return 채팅방 상세 정보
+     */
+    @Transactional
+    public ChatRoomResponse rejoinChatRoom(Long roomId, Long userId) {
+        ChatRoom chatRoom = chatRoomRepository.findById(roomId)
+                .orElseThrow(EntityNotFoundException::chatRoom);
+
+        // 사용자가 채팅방 참여자인지 확인
+        if (!chatRoom.isParticipant(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        // 참여자 정보 조회
+        ChatRoomParticipant participant = chatRoomParticipantRepository
+                .findByChatRoomIdAndUserId(roomId, userId)
+                .orElse(null);
+
+        // 나간 상태였다면 재입장 처리
+        if (participant != null && participant.getIsLeft()) {
+            ChatRoomParticipant rejoinedParticipant = participant.rejoin();
+            chatRoomParticipantRepository.save(rejoinedParticipant);
+            log.info("채팅방 수동 재입장 완료: roomId={}, userId={}", roomId, userId);
+        }
+
+        // 읽지 않은 메시지 개수
+        int unreadCount = chatMessageRepository
+                .countUnreadMessagesByChatRoomIdAndUserId(roomId, userId);
+
+        // 상대방 온라인 상태
+        Long partnerId = chatRoom.getSeller().getId().equals(userId) ?
+                chatRoom.getBuyer().getId() : chatRoom.getSeller().getId();
+        boolean partnerOnline = userOnlineStatusService.isUserOnline(partnerId);
+
+        return ChatRoomResponse.from(chatRoom, userId, unreadCount, partnerOnline);
+    }
+
+    /**
+     * 경매 ID로 채팅방 조회 및 자동 재입장
+     *
+     * @param auctionId 경매 ID
+     * @param userId 사용자 ID
+     * @return 채팅방 상세 정보
+     */
+    @Transactional
+    public ChatRoomResponse getChatRoomByAuctionIdAndRejoin(Long auctionId, Long userId) {
+        // 사용자가 참여한 채팅방 조회 (판매자 또는 구매자)
+        List<ChatRoom> chatRooms = chatRoomRepository.findByUserId(userId);
+
+        ChatRoom chatRoom = chatRooms.stream()
+                .filter(cr -> cr.getAuction().getId().equals(auctionId))
+                .findFirst()
+                .orElseThrow(EntityNotFoundException::chatRoom);
+
+        // 재입장 처리 후 상세 정보 반환
+        return rejoinChatRoom(chatRoom.getId(), userId);
     }
 }
