@@ -22,6 +22,7 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
+import com.cherrypick.app.domain.notification.service.FcmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -58,6 +59,7 @@ public class ChatService {
     private final UserOnlineStatusService userOnlineStatusService;
     private final ApplicationEventPublisher eventPublisher;
     private final BidRepository bidRepository;
+    private final FcmService fcmService;
 
     // 채팅방별 동시성 제어를 위한 Lock 객체 캐시
     private final ConcurrentHashMap<Long, Object> chatRoomLocks = new ConcurrentHashMap<>();
@@ -452,6 +454,21 @@ public class ChatService {
                         roomId, userId, e.getMessage());
             }
 
+            // FCM 푸시 알림 발송 (수신자가 오프라인일 때만)
+            try {
+                if (!userOnlineStatusService.isUserOnline(receiverId)) {
+                    fcmService.sendNewMessageNotification(
+                            receiver,
+                            roomId,
+                            sender.getNickname(),
+                            request.getContent()
+                    );
+                }
+            } catch (Exception e) {
+                log.warn("FCM 푸시 알림 발송 실패 (메시지는 저장됨): roomId={}, receiverId={}, error={}",
+                        roomId, receiverId, e.getMessage());
+            }
+
             return response;
         }
     }
@@ -549,6 +566,32 @@ public class ChatService {
             } catch (Exception e) {
                 log.warn("타이핑 상태 자동 중단 이벤트 발행 실패: roomId={}, userId={}, error={}",
                         roomId, userId, e.getMessage());
+            }
+
+            // FCM 푸시 알림 발송 (수신자가 오프라인일 때만, 첫 메시지만)
+            try {
+                Long receiverId = chatRoom.getSeller().getId().equals(userId)
+                        ? chatRoom.getBuyer().getId()
+                        : chatRoom.getSeller().getId();
+                User receiver = userRepository.findById(receiverId)
+                        .orElseThrow(EntityNotFoundException::user);
+
+                if (!userOnlineStatusService.isUserOnline(receiverId) && !responses.isEmpty()) {
+                    // 첫 번째 메시지만 푸시 알림으로 발송 (배치의 경우)
+                    String previewContent = responses.size() > 1
+                            ? String.format("이미지 %d장", responses.size())
+                            : responses.get(0).getContent();
+
+                    fcmService.sendNewMessageNotification(
+                            receiver,
+                            roomId,
+                            sender.getNickname(),
+                            previewContent
+                    );
+                }
+            } catch (Exception e) {
+                log.warn("FCM 푸시 알림 발송 실패 (메시지는 저장됨): roomId={}, error={}",
+                        roomId, e.getMessage());
             }
 
             log.info("배치 메시지 전송 완료: roomId={}, userId={}, messageCount={}",

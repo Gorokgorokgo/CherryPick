@@ -8,6 +8,13 @@ import com.cherrypick.app.domain.notification.repository.NotificationSettingRepo
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.websocket.dto.AuctionUpdateMessage;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.FirebaseMessagingException;
+import com.google.firebase.messaging.Message;
+import com.google.firebase.messaging.Notification;
+import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -264,36 +271,108 @@ public class FcmService {
     }
 
     /**
-     * 실제 FCM 푸시 발송 (현재는 로그만, 추후 Firebase SDK 연동)
+     * 새 채팅 메시지 푸시 알림 발송
+     */
+    @Transactional
+    public void sendNewMessageNotification(User receiver, Long chatRoomId, String senderNickname, String messagePreview) {
+        NotificationSetting setting = getOrCreateNotificationSetting(receiver);
+        if (!setting.getMessageNotification()) {
+            log.debug("메시지 알림이 비활성화되어 있습니다. userId: {}", receiver.getId());
+            return;
+        }
+
+        String title = senderNickname;
+        String message = messagePreview.length() > 100
+                ? messagePreview.substring(0, 100) + "..."
+                : messagePreview;
+
+        // 알림 히스토리 저장
+        NotificationHistory notification = NotificationHistory.createNotification(
+                receiver, NotificationType.NEW_MESSAGE, title, message, chatRoomId);
+        notificationHistoryRepository.save(notification);
+
+        // FCM 푸시 발송
+        sendFcmPush(setting.getFcmToken(), title, message, notification, chatRoomId, "CHAT");
+
+        log.info("새 메시지 알림 발송 완료. receiverId: {}, chatRoomId: {}", receiver.getId(), chatRoomId);
+    }
+
+    /**
+     * 실제 FCM 푸시 발송
      */
     private void sendFcmPush(String fcmToken, String title, String message, NotificationHistory notification) {
+        sendFcmPush(fcmToken, title, message, notification, null, null);
+    }
+
+    /**
+     * 실제 FCM 푸시 발송 (추가 데이터 포함)
+     */
+    private void sendFcmPush(String fcmToken, String title, String message, NotificationHistory notification, Long resourceId, String notificationType) {
         if (fcmToken == null || fcmToken.isEmpty()) {
             log.warn("FCM 토큰이 없어 푸시 알림을 발송할 수 없습니다. notificationId: {}", notification.getId());
             return;
         }
 
-        try {
-            // TODO: 실제 FCM SDK를 통한 푸시 발송
-            // FirebaseMessaging.getInstance().send(
-            //     Message.builder()
-            //         .setToken(fcmToken)
-            //         .setNotification(Notification.builder()
-            //             .setTitle(title)
-            //             .setBody(message)
-            //             .build())
-            //         .build()
-            // );
+        // Firebase가 초기화되지 않은 경우
+        if (FirebaseApp.getApps().isEmpty()) {
+            log.warn("Firebase가 초기화되지 않았습니다. 푸시 알림을 발송할 수 없습니다.");
+            return;
+        }
 
-            // 현재는 로그로 대체
-            log.info("FCM 푸시 발송 (모의): token={}, title={}, message={}",
-                    fcmToken.substring(0, Math.min(20, fcmToken.length())) + "...", title, message);
+        try {
+            // Android 설정 (알림 우선순위, 소리 등)
+            AndroidConfig androidConfig = AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .setNotification(AndroidNotification.builder()
+                            .setSound("default")
+                            .setChannelId("chat_messages")
+                            .build())
+                    .build();
+
+            // FCM 메시지 빌더
+            Message.Builder messageBuilder = Message.builder()
+                    .setToken(fcmToken)
+                    .setNotification(Notification.builder()
+                            .setTitle(title)
+                            .setBody(message)
+                            .build())
+                    .setAndroidConfig(androidConfig);
+
+            // 추가 데이터 설정 (앱에서 처리할 수 있도록)
+            if (resourceId != null) {
+                messageBuilder.putData("resourceId", String.valueOf(resourceId));
+            }
+            if (notificationType != null) {
+                messageBuilder.putData("type", notificationType);
+            }
+            messageBuilder.putData("notificationId", String.valueOf(notification.getId()));
+
+            // FCM 메시지 발송
+            String response = FirebaseMessaging.getInstance().send(messageBuilder.build());
+
+            log.info("FCM 푸시 발송 성공: messageId={}, title={}", response, title);
 
             // 발송 성공 처리 (불변 객체 패턴)
             NotificationHistory updatedNotification = notification.markFcmSent();
             notificationHistoryRepository.save(updatedNotification);
 
+        } catch (FirebaseMessagingException e) {
+            log.error("FCM 푸시 발송 실패. notificationId: {}, errorCode: {}, error: {}",
+                    notification.getId(), e.getMessagingErrorCode(), e.getMessage());
+
+            // 토큰이 유효하지 않은 경우 처리
+            if (e.getMessagingErrorCode() != null) {
+                switch (e.getMessagingErrorCode()) {
+                    case UNREGISTERED:
+                    case INVALID_ARGUMENT:
+                        log.warn("유효하지 않은 FCM 토큰입니다. 토큰 삭제가 필요합니다.");
+                        break;
+                    default:
+                        break;
+                }
+            }
         } catch (Exception e) {
-            log.error("FCM 푸시 발송 실패. notificationId: {}, error: {}", notification.getId(), e.getMessage());
+            log.error("FCM 푸시 발송 중 예외 발생. notificationId: {}, error: {}", notification.getId(), e.getMessage());
         }
     }
 }
