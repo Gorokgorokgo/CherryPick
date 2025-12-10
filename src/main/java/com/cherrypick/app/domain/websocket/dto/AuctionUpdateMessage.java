@@ -164,6 +164,22 @@ public class AuctionUpdateMessage {
     }
 
     /**
+     * 스나이핑 방지 시간 연장 메시지 생성
+     */
+    public static AuctionUpdateMessage auctionExtended(Long auctionId, LocalDateTime newEndAt,
+                                                       BigDecimal currentPrice, Integer bidCount) {
+        return AuctionUpdateMessage.builder()
+                .messageType(MessageType.AUCTION_EXTENDED)
+                .auctionId(auctionId)
+                .endAt(newEndAt)
+                .currentPrice(currentPrice)
+                .bidCount(bidCount)
+                .timestamp(LocalDateTime.now())
+                .message("입찰로 인해 경매 시간이 3분 연장되었습니다.")
+                .build();
+    }
+
+    /**
      * 자동입찰 경쟁 진행 메시지
      */
     public static AuctionUpdateMessage autoBidCompeting(Long auctionId, BigDecimal currentPrice, Integer bidCount) {

@@ -415,4 +415,38 @@ public class Auction extends BaseEntity {
     public void setRegionRadiusKm(Integer regionRadiusKm) {
         this.regionRadiusKm = regionRadiusKm;
     }
+
+    // === 스나이핑 방지 기능 ===
+
+    private static final int ANTI_SNIPING_THRESHOLD_MINUTES = 3;
+
+    /**
+     * 스나이핑 방지 시간 연장
+     * 경매 종료 3분 이내에 입찰이 발생하면 종료 시간을 현재시간 + 3분으로 연장
+     *
+     * @return 시간이 연장되었으면 true, 아니면 false
+     */
+    public boolean extendEndTimeIfWithinSnipingWindow() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime snipingThreshold = this.endAt.minusMinutes(ANTI_SNIPING_THRESHOLD_MINUTES);
+
+        // 현재 시간이 스나이핑 구간(종료 3분 전 ~ 종료 시간) 내인지 확인
+        if (now.isAfter(snipingThreshold) && now.isBefore(this.endAt)) {
+            // 종료 시간을 현재 시간 기준 3분 후로 연장
+            this.endAt = now.plusMinutes(ANTI_SNIPING_THRESHOLD_MINUTES);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 스나이핑 구간 여부 확인
+     *
+     * @return 종료 3분 이내이면 true
+     */
+    public boolean isWithinSnipingWindow() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime snipingThreshold = this.endAt.minusMinutes(ANTI_SNIPING_THRESHOLD_MINUTES);
+        return now.isAfter(snipingThreshold) && now.isBefore(this.endAt);
+    }
 }

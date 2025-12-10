@@ -178,6 +178,18 @@ public class WebSocketMessagingService {
     }
 
     /**
+     * 스나이핑 방지 시간 연장 알림
+     */
+    public void notifyAuctionExtended(Long auctionId, java.time.LocalDateTime newEndAt,
+                                      java.math.BigDecimal currentPrice, Integer bidCount) {
+        AuctionUpdateMessage message = AuctionUpdateMessage.auctionExtended(
+            auctionId, newEndAt, currentPrice, bidCount
+        );
+        broadcastToAuction(auctionId, message);
+        log.info("🕐 스나이핑 방지: 경매 시간 연장 알림 전송 - auctionId: {}, newEndAt: {}", auctionId, newEndAt);
+    }
+
+    /**
      * 입찰자 수 변경시 실시간 알림 (별칭 메서드)
      */
     public void notifyBidderCountChanged(Long auctionId, Integer bidderCount) {
