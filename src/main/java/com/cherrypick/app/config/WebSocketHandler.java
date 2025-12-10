@@ -43,6 +43,12 @@ public class WebSocketHandler extends TextWebSocketHandler {
     // 경매별 구독자 세션들 저장 (auctionId -> Set<sessionId>)
     private final Map<String, Set<String>> auctionSubscribers = new ConcurrentHashMap<>();
     
+    // 채팅방별 구독자 세션들 저장 (roomId -> Set<sessionId>)
+    private final Map<String, Set<String>> chatRoomSubscribers = new ConcurrentHashMap<>();
+    
+    // 세션별 채팅방 구독 ID들 저장
+    private final Map<String, Set<String>> sessionChatSubscriptions = new ConcurrentHashMap<>();
+    
     // 활성 WebSocket 세션들 (sessionId -> WebSocketSession)
     private final Map<String, WebSocketSession> activeSessions = new ConcurrentHashMap<>();
     
@@ -54,6 +60,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
         String sessionId = session.getId();
         activeSessions.put(sessionId, session);
         sessionSubscriptions.put(sessionId, new CopyOnWriteArraySet<>());
+        sessionChatSubscriptions.put(sessionId, new CopyOnWriteArraySet<>());
         
         // 연결 확인 메시지 전송
         sendMessage(session, createConnectedMessage(sessionId));
@@ -77,6 +84,12 @@ public class WebSocketHandler extends TextWebSocketHandler {
                     break;
                 case "UNSUBSCRIBE":
                     handleUnsubscribe(session, messageNode);
+                    break;
+                case "CHAT_SUBSCRIBE":
+                    handleChatSubscribe(session, messageNode);
+                    break;
+                case "CHAT_UNSUBSCRIBE":
+                    handleChatUnsubscribe(session, messageNode);
                     break;
                 case "PING":
                     handlePing(session, messageNode);
@@ -108,7 +121,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
             ));
         }
         
-        // 모든 구독 정보 정리
+        // 경매 구독 정보 정리
         Set<String> subscribedAuctions = sessionSubscriptions.remove(sessionId);
         if (subscribedAuctions != null) {
             subscribedAuctions.forEach(auctionId -> {
@@ -117,6 +130,20 @@ public class WebSocketHandler extends TextWebSocketHandler {
                     subscribers.remove(sessionId);
                     if (subscribers.isEmpty()) {
                         auctionSubscribers.remove(auctionId);
+                    }
+                }
+            });
+        }
+        
+        // 채팅방 구독 정보 정리
+        Set<String> subscribedChatRooms = sessionChatSubscriptions.remove(sessionId);
+        if (subscribedChatRooms != null) {
+            subscribedChatRooms.forEach(roomId -> {
+                Set<String> subscribers = chatRoomSubscribers.get(roomId);
+                if (subscribers != null) {
+                    subscribers.remove(sessionId);
+                    if (subscribers.isEmpty()) {
+                        chatRoomSubscribers.remove(roomId);
                     }
                 }
             });
@@ -310,21 +337,37 @@ public class WebSocketHandler extends TextWebSocketHandler {
     }
     
     /**
-     * 특정 경매 구독자들에게 메시지 전송 (기존 WebSocketMessagingService와 호환성)
+     * 특정 경매/채팅방 구독자들에게 메시지 전송 (기존 WebSocketMessagingService와 호환성)
      */
     public void sendToAuctionSubscribers(String destination, Object message) {
         // destination 형식:
         // "/topic/auctions/123" -> auctionId: "123"
         // "/topic/notifications/456" -> userId: "456" (알림용)
+        // "/topic/chat/789" -> roomId: "789" (채팅용)
+        // "/topic/chat/789/status", "/topic/chat/789/typing", "/topic/chat/789/read", "/topic/chat/789/delivered"
 
         if (destination.startsWith("/topic/notifications/")) {
             String userId = destination.substring("/topic/notifications/".length());
             sendToUser(userId, message);
+        } else if (destination.startsWith("/topic/chat/")) {
+            // 채팅방 관련 destination 처리
+            String remaining = destination.substring("/topic/chat/".length());
+            // roomId 추출 (/, status, typing, read, delivered 이전까지)
+            String roomId;
+            int slashIndex = remaining.indexOf('/');
+            if (slashIndex > 0) {
+                roomId = remaining.substring(0, slashIndex);
+            } else {
+                roomId = remaining;
+            }
+            log.info("💬 [DEBUG] Chat destination: {}, roomId: {}", destination, roomId);
+            broadcastToChatRoom(roomId, message);
         } else {
             String auctionId = extractAuctionId(destination);
             if (auctionId != null) {
                 broadcastToAuction(auctionId, message);
             } else {
+                log.warn("⚠️ [DEBUG] Unknown destination format: {}", destination);
             }
         }
     }
@@ -452,6 +495,125 @@ public class WebSocketHandler extends TextWebSocketHandler {
      */
     public int getAuctionSubscriberCount(String auctionId) {
         Set<String> subscribers = auctionSubscribers.get(auctionId);
+        return subscribers != null ? subscribers.size() : 0;
+    }
+    
+    /**
+     * 채팅방 구독 요청 처리
+     */
+    private void handleChatSubscribe(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
+        
+        // roomId 필드 확인 (프론트엔드에서 전송한 형식)
+        String roomId = null;
+        if (messageNode.has("roomId")) {
+            roomId = messageNode.get("roomId").asText();
+        } else if (messageNode.has("destination")) {
+            // destination에서 roomId 추출: "/topic/chat/123" -> "123"
+            String destination = messageNode.get("destination").asText();
+            if (destination.startsWith("/topic/chat/")) {
+                roomId = destination.substring("/topic/chat/".length());
+            }
+        }
+        
+        if (roomId == null || roomId.isEmpty()) {
+            log.warn("⚠️ [DEBUG] Missing roomId in chat subscribe request");
+            sendErrorMessage(session, "MISSING_ROOM_ID", "채팅방 구독 요청에 roomId가 필요합니다");
+            return;
+        }
+        
+        // 채팅방 구독 정보 저장
+        sessionChatSubscriptions.get(sessionId).add(roomId);
+        chatRoomSubscribers.computeIfAbsent(roomId, k -> new CopyOnWriteArraySet<>()).add(sessionId);
+        
+        log.info("💬 [DEBUG] Chat subscribe: sessionId={}, roomId={}", sessionId, roomId);
+        
+        // 구독 확인 메시지 전송
+        sendMessage(session, Map.of(
+            "type", "CHAT_SUBSCRIBED",
+            "roomId", roomId,
+            "timestamp", System.currentTimeMillis()
+        ));
+    }
+    
+    /**
+     * 채팅방 구독 해제 요청 처리
+     */
+    private void handleChatUnsubscribe(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
+        
+        if (!messageNode.has("roomId")) {
+            sendErrorMessage(session, "MISSING_ROOM_ID", "채팅방 구독 해제 요청에 roomId가 필요합니다");
+            return;
+        }
+        
+        String roomId = messageNode.get("roomId").asText();
+        
+        // 채팅방 구독 정보 제거
+        Set<String> subscribedChatRooms = sessionChatSubscriptions.get(sessionId);
+        if (subscribedChatRooms != null) {
+            subscribedChatRooms.remove(roomId);
+        }
+        
+        Set<String> subscribers = chatRoomSubscribers.get(roomId);
+        if (subscribers != null) {
+            subscribers.remove(sessionId);
+            if (subscribers.isEmpty()) {
+                chatRoomSubscribers.remove(roomId);
+            }
+        }
+        
+        log.info("💬 [DEBUG] Chat unsubscribe: sessionId={}, roomId={}", sessionId, roomId);
+        
+        // 구독 해제 확인 메시지 전송
+        sendMessage(session, Map.of(
+            "type", "CHAT_UNSUBSCRIBED",
+            "roomId", roomId,
+            "timestamp", System.currentTimeMillis()
+        ));
+    }
+    
+    /**
+     * 특정 채팅방 구독자들에게 메시지 브로드캐스트
+     */
+    public void broadcastToChatRoom(String roomId, Object message) {
+        Set<String> subscriberIds = chatRoomSubscribers.get(roomId);
+        
+        if (subscriberIds == null || subscriberIds.isEmpty()) {
+            log.warn("⚠️ [DEBUG] No subscribers for chat room: {}", roomId);
+            return;
+        }
+        
+        int successCount = 0;
+        int failCount = 0;
+        
+        for (String sessionId : subscriberIds) {
+            WebSocketSession session = activeSessions.get(sessionId);
+            
+            if (session != null && session.isOpen()) {
+                if (sendMessage(session, message)) {
+                    log.info("✅ [DEBUG] Chat message sent to session: {}", sessionId);
+                    successCount++;
+                } else {
+                    log.warn("❌ [DEBUG] Failed to send chat message to session: {}", sessionId);
+                    failCount++;
+                }
+            } else {
+                // 세션이 없거나 닫혀있는 경우 정리
+                log.warn("🔴 [DEBUG] Chat session closed or null: {}", sessionId);
+                subscriberIds.remove(sessionId);
+                failCount++;
+            }
+        }
+        
+        log.info("📊 [DEBUG] Chat broadcast complete - roomId: {}, success: {}, fail: {}", roomId, successCount, failCount);
+    }
+    
+    /**
+     * 특정 채팅방의 구독자 수 조회 (모니터링용)
+     */
+    public int getChatRoomSubscriberCount(String roomId) {
+        Set<String> subscribers = chatRoomSubscribers.get(roomId);
         return subscribers != null ? subscribers.size() : 0;
     }
 }

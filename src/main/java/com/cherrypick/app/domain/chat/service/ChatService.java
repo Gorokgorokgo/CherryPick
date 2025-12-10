@@ -302,10 +302,15 @@ public class ChatService {
                 // 나간 채팅방 필터링
                 .filter(chatRoom -> !hasUserLeftChatRoom(chatRoom.getId(), userId))
                 .map(chatRoom -> {
-                    // 마지막 메시지 조회
+                    // 마지막 메시지 조회 (이미지 메시지인 경우 "사진"으로 표시)
                     String lastMessage = chatMessageRepository
                             .findLatestMessageByChatRoomId(chatRoom.getId())
-                            .map(ChatMessage::getContent)
+                            .map(msg -> {
+                                if (msg.getMessageType() == MessageType.IMAGE) {
+                                    return "사진";
+                                }
+                                return msg.getContent();
+                            })
                             .orElse("");
 
                     // 읽지 않은 메시지 개수
@@ -578,9 +583,18 @@ public class ChatService {
 
                 if (!userOnlineStatusService.isUserOnline(receiverId) && !responses.isEmpty()) {
                     // 첫 번째 메시지만 푸시 알림으로 발송 (배치의 경우)
-                    String previewContent = responses.size() > 1
-                            ? String.format("이미지 %d장", responses.size())
-                            : responses.get(0).getContent();
+                    String previewContent;
+                    if (responses.size() > 1) {
+                        previewContent = String.format("사진 %d장", responses.size());
+                    } else {
+                        // 단일 메시지: 이미지인 경우 "사진"으로 표시
+                        ChatMessageResponse firstResponse = responses.get(0);
+                        if (firstResponse.getMessageType() == MessageType.IMAGE) {
+                            previewContent = "사진";
+                        } else {
+                            previewContent = firstResponse.getContent();
+                        }
+                    }
 
                     fcmService.sendNewMessageNotification(
                             receiver,
