@@ -7,6 +7,7 @@ import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -28,6 +29,7 @@ public class BidService {
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
     private final AutoBidService autoBidService;
+    private final WebSocketMessagingService webSocketMessagingService;
 
     /**
      * 내 입찰 내역 조회
@@ -82,11 +84,29 @@ public class BidService {
         // 6. 경매 현재가 및 입찰 횟수 업데이트
         auction.updateCurrentPrice(bidAmount);
         auction.increaseBidCount();
+
+        // 7. 스나이핑 방지: 종료 3분 이내 입찰 시 시간 연장
+        boolean extended = auction.extendEndTimeIfWithinSnipingWindow();
+        if (extended) {
+            log.info("스나이핑 방지: 경매 종료 시간 연장됨 - auctionId={}, newEndAt={}",
+                    auction.getId(), auction.getEndAt());
+        }
+
         auctionRepository.save(auction);
+
+        // 스나이핑 방지 시간 연장 WebSocket 알림 (트랜잭션 커밋 후 전송을 위해 save 이후에 호출)
+        if (extended) {
+            webSocketMessagingService.notifyAuctionExtended(
+                    auction.getId(),
+                    auction.getEndAt(),
+                    auction.getCurrentPrice(),
+                    auction.getBidCount()
+            );
+        }
 
         log.info("경매 업데이트 완료: currentPrice={}, bidCount={}", auction.getCurrentPrice(), auction.getBidCount());
 
-        // 7. 자동 입찰 반응 처리
+        // 8. 자동 입찰 반응 처리
         try {
             autoBidService.reactToManualBid(auction, bidAmount);
         } catch (Exception e) {
@@ -94,7 +114,7 @@ public class BidService {
             // 수동 입찰은 성공했으므로 오류를 던지지 않고 로깅만 함
         }
 
-        // 8. 응답 생성
+        // 9. 응답 생성
         return BidResponse.from(savedBid, true);
     }
 }

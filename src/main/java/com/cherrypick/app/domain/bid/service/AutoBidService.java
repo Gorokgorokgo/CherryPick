@@ -8,6 +8,7 @@ import com.cherrypick.app.domain.bid.enums.BidStatus;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ public class AutoBidService {
     private final AuctionRepository auctionRepository;
     private final UserRepository userRepository;
     private final BidValidationService validationService;
+    private final WebSocketMessagingService webSocketMessagingService;
 
     /**
      * 자동 입찰 설정
@@ -192,7 +194,25 @@ public class AutoBidService {
         if (bidAmount.compareTo(auction.getCurrentPrice()) > 0) {
             auction.updateCurrentPrice(bidAmount);
             auction.increaseBidCount();
+
+            // 스나이핑 방지: 종료 3분 이내 입찰 시 시간 연장
+            boolean extended = auction.extendEndTimeIfWithinSnipingWindow();
+            if (extended) {
+                log.info("스나이핑 방지: 자동 입찰로 인한 경매 종료 시간 연장 - auctionId={}, newEndAt={}",
+                        auction.getId(), auction.getEndAt());
+            }
+
             auctionRepository.save(auction);
+
+            // 스나이핑 방지 시간 연장 WebSocket 알림
+            if (extended) {
+                webSocketMessagingService.notifyAuctionExtended(
+                        auction.getId(),
+                        auction.getEndAt(),
+                        auction.getCurrentPrice(),
+                        auction.getBidCount()
+                );
+            }
         }
 
         log.info("자동 입찰 실행 저장: bidAmount={}", bidAmount);

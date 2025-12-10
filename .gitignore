@@ -84,3 +84,5 @@ mobile/*.jsbundle
 CLAUDE.md
 .claude/
 docs
+### Firebase (민감한 정보 포함) ###
+src/main/resources/firebase-service-account.json
