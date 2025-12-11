@@ -8,16 +8,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
 
+import org.springframework.context.annotation.Lazy;
+
 /**
  * WebSocket 실시간 메시징 서비스
  * 경매 관련 실시간 업데이트를 클라이언트에게 전송
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class WebSocketMessagingService {
 
     private final WebSocketHandler webSocketHandler;
+
+    public WebSocketMessagingService(@Lazy WebSocketHandler webSocketHandler) {
+        this.webSocketHandler = webSocketHandler;
+    }
     
     @PostConstruct
     public void init() {
