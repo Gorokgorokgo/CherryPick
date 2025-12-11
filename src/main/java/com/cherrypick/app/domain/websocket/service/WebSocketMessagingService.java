@@ -228,7 +228,7 @@ public class WebSocketMessagingService {
             "senderNickname", message.getSenderName(),
             "content", message.getContent(),
             "contentType", message.getMessageType().name(),
-            "timestamp", message.getCreatedAt() != null ? message.getCreatedAt().toString() : java.time.ZonedDateTime.now().toString(),
+            "timestamp", message.getCreatedAt() != null ? message.getCreatedAt().toInstant().toEpochMilli() : System.currentTimeMillis(),
             "isRead", message.isRead()
         );
 
