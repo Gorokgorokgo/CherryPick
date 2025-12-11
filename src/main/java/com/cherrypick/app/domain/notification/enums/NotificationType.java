@@ -57,7 +57,12 @@ public enum NotificationType {
     /**
      * 프로모션
      */
-    PROMOTION("프로모션");
+    PROMOTION("프로모션"),
+
+    /**
+     * 경매 시간 연장 (스나이핑 방지)
+     */
+    AUCTION_EXTENDED("경매 시간 연장");
 
     private final String description;
 

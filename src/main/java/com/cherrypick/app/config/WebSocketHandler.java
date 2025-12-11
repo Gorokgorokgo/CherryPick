@@ -8,6 +8,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import com.cherrypick.app.domain.websocket.event.UserConnectionEvent;
 import com.cherrypick.app.domain.websocket.event.TypingEvent;
+import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.chat.dto.request.SendMessageRequest;
+import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -26,12 +29,14 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @Slf4j
 @Component
 public class WebSocketHandler extends TextWebSocketHandler {
-    
+
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
-    
-    public WebSocketHandler(ApplicationEventPublisher eventPublisher) {
+    private final ChatService chatService;
+
+    public WebSocketHandler(ApplicationEventPublisher eventPublisher, ChatService chatService) {
         this.eventPublisher = eventPublisher;
+        this.chatService = chatService;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
         this.objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -99,6 +104,9 @@ public class WebSocketHandler extends TextWebSocketHandler {
                     break;
                 case "TYPING_STOP":
                     handleTypingStop(session, messageNode);
+                    break;
+                case "MESSAGE":
+                    handleChatMessage(session, messageNode);
                     break;
                 default:
                     sendErrorMessage(session, "UNKNOWN_MESSAGE_TYPE", "알 수 없는 메시지 타입: " + type);
@@ -460,7 +468,19 @@ public class WebSocketHandler extends TextWebSocketHandler {
         );
         sendMessage(session, error);
     }
-    
+
+    /**
+     * 채팅 메시지 전송 실패 알림 (프론트엔드가 기대하는 MESSAGE_SEND_ERROR 타입)
+     */
+    private void sendChatErrorToSession(WebSocketSession session, String errorMessage) {
+        Map<String, Object> error = Map.of(
+            "messageType", "MESSAGE_SEND_ERROR",
+            "content", errorMessage != null ? errorMessage : "메시지 전송에 실패했습니다",
+            "timestamp", System.currentTimeMillis()
+        );
+        sendMessage(session, error);
+    }
+
     /**
      * 연결 확인 메시지 생성
      */
@@ -564,7 +584,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
         }
         
         log.info("💬 [DEBUG] Chat unsubscribe: sessionId={}, roomId={}", sessionId, roomId);
-        
+
         // 구독 해제 확인 메시지 전송
         sendMessage(session, Map.of(
             "type", "CHAT_UNSUBSCRIBED",
@@ -572,7 +592,65 @@ public class WebSocketHandler extends TextWebSocketHandler {
             "timestamp", System.currentTimeMillis()
         ));
     }
-    
+
+    /**
+     * 채팅 메시지 처리 (WebSocket을 통한 실시간 메시지 전송)
+     */
+    private void handleChatMessage(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
+        Long userId = sessionUserMapping.get(sessionId);
+
+        if (userId == null) {
+            sendErrorMessage(session, "NOT_AUTHENTICATED", "인증이 필요합니다");
+            return;
+        }
+
+        // roomId 추출
+        String roomIdStr = null;
+        if (messageNode.has("roomId")) {
+            roomIdStr = messageNode.get("roomId").asText();
+        } else if (messageNode.has("destination")) {
+            // destination에서 roomId 추출: "/app/chat/123" -> "123"
+            String destination = messageNode.get("destination").asText();
+            if (destination.startsWith("/app/chat/")) {
+                roomIdStr = destination.substring("/app/chat/".length());
+            }
+        }
+
+        if (roomIdStr == null || roomIdStr.isEmpty()) {
+            sendErrorMessage(session, "MISSING_ROOM_ID", "메시지 전송에 roomId가 필요합니다");
+            return;
+        }
+
+        String content = messageNode.has("content") ? messageNode.get("content").asText() : "";
+        if (content.isEmpty()) {
+            sendErrorMessage(session, "EMPTY_CONTENT", "메시지 내용이 비어있습니다");
+            return;
+        }
+
+        try {
+            Long roomId = Long.parseLong(roomIdStr);
+
+            log.info("💬 [DEBUG] Chat message received: sessionId={}, roomId={}, userId={}, content={}",
+                    sessionId, roomId, userId, content.substring(0, Math.min(content.length(), 20)));
+
+            // ChatService 직접 호출 (DB 저장 + WebSocket 브로드캐스트)
+            // 이벤트 패턴 대신 직접 호출하여 예외 전파 보장
+            SendMessageRequest request = new SendMessageRequest(content);
+            ChatMessageResponse response = chatService.sendMessage(roomId, userId, request);
+
+            log.info("✅ [DEBUG] Chat message saved and broadcast: messageId={}", response.getId());
+
+        } catch (NumberFormatException e) {
+            sendErrorMessage(session, "INVALID_ROOM_ID", "유효하지 않은 roomId입니다");
+            sendChatErrorToSession(session, "유효하지 않은 채팅방입니다");
+        } catch (Exception e) {
+            log.error("❌ [DEBUG] Chat message processing error: {}", e.getMessage(), e);
+            sendErrorMessage(session, "MESSAGE_SEND_ERROR", "메시지 전송 중 오류가 발생했습니다");
+            sendChatErrorToSession(session, e.getMessage());
+        }
+    }
+
     /**
      * 특정 채팅방 구독자들에게 메시지 브로드캐스트
      */
