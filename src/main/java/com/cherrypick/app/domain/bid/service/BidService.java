@@ -9,8 +9,10 @@ import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.notification.service.FcmService;
+import com.cherrypick.app.domain.notification.event.OutbidNotificationEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,7 @@ public class BidService {
     private final AutoBidService autoBidService;
     private final WebSocketMessagingService webSocketMessagingService;
     private final FcmService fcmService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 내 입찰 내역 조회
@@ -69,11 +72,24 @@ public class BidService {
         User bidder = userRepository.findById(bidderId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
 
-        // 3. 첫 입찰 여부 확인
-        Optional<BigDecimal> maxBidAmount = bidRepository.findMaxBidAmountByAuctionId(auctionId);
-        boolean isFirstBid = maxBidAmount.isEmpty();
+        // 3. 첫 입찰 여부 확인 및 이전 최고 입찰자 조회
+        Optional<Bid> previousHighestBidOpt = bidRepository.findTopByAuctionIdOrderByBidAmountDesc(auctionId);
+        boolean isFirstBid = previousHighestBidOpt.isEmpty();
 
-        log.info("첫 입찰 여부: {}, 현재 최고가: {}", isFirstBid, maxBidAmount.orElse(null));
+        // 이전 최고 입찰자 정보 저장 (Outbid 알림용)
+        User previousHighestBidder = null;
+        BigDecimal previousBidAmount = null;
+        if (!isFirstBid) {
+            Bid previousBid = previousHighestBidOpt.get();
+            // 현재 입찰자가 이미 최고 입찰자가 아닌 경우에만 Outbid 알림 대상
+            if (!previousBid.getBidder().getId().equals(bidderId)) {
+                previousHighestBidder = previousBid.getBidder();
+                previousBidAmount = previousBid.getBidAmount();
+            }
+        }
+
+        log.info("첫 입찰 여부: {}, 현재 최고가: {}", isFirstBid,
+                previousHighestBidOpt.map(b -> b.getBidAmount()).orElse(null));
 
         // 4. 입찰 검증
         validationService.validateBid(auction, bidder, bidAmount, isFirstBid);
@@ -130,7 +146,32 @@ public class BidService {
             // 수동 입찰은 성공했으므로 오류를 던지지 않고 로깅만 함
         }
 
-        // 9. 응답 생성
+        // 9. Outbid 알림 발송 (이전 최고 입찰자에게)
+        final User finalPreviousHighestBidder = previousHighestBidder;
+        final BigDecimal finalPreviousBidAmount = previousBidAmount;
+        if (finalPreviousHighestBidder != null) {
+            try {
+                String bidderNickname = bidder.getNickname() != null ?
+                        bidder.getNickname() : "익명" + bidder.getId();
+
+                eventPublisher.publishEvent(new OutbidNotificationEvent(
+                        this,
+                        finalPreviousHighestBidder.getId(),
+                        auctionId,
+                        auction.getTitle(),
+                        finalPreviousBidAmount.longValue(),
+                        bidAmount.longValue(),
+                        bidderNickname,
+                        1 // 단일 입찰, 그룹 알림은 Throttle 서비스에서 처리
+                ));
+                log.info("Outbid 알림 이벤트 발행: previousBidderId={}, auctionId={}",
+                        finalPreviousHighestBidder.getId(), auctionId);
+            } catch (Exception e) {
+                log.warn("Outbid 알림 발송 실패: {}", e.getMessage());
+            }
+        }
+
+        // 10. 응답 생성
         return BidResponse.from(savedBid, true);
     }
 }

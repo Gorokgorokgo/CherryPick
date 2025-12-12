@@ -25,4 +25,13 @@ public abstract class NotificationEvent extends ApplicationEvent {
         this.message = message;
         this.resourceId = resourceId;
     }
+    
+    /**
+     * 채팅방 ID를 반환합니다.
+     * 거래 관련 알림에서 오버라이드하여 사용합니다.
+     * @return 채팅방 ID (기본값: null)
+     */
+    public Long getChatRoomId() {
+        return null;
+    }
 }

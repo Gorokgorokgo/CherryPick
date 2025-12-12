@@ -5,6 +5,8 @@ import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
+import com.cherrypick.app.domain.chat.entity.ChatRoom;
+import com.cherrypick.app.domain.chat.repository.ChatRoomRepository;
 import com.cherrypick.app.domain.transaction.dto.response.TransactionConfirmResponse;
 import com.cherrypick.app.domain.transaction.dto.response.TransactionResponse;
 import com.cherrypick.app.domain.transaction.entity.Transaction;
@@ -39,6 +41,7 @@ public class TransactionService {
     private final NotificationEventPublisher notificationEventPublisher;
     private final AuctionRepository auctionRepository;
     private final BidRepository bidRepository;
+    private final ChatRoomRepository chatRoomRepository;
 
     /**
      * 경매 종료 후 거래 생성
@@ -380,11 +383,17 @@ public class TransactionService {
         // 상대방에게 알림 발송
         User otherUser = isSeller ? transaction.getBuyer() : transaction.getSeller();
         if (confirmedTransaction.getStatus() != TransactionStatus.COMPLETED) {
-            // 단일 확인 시 상대방에게 알림
-            notificationEventPublisher.publishTransactionConfirmedNotification(
+            // 단일 확인 시 상대방에게 알림 (푸시 알림 포함)
+            Long chatRoomId = chatRoomRepository.findByAuctionId(transaction.getAuction().getId())
+                    .map(ChatRoom::getId)
+                    .orElse(null);
+            
+            notificationEventPublisher.publishTransactionPendingNotification(
                     otherUser.getId(),
+                    transaction.getAuction().getId(),
                     transaction.getAuction().getTitle(),
-                    isSeller ? "판매자" : "구매자"
+                    isSeller ? "판매자" : "구매자",
+                    chatRoomId
             );
         }
 
@@ -517,6 +526,20 @@ public class TransactionService {
 
         log.info("거래 취소 완료: transactionId={}, userId={}, cancelledBy={}",
                 transactionId, userId, isSeller ? "판매자" : "구매자");
+
+        // 상대방에게 거래 취소 알림 발송
+        User otherUser = isSeller ? transaction.getBuyer() : transaction.getSeller();
+        Long chatRoomId = chatRoomRepository.findByAuctionId(transaction.getAuction().getId())
+                .map(ChatRoom::getId)
+                .orElse(null);
+        
+        notificationEventPublisher.publishTransactionCancelledNotification(
+                otherUser.getId(),
+                transaction.getAuction().getId(),
+                transaction.getAuction().getTitle(),
+                isSeller ? "판매자" : "구매자",
+                chatRoomId
+        );
 
         return TransactionResponse.from(savedTransaction);
     }

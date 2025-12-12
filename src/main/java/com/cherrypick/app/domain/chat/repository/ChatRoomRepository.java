@@ -64,4 +64,9 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
             @Param("auctionId") Long auctionId,
             @Param("sellerId") Long sellerId,
             @Param("buyerId") Long buyerId);
+    
+    /**
+     * 경매 ID로 채팅방 조회
+     */
+    Optional<ChatRoom> findByAuctionId(@Param("auctionId") Long auctionId);
 }

@@ -357,35 +357,31 @@ public class WebSocketHandler extends TextWebSocketHandler {
      * 특정 경매/채팅방 구독자들에게 메시지 전송 (기존 WebSocketMessagingService와 호환성)
      */
     public void sendToAuctionSubscribers(String destination, Object message) {
-        // destination 형식:
+        // Destination 예시:
         // "/topic/auctions/123" -> auctionId: "123"
         // "/topic/notifications/456" -> userId: "456" (알림용)
-        // "/topic/chat/789" -> roomId: "789" (채팅용)
-        // "/topic/chat/789/status", "/topic/chat/789/typing", "/topic/chat/789/read", "/topic/chat/789/delivered"
+        // "/topic/users/488/status" -> userId: "488" (상태 업데이트용)
 
         if (destination.startsWith("/topic/notifications/")) {
             String userId = destination.substring("/topic/notifications/".length());
             sendToUser(userId, message);
-        } else if (destination.startsWith("/topic/chat/")) {
-            // 채팅방 관련 destination 처리
-            String remaining = destination.substring("/topic/chat/".length());
-            // roomId 추출 (/, status, typing, read, delivered 이전까지)
-            String roomId;
+            return;
+        }
+
+        if (destination.startsWith("/topic/users/")) {
+            // "/topic/users/488/status" -> "488/status" -> "488"
+            String remaining = destination.substring("/topic/users/".length());
             int slashIndex = remaining.indexOf('/');
-            if (slashIndex > 0) {
-                roomId = remaining.substring(0, slashIndex);
-            } else {
-                roomId = remaining;
-            }
-            log.info("💬 [DEBUG] Chat destination: {}, roomId: {}", destination, roomId);
-            broadcastToChatRoom(roomId, message);
+            String userId = (slashIndex != -1) ? remaining.substring(0, slashIndex) : remaining;
+            sendToUser(userId, message);
+            return;
+        }
+
+        String auctionId = extractAuctionId(destination);
+        if (auctionId != null) {
+            broadcastToAuction(auctionId, message);
         } else {
-            String auctionId = extractAuctionId(destination);
-            if (auctionId != null) {
-                broadcastToAuction(auctionId, message);
-            } else {
-                log.warn("⚠️ [DEBUG] Unknown destination format: {}", destination);
-            }
+            log.warn("⚠️ [DEBUG] Unknown destination format: {}", destination);
         }
     }
 
