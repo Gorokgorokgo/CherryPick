@@ -12,6 +12,8 @@ import org.springframework.context.annotation.Lazy;
 import java.util.Map;
 import java.util.HashMap;
 
+import org.springframework.context.annotation.Lazy;
+
 /**
  * WebSocket 실시간 메시징 서비스
  * 경매 관련 실시간 업데이트를 클라이언트에게 전송
