@@ -120,15 +120,38 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         String sessionId = session.getId();
-        
+
+        // 사용자 ID 먼저 가져오기 (오프라인 브로드캐스트에 필요)
+        Long userId = sessionUserMapping.get(sessionId);
+
+        // 채팅방 구독 정보 정리 + 오프라인 상태 브로드캐스트
+        Set<String> subscribedChatRooms = sessionChatSubscriptions.remove(sessionId);
+        if (subscribedChatRooms != null && userId != null) {
+            // 먼저 오프라인 상태를 브로드캐스트 (구독 정보 제거 전에)
+            subscribedChatRooms.forEach(roomId -> {
+                broadcastUserOnlineStatus(roomId, userId, false, sessionId);
+            });
+
+            // 그 다음 구독 정보 제거
+            subscribedChatRooms.forEach(roomId -> {
+                Set<String> subscribers = chatRoomSubscribers.get(roomId);
+                if (subscribers != null) {
+                    subscribers.remove(sessionId);
+                    if (subscribers.isEmpty()) {
+                        chatRoomSubscribers.remove(roomId);
+                    }
+                }
+            });
+        }
+
         // 사용자 연결 해제 이벤트 발행
-        Long userId = sessionUserMapping.remove(sessionId);
+        sessionUserMapping.remove(sessionId);
         if (userId != null) {
             eventPublisher.publishEvent(new UserConnectionEvent(
                 this, userId, sessionId, UserConnectionEvent.ConnectionEventType.DISCONNECTED
             ));
         }
-        
+
         // 경매 구독 정보 정리
         Set<String> subscribedAuctions = sessionSubscriptions.remove(sessionId);
         if (subscribedAuctions != null) {
@@ -142,21 +165,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 }
             });
         }
-        
-        // 채팅방 구독 정보 정리
-        Set<String> subscribedChatRooms = sessionChatSubscriptions.remove(sessionId);
-        if (subscribedChatRooms != null) {
-            subscribedChatRooms.forEach(roomId -> {
-                Set<String> subscribers = chatRoomSubscribers.get(roomId);
-                if (subscribers != null) {
-                    subscribers.remove(sessionId);
-                    if (subscribers.isEmpty()) {
-                        chatRoomSubscribers.remove(roomId);
-                    }
-                }
-            });
-        }
-        
+
         // 활성 세션에서 제거
         activeSessions.remove(sessionId);
     }
@@ -545,15 +554,21 @@ public class WebSocketHandler extends TextWebSocketHandler {
         // 채팅방 구독 정보 저장
         sessionChatSubscriptions.get(sessionId).add(roomId);
         chatRoomSubscribers.computeIfAbsent(roomId, k -> new CopyOnWriteArraySet<>()).add(sessionId);
-        
+
         log.info("💬 [DEBUG] Chat subscribe: sessionId={}, roomId={}", sessionId, roomId);
-        
+
         // 구독 확인 메시지 전송
         sendMessage(session, Map.of(
             "type", "CHAT_SUBSCRIBED",
             "roomId", roomId,
             "timestamp", System.currentTimeMillis()
         ));
+
+        // 현재 사용자의 온라인 상태를 채팅방의 다른 참여자에게 알림
+        Long userId = sessionUserMapping.get(sessionId);
+        if (userId != null) {
+            broadcastUserOnlineStatus(roomId, userId, true, sessionId);
+        }
     }
     
     /**
@@ -569,12 +584,18 @@ public class WebSocketHandler extends TextWebSocketHandler {
         
         String roomId = messageNode.get("roomId").asText();
         
+        // 사용자 오프라인 상태를 먼저 브로드캐스트 (구독 정보 제거 전에)
+        Long userId = sessionUserMapping.get(sessionId);
+        if (userId != null) {
+            broadcastUserOnlineStatus(roomId, userId, false, sessionId);
+        }
+
         // 채팅방 구독 정보 제거
         Set<String> subscribedChatRooms = sessionChatSubscriptions.get(sessionId);
         if (subscribedChatRooms != null) {
             subscribedChatRooms.remove(roomId);
         }
-        
+
         Set<String> subscribers = chatRoomSubscribers.get(roomId);
         if (subscribers != null) {
             subscribers.remove(sessionId);
@@ -582,7 +603,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 chatRoomSubscribers.remove(roomId);
             }
         }
-        
+
         log.info("💬 [DEBUG] Chat unsubscribe: sessionId={}, roomId={}", sessionId, roomId);
 
         // 구독 해제 확인 메시지 전송
@@ -693,5 +714,48 @@ public class WebSocketHandler extends TextWebSocketHandler {
     public int getChatRoomSubscriberCount(String roomId) {
         Set<String> subscribers = chatRoomSubscribers.get(roomId);
         return subscribers != null ? subscribers.size() : 0;
+    }
+
+    /**
+     * 사용자 온라인/오프라인 상태를 채팅방의 다른 참여자에게 브로드캐스트
+     *
+     * @param roomId 채팅방 ID
+     * @param userId 상태가 변경된 사용자 ID
+     * @param isOnline 온라인 여부
+     * @param excludeSessionId 브로드캐스트에서 제외할 세션 ID (본인 세션)
+     */
+    private void broadcastUserOnlineStatus(String roomId, Long userId, boolean isOnline, String excludeSessionId) {
+        Set<String> subscriberIds = chatRoomSubscribers.get(roomId);
+
+        if (subscriberIds == null || subscriberIds.isEmpty()) {
+            return;
+        }
+
+        // 프론트엔드가 기대하는 형식의 온라인 상태 메시지
+        String messageType = isOnline ? "CHAT_USER_ONLINE" : "CHAT_USER_OFFLINE";
+        Map<String, Object> statusMessage = Map.of(
+            "messageType", messageType,
+            "roomId", Long.parseLong(roomId),
+            "senderId", userId,
+            "timestamp", System.currentTimeMillis()
+        );
+
+        int sentCount = 0;
+        for (String sessionId : subscriberIds) {
+            // 본인 세션에는 보내지 않음
+            if (sessionId.equals(excludeSessionId)) {
+                continue;
+            }
+
+            WebSocketSession session = activeSessions.get(sessionId);
+            if (session != null && session.isOpen()) {
+                if (sendMessage(session, statusMessage)) {
+                    sentCount++;
+                }
+            }
+        }
+
+        log.info("📡 [DEBUG] User {} status broadcast: roomId={}, isOnline={}, sentTo={} sessions",
+                userId, roomId, isOnline, sentCount);
     }
 }
