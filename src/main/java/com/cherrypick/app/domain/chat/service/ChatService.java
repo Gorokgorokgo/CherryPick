@@ -433,10 +433,15 @@ public class ChatService {
             // 메시지 생성 및 저장
             ChatMessage message = ChatMessage.createTextMessage(chatRoom, sender, request.getContent());
             ChatMessage savedMessage = chatMessageRepository.save(message);
+            chatMessageRepository.flush(); // 즉시 DB에 반영
+
+            log.info("💾 [DEBUG] Message saved to DB: messageId={}, roomId={}, senderId={}, content={}",
+                    savedMessage.getId(), roomId, userId, request.getContent().substring(0, Math.min(20, request.getContent().length())));
 
             // 채팅방 마지막 메시지 시간 업데이트 (동시성 보장)
             ChatRoom updatedRoom = chatRoom.updateLastMessageTime();
             chatRoomRepository.save(updatedRoom);
+            chatRoomRepository.flush(); // 즉시 DB에 반영
 
             // 실시간 메시지 전송 (WebSocket)
             ChatMessageResponse response = ChatMessageResponse.from(savedMessage);

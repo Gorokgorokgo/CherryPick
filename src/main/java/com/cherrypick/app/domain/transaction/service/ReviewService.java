@@ -20,6 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -154,18 +157,18 @@ public class ReviewService {
      * @param reviewType 후기 타입 (SELLER 또는 BUYER)
      * @return 후기 목록
      */
-    public java.util.List<ReviewResponse> getReviews(Long userId, ReviewType reviewType) {
+    public List<ReviewResponse> getReviews(Long userId, ReviewType reviewType) {
         // 사용자 존재 확인
         if (!userRepository.existsById(userId)) {
             throw new IllegalArgumentException("사용자를 찾을 수 없습니다");
         }
 
         // 후기 목록 조회
-        java.util.List<TransactionReview> reviews = reviewRepository
+        List<TransactionReview> reviews = reviewRepository
                 .findByRevieweeIdAndReviewTypeOrderByCreatedAtDesc(userId, reviewType);
 
         return reviews.stream()
                 .map(review -> ReviewResponse.from(review, 0)) // 조회 시에는 보너스 EXP 없음
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 }

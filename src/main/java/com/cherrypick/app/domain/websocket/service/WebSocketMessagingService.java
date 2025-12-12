@@ -7,6 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
+import org.springframework.context.annotation.Lazy;
+
+import java.util.Map;
+import java.util.HashMap;
 
 import org.springframework.context.annotation.Lazy;
 
@@ -224,18 +228,17 @@ public class WebSocketMessagingService {
 
         String destination = "/topic/chat/" + chatRoomId;
 
-        // 프론트엔드가 기대하는 형식으로 래핑
-        var wrappedMessage = java.util.Map.of(
-            "messageType", "CHAT_MESSAGE",
-            "roomId", chatRoomId,
-            "messageId", message.getId(),
-            "senderId", message.getSenderId(),
-            "senderNickname", message.getSenderName(),
-            "content", message.getContent(),
-            "contentType", message.getMessageType().name(),
-            "timestamp", message.getCreatedAt() != null ? message.getCreatedAt().toInstant().toEpochMilli() : System.currentTimeMillis(),
-            "isRead", message.isRead()
-        );
+        // 프론트엔드가 기대하는 형식으로 래핑 (null-safe)
+        Map<String, Object> wrappedMessage = new HashMap<>();
+        wrappedMessage.put("messageType", "CHAT_MESSAGE");
+        wrappedMessage.put("roomId", chatRoomId);
+        wrappedMessage.put("messageId", message.getId());
+        wrappedMessage.put("senderId", message.getSenderId());
+        wrappedMessage.put("senderNickname", message.getSenderName() != null ? message.getSenderName() : "알 수 없음");
+        wrappedMessage.put("content", message.getContent() != null ? message.getContent() : "");
+        wrappedMessage.put("contentType", message.getMessageType() != null ? message.getMessageType().name() : "TEXT");
+        wrappedMessage.put("timestamp", message.getCreatedAt() != null ? message.getCreatedAt().toInstant().toEpochMilli() : System.currentTimeMillis());
+        wrappedMessage.put("isRead", message.isRead());
 
         log.info("📤 WebSocket 메시지 래핑: destination={}, contentType={}, messageId={}",
                 destination, message.getMessageType().name(), message.getId());

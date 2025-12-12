@@ -297,7 +297,7 @@ public class AuctionService {
                 ));
 
         // 사용자별 북마크 상태를 한 번에 조회
-        Map<Long, Boolean> bookmarkStatusMap = new java.util.HashMap<>();
+        Map<Long, Boolean> bookmarkStatusMap = new HashMap<>();
         if (userId != null) {
             User user = userRepository.findById(userId).orElse(null);
             if (user != null) {
