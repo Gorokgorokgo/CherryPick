@@ -7,8 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
-
 import org.springframework.context.annotation.Lazy;
+
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * WebSocket 실시간 메시징 서비스
@@ -225,7 +227,7 @@ public class WebSocketMessagingService {
         String destination = "/topic/chat/" + chatRoomId;
 
         // 프론트엔드가 기대하는 형식으로 래핑 (null-safe)
-        java.util.Map<String, Object> wrappedMessage = new java.util.HashMap<>();
+        Map<String, Object> wrappedMessage = new HashMap<>();
         wrappedMessage.put("messageType", "CHAT_MESSAGE");
         wrappedMessage.put("roomId", chatRoomId);
         wrappedMessage.put("messageId", message.getId());

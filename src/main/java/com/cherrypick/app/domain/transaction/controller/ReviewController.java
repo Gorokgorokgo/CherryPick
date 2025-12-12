@@ -18,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Tag(name = "후기 관리", description = """
     거래 후기 작성 및 조회 API
 
@@ -165,12 +167,12 @@ public class ReviewController {
         @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없음")
     })
     @GetMapping("/users/{userId}")
-    public ResponseEntity<java.util.List<ReviewResponse>> getReviews(
+    public ResponseEntity<List<ReviewResponse>> getReviews(
             @Parameter(description = "사용자 ID", example = "1") @PathVariable Long userId,
             @Parameter(description = "후기 타입", example = "SELLER")
             @RequestParam(defaultValue = "SELLER") ReviewType type) {
 
-        java.util.List<ReviewResponse> reviews = reviewService.getReviews(userId, type);
+        List<ReviewResponse> reviews = reviewService.getReviews(userId, type);
         return ResponseEntity.ok(reviews);
     }
 }
