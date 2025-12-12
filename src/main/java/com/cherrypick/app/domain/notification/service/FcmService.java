@@ -265,9 +265,39 @@ public class FcmService {
                 return AuctionUpdateMessage.MessageType.NEW_MESSAGE;
             case PROMOTION:
                 return AuctionUpdateMessage.MessageType.PROMOTION;
+            case AUCTION_EXTENDED:
+                return AuctionUpdateMessage.MessageType.AUCTION_EXTENDED;
             default:
                 return AuctionUpdateMessage.MessageType.NEW_BID; // 기본값
         }
+    }
+
+    /**
+     * 스나이핑 방지 시간 연장 알림 (입찰자들에게)
+     */
+    @Transactional
+    public void sendAuctionExtendedNotification(User bidder, Long auctionId, String auctionTitle) {
+        NotificationSetting setting = getOrCreateNotificationSetting(bidder);
+        if (!setting.getBidNotification()) {
+            log.debug("입찰 알림이 비활성화되어 있습니다. userId: {}", bidder.getId());
+            return;
+        }
+
+        String title = "⏰ 경매 시간 연장";
+        String message = String.format("'%s' 경매가 마감 직전 입찰로 인해 3분 연장되었습니다.", auctionTitle);
+
+        // 알림 히스토리 저장
+        NotificationHistory notification = NotificationHistory.createNotification(
+                bidder, NotificationType.AUCTION_EXTENDED, title, message, auctionId);
+        notificationHistoryRepository.save(notification);
+
+        // FCM 푸시 발송
+        sendFcmPush(setting.getFcmToken(), title, message, notification);
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(bidder.getId(), NotificationType.AUCTION_EXTENDED, title, message, auctionId);
+
+        log.info("스나이핑 방지 시간 연장 알림 발송 완료. userId: {}, auctionId: {}", bidder.getId(), auctionId);
     }
 
     /**

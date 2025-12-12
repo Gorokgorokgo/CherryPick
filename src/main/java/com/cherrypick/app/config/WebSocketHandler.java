@@ -8,6 +8,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import com.cherrypick.app.domain.websocket.event.UserConnectionEvent;
 import com.cherrypick.app.domain.websocket.event.TypingEvent;
+import com.cherrypick.app.domain.chat.service.ChatService;
+import com.cherrypick.app.domain.chat.dto.request.SendMessageRequest;
+import com.cherrypick.app.domain.chat.dto.response.ChatMessageResponse;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -26,12 +29,14 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @Slf4j
 @Component
 public class WebSocketHandler extends TextWebSocketHandler {
-    
+
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
-    
-    public WebSocketHandler(ApplicationEventPublisher eventPublisher) {
+    private final ChatService chatService;
+
+    public WebSocketHandler(ApplicationEventPublisher eventPublisher, ChatService chatService) {
         this.eventPublisher = eventPublisher;
+        this.chatService = chatService;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
         this.objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -100,6 +105,9 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 case "TYPING_STOP":
                     handleTypingStop(session, messageNode);
                     break;
+                case "MESSAGE":
+                    handleChatMessage(session, messageNode);
+                    break;
                 default:
                     sendErrorMessage(session, "UNKNOWN_MESSAGE_TYPE", "알 수 없는 메시지 타입: " + type);
             }
@@ -112,15 +120,38 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         String sessionId = session.getId();
-        
+
+        // 사용자 ID 먼저 가져오기 (오프라인 브로드캐스트에 필요)
+        Long userId = sessionUserMapping.get(sessionId);
+
+        // 채팅방 구독 정보 정리 + 오프라인 상태 브로드캐스트
+        Set<String> subscribedChatRooms = sessionChatSubscriptions.remove(sessionId);
+        if (subscribedChatRooms != null && userId != null) {
+            // 먼저 오프라인 상태를 브로드캐스트 (구독 정보 제거 전에)
+            subscribedChatRooms.forEach(roomId -> {
+                broadcastUserOnlineStatus(roomId, userId, false, sessionId);
+            });
+
+            // 그 다음 구독 정보 제거
+            subscribedChatRooms.forEach(roomId -> {
+                Set<String> subscribers = chatRoomSubscribers.get(roomId);
+                if (subscribers != null) {
+                    subscribers.remove(sessionId);
+                    if (subscribers.isEmpty()) {
+                        chatRoomSubscribers.remove(roomId);
+                    }
+                }
+            });
+        }
+
         // 사용자 연결 해제 이벤트 발행
-        Long userId = sessionUserMapping.remove(sessionId);
+        sessionUserMapping.remove(sessionId);
         if (userId != null) {
             eventPublisher.publishEvent(new UserConnectionEvent(
                 this, userId, sessionId, UserConnectionEvent.ConnectionEventType.DISCONNECTED
             ));
         }
-        
+
         // 경매 구독 정보 정리
         Set<String> subscribedAuctions = sessionSubscriptions.remove(sessionId);
         if (subscribedAuctions != null) {
@@ -134,21 +165,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 }
             });
         }
-        
-        // 채팅방 구독 정보 정리
-        Set<String> subscribedChatRooms = sessionChatSubscriptions.remove(sessionId);
-        if (subscribedChatRooms != null) {
-            subscribedChatRooms.forEach(roomId -> {
-                Set<String> subscribers = chatRoomSubscribers.get(roomId);
-                if (subscribers != null) {
-                    subscribers.remove(sessionId);
-                    if (subscribers.isEmpty()) {
-                        chatRoomSubscribers.remove(roomId);
-                    }
-                }
-            });
-        }
-        
+
         // 활성 세션에서 제거
         activeSessions.remove(sessionId);
     }
@@ -460,7 +477,19 @@ public class WebSocketHandler extends TextWebSocketHandler {
         );
         sendMessage(session, error);
     }
-    
+
+    /**
+     * 채팅 메시지 전송 실패 알림 (프론트엔드가 기대하는 MESSAGE_SEND_ERROR 타입)
+     */
+    private void sendChatErrorToSession(WebSocketSession session, String errorMessage) {
+        Map<String, Object> error = Map.of(
+            "messageType", "MESSAGE_SEND_ERROR",
+            "content", errorMessage != null ? errorMessage : "메시지 전송에 실패했습니다",
+            "timestamp", System.currentTimeMillis()
+        );
+        sendMessage(session, error);
+    }
+
     /**
      * 연결 확인 메시지 생성
      */
@@ -525,15 +554,21 @@ public class WebSocketHandler extends TextWebSocketHandler {
         // 채팅방 구독 정보 저장
         sessionChatSubscriptions.get(sessionId).add(roomId);
         chatRoomSubscribers.computeIfAbsent(roomId, k -> new CopyOnWriteArraySet<>()).add(sessionId);
-        
+
         log.info("💬 [DEBUG] Chat subscribe: sessionId={}, roomId={}", sessionId, roomId);
-        
+
         // 구독 확인 메시지 전송
         sendMessage(session, Map.of(
             "type", "CHAT_SUBSCRIBED",
             "roomId", roomId,
             "timestamp", System.currentTimeMillis()
         ));
+
+        // 현재 사용자의 온라인 상태를 채팅방의 다른 참여자에게 알림
+        Long userId = sessionUserMapping.get(sessionId);
+        if (userId != null) {
+            broadcastUserOnlineStatus(roomId, userId, true, sessionId);
+        }
     }
     
     /**
@@ -549,12 +584,18 @@ public class WebSocketHandler extends TextWebSocketHandler {
         
         String roomId = messageNode.get("roomId").asText();
         
+        // 사용자 오프라인 상태를 먼저 브로드캐스트 (구독 정보 제거 전에)
+        Long userId = sessionUserMapping.get(sessionId);
+        if (userId != null) {
+            broadcastUserOnlineStatus(roomId, userId, false, sessionId);
+        }
+
         // 채팅방 구독 정보 제거
         Set<String> subscribedChatRooms = sessionChatSubscriptions.get(sessionId);
         if (subscribedChatRooms != null) {
             subscribedChatRooms.remove(roomId);
         }
-        
+
         Set<String> subscribers = chatRoomSubscribers.get(roomId);
         if (subscribers != null) {
             subscribers.remove(sessionId);
@@ -562,9 +603,9 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 chatRoomSubscribers.remove(roomId);
             }
         }
-        
+
         log.info("💬 [DEBUG] Chat unsubscribe: sessionId={}, roomId={}", sessionId, roomId);
-        
+
         // 구독 해제 확인 메시지 전송
         sendMessage(session, Map.of(
             "type", "CHAT_UNSUBSCRIBED",
@@ -572,7 +613,65 @@ public class WebSocketHandler extends TextWebSocketHandler {
             "timestamp", System.currentTimeMillis()
         ));
     }
-    
+
+    /**
+     * 채팅 메시지 처리 (WebSocket을 통한 실시간 메시지 전송)
+     */
+    private void handleChatMessage(WebSocketSession session, JsonNode messageNode) {
+        String sessionId = session.getId();
+        Long userId = sessionUserMapping.get(sessionId);
+
+        if (userId == null) {
+            sendErrorMessage(session, "NOT_AUTHENTICATED", "인증이 필요합니다");
+            return;
+        }
+
+        // roomId 추출
+        String roomIdStr = null;
+        if (messageNode.has("roomId")) {
+            roomIdStr = messageNode.get("roomId").asText();
+        } else if (messageNode.has("destination")) {
+            // destination에서 roomId 추출: "/app/chat/123" -> "123"
+            String destination = messageNode.get("destination").asText();
+            if (destination.startsWith("/app/chat/")) {
+                roomIdStr = destination.substring("/app/chat/".length());
+            }
+        }
+
+        if (roomIdStr == null || roomIdStr.isEmpty()) {
+            sendErrorMessage(session, "MISSING_ROOM_ID", "메시지 전송에 roomId가 필요합니다");
+            return;
+        }
+
+        String content = messageNode.has("content") ? messageNode.get("content").asText() : "";
+        if (content.isEmpty()) {
+            sendErrorMessage(session, "EMPTY_CONTENT", "메시지 내용이 비어있습니다");
+            return;
+        }
+
+        try {
+            Long roomId = Long.parseLong(roomIdStr);
+
+            log.info("💬 [DEBUG] Chat message received: sessionId={}, roomId={}, userId={}, content={}",
+                    sessionId, roomId, userId, content.substring(0, Math.min(content.length(), 20)));
+
+            // ChatService 직접 호출 (DB 저장 + WebSocket 브로드캐스트)
+            // 이벤트 패턴 대신 직접 호출하여 예외 전파 보장
+            SendMessageRequest request = new SendMessageRequest(content);
+            ChatMessageResponse response = chatService.sendMessage(roomId, userId, request);
+
+            log.info("✅ [DEBUG] Chat message saved and broadcast: messageId={}", response.getId());
+
+        } catch (NumberFormatException e) {
+            sendErrorMessage(session, "INVALID_ROOM_ID", "유효하지 않은 roomId입니다");
+            sendChatErrorToSession(session, "유효하지 않은 채팅방입니다");
+        } catch (Exception e) {
+            log.error("❌ [DEBUG] Chat message processing error: {}", e.getMessage(), e);
+            sendErrorMessage(session, "MESSAGE_SEND_ERROR", "메시지 전송 중 오류가 발생했습니다");
+            sendChatErrorToSession(session, e.getMessage());
+        }
+    }
+
     /**
      * 특정 채팅방 구독자들에게 메시지 브로드캐스트
      */
@@ -615,5 +714,48 @@ public class WebSocketHandler extends TextWebSocketHandler {
     public int getChatRoomSubscriberCount(String roomId) {
         Set<String> subscribers = chatRoomSubscribers.get(roomId);
         return subscribers != null ? subscribers.size() : 0;
+    }
+
+    /**
+     * 사용자 온라인/오프라인 상태를 채팅방의 다른 참여자에게 브로드캐스트
+     *
+     * @param roomId 채팅방 ID
+     * @param userId 상태가 변경된 사용자 ID
+     * @param isOnline 온라인 여부
+     * @param excludeSessionId 브로드캐스트에서 제외할 세션 ID (본인 세션)
+     */
+    private void broadcastUserOnlineStatus(String roomId, Long userId, boolean isOnline, String excludeSessionId) {
+        Set<String> subscriberIds = chatRoomSubscribers.get(roomId);
+
+        if (subscriberIds == null || subscriberIds.isEmpty()) {
+            return;
+        }
+
+        // 프론트엔드가 기대하는 형식의 온라인 상태 메시지
+        String messageType = isOnline ? "CHAT_USER_ONLINE" : "CHAT_USER_OFFLINE";
+        Map<String, Object> statusMessage = Map.of(
+            "messageType", messageType,
+            "roomId", Long.parseLong(roomId),
+            "senderId", userId,
+            "timestamp", System.currentTimeMillis()
+        );
+
+        int sentCount = 0;
+        for (String sessionId : subscriberIds) {
+            // 본인 세션에는 보내지 않음
+            if (sessionId.equals(excludeSessionId)) {
+                continue;
+            }
+
+            WebSocketSession session = activeSessions.get(sessionId);
+            if (session != null && session.isOpen()) {
+                if (sendMessage(session, statusMessage)) {
+                    sentCount++;
+                }
+            }
+        }
+
+        log.info("📡 [DEBUG] User {} status broadcast: roomId={}, isOnline={}, sentTo={} sessions",
+                userId, roomId, isOnline, sentCount);
     }
 }

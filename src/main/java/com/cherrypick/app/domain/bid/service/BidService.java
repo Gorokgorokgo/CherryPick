@@ -8,6 +8,7 @@ import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
+import com.cherrypick.app.domain.notification.service.FcmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -30,6 +32,7 @@ public class BidService {
     private final UserRepository userRepository;
     private final AutoBidService autoBidService;
     private final WebSocketMessagingService webSocketMessagingService;
+    private final FcmService fcmService;
 
     /**
      * 내 입찰 내역 조회
@@ -94,14 +97,27 @@ public class BidService {
 
         auctionRepository.save(auction);
 
-        // 스나이핑 방지 시간 연장 WebSocket 알림 (트랜잭션 커밋 후 전송을 위해 save 이후에 호출)
+        // 스나이핑 방지 시간 연장 알림
         if (extended) {
+            // WebSocket 실시간 알림 (경매 상세 화면에 표시)
             webSocketMessagingService.notifyAuctionExtended(
                     auction.getId(),
                     auction.getEndAt(),
                     auction.getCurrentPrice(),
                     auction.getBidCount()
             );
+
+            // 입찰자들에게 푸시 알림 전송 (현재 입찰자 제외)
+            List<User> bidders = bidRepository.findDistinctBiddersByAuctionId(auctionId);
+            for (User bidderUser : bidders) {
+                if (!bidderUser.getId().equals(bidderId)) {
+                    try {
+                        fcmService.sendAuctionExtendedNotification(bidderUser, auctionId, auction.getTitle());
+                    } catch (Exception e) {
+                        log.warn("스나이핑 연장 알림 전송 실패: userId={}, error={}", bidderUser.getId(), e.getMessage());
+                    }
+                }
+            }
         }
 
         log.info("경매 업데이트 완료: currentPrice={}, bidCount={}", auction.getCurrentPrice(), auction.getBidCount());

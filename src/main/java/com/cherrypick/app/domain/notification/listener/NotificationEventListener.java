@@ -207,6 +207,7 @@ public class NotificationEventListener {
             case AUCTION_NOT_SOLD -> setting.getBidNotification(); // 유찰 알림 (판매자용)
             case AUCTION_NOT_SOLD_HIGHEST_BIDDER -> setting.getWinningNotification(); // 유찰 알림 (최고 입찰자용)
             case AUCTION_ENDED -> setting.getBidNotification(); // 경매 종료 알림 (일반 참여자)
+            case AUCTION_EXTENDED -> setting.getBidNotification(); // 스나이핑 방지 시간 연장 알림
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();
             case NEW_MESSAGE -> setting.getMessageNotification();

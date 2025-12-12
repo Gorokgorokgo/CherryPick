@@ -119,4 +119,10 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
      * 경매의 모든 입찰 내역 조회 (금액 높은 순)
      */
     List<Bid> findByAuctionIdOrderByBidAmountDesc(Long auctionId);
+
+    /**
+     * 경매의 고유 입찰자 목록 조회 (알림 전송용)
+     */
+    @Query("SELECT DISTINCT b.bidder FROM Bid b WHERE b.auction.id = :auctionId AND b.bidAmount > 0")
+    List<User> findDistinctBiddersByAuctionId(@Param("auctionId") Long auctionId);
 }
