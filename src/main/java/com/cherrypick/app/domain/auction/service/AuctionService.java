@@ -43,6 +43,7 @@ import com.cherrypick.app.domain.auction.dto.TopBidderResponse;
 import com.cherrypick.app.domain.auction.dto.UpdateAuctionRequest;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.transaction.service.TransactionService;
+import com.cherrypick.app.domain.notification.service.KeywordAlertService;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -71,6 +72,7 @@ public class AuctionService {
     private final TransactionService transactionService;
     private final LocationService locationService;
     private final com.cherrypick.app.domain.common.service.ImageUploadService imageUploadService;
+    private final KeywordAlertService keywordAlertService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -146,10 +148,18 @@ public class AuctionService {
         }
         
         Auction savedAuction = auctionRepository.save(auction);
-        
+
         // 상품 이미지 저장 (순서 보장)
         List<AuctionImage> images = saveAuctionImages(auction, request.getImageUrls());
-        
+
+        // 키워드 알림 발송 (비동기 - API 응답 시간에 영향 없음)
+        try {
+            keywordAlertService.processKeywordAlerts(savedAuction);
+        } catch (Exception e) {
+            log.warn("키워드 알림 처리 실패 (경매 등록은 성공): auctionId={}, error={}",
+                    savedAuction.getId(), e.getMessage());
+        }
+
         return AuctionResponse.from(savedAuction, images);
     }
     

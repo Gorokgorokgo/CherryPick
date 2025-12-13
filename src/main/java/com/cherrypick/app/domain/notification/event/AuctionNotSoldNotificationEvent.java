@@ -29,7 +29,7 @@ public class AuctionNotSoldNotificationEvent extends NotificationEvent {
         if (highestBid != null) {
             String bidderNickname = highestBid.getBidder().getNickname() != null ?
                 highestBid.getBidder().getNickname() : "익명" + highestBid.getBidder().getId();
-            return String.format("'%s' 경매가 유찰되었습니다. 최고 입찰자(%s)님과 개인 거래를 시도해보세요.",
+            return String.format("'%s' 경매가 유찰되었습니다.\n최고 입찰자(%s)님과 개인 거래를 시도해보세요.",
                                 auctionTitle, bidderNickname);
         } else {
             return String.format("'%s' 경매가 유찰되었습니다. 입찰자가 없었습니다.", auctionTitle);

@@ -4,6 +4,11 @@ spring:
   profiles:
     include: oauth
 
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: false
+
   servlet:
     multipart:
       enabled: true

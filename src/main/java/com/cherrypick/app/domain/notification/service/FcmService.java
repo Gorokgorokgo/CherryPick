@@ -261,15 +261,141 @@ public class FcmService {
                 return AuctionUpdateMessage.MessageType.CHAT_ACTIVATED;
             case TRANSACTION_COMPLETED:
                 return AuctionUpdateMessage.MessageType.TRANSACTION_COMPLETED;
+            case TRANSACTION_PENDING:
+                return AuctionUpdateMessage.MessageType.TRANSACTION_PENDING;
+            case TRANSACTION_CANCELLED:
+                return AuctionUpdateMessage.MessageType.TRANSACTION_CANCELLED;
             case NEW_MESSAGE:
                 return AuctionUpdateMessage.MessageType.NEW_MESSAGE;
             case PROMOTION:
                 return AuctionUpdateMessage.MessageType.PROMOTION;
             case AUCTION_EXTENDED:
                 return AuctionUpdateMessage.MessageType.AUCTION_EXTENDED;
+            case OUTBID:
+                return AuctionUpdateMessage.MessageType.OUTBID;
+            case AUCTION_ENDING_SOON_15M:
+            case AUCTION_ENDING_SOON_5M:
+                return AuctionUpdateMessage.MessageType.AUCTION_ENDING_SOON;
+            case KEYWORD_ALERT:
+                return AuctionUpdateMessage.MessageType.KEYWORD_ALERT;
             default:
                 return AuctionUpdateMessage.MessageType.NEW_BID; // 기본값
         }
+    }
+
+    /**
+     * Outbid 알림 (이전 최고 입찰자에게)
+     * Type A: 더 높은 입찰 발생 알림 with Deep Link
+     */
+    @Transactional
+    public void sendOutbidNotification(User previousBidder, Long auctionId, String auctionTitle,
+                                        Long previousBidAmount, Long newBidAmount, String newBidderNickname, int outbidCount) {
+        NotificationSetting setting = getOrCreateNotificationSetting(previousBidder);
+        if (!setting.getOutbidNotification()) {
+            log.debug("Outbid 알림이 비활성화되어 있습니다. userId: {}", previousBidder.getId());
+            return;
+        }
+
+        String title;
+        String message;
+
+        if (outbidCount > 1) {
+            // 그룹 알림: "A님 외 N명이 더 높은 금액을 입찰했습니다"
+            title = "🔔 더 높은 입찰 발생";
+            message = String.format("'%s' 경매에서 %s님 외 %d명이 더 높은 금액을 입찰했습니다. 현재가: %,d원",
+                    auctionTitle, newBidderNickname, outbidCount - 1, newBidAmount);
+        } else {
+            // 단일 알림
+            title = "🔔 더 높은 입찰 발생";
+            message = String.format("'%s' 경매에서 %s님이 %,d원으로 입찰했습니다. 회원님의 입찰가 %,d원이 추월되었습니다.",
+                    auctionTitle, newBidderNickname, newBidAmount, previousBidAmount);
+        }
+
+        // 알림 히스토리 저장
+        NotificationHistory notification = NotificationHistory.createNotification(
+                previousBidder, NotificationType.OUTBID, title, message, auctionId);
+        notificationHistoryRepository.save(notification);
+
+        // FCM 푸시 발송 with Deep Link
+        sendFcmPushWithDeepLink(setting.getFcmToken(), title, message, notification,
+                auctionId, "OUTBID", "/auction/detail");
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(previousBidder.getId(), NotificationType.OUTBID, title, message, auctionId);
+
+        log.info("Outbid 알림 발송 완료. userId: {}, auctionId: {}, outbidCount: {}",
+                previousBidder.getId(), auctionId, outbidCount);
+    }
+
+    /**
+     * 경매 마감 임박 알림 (관심 사용자에게)
+     * Type B: 15분/5분 전 마감 알림 with Deep Link
+     */
+    @Transactional
+    public void sendEndingSoonNotification(User user, Long auctionId, String auctionTitle,
+                                            Long currentPrice, int minutesRemaining) {
+        NotificationSetting setting = getOrCreateNotificationSetting(user);
+        if (!setting.getEndingSoonNotification()) {
+            log.debug("마감 임박 알림이 비활성화되어 있습니다. userId: {}", user.getId());
+            return;
+        }
+
+        NotificationType notificationType = minutesRemaining == 15
+                ? NotificationType.AUCTION_ENDING_SOON_15M
+                : NotificationType.AUCTION_ENDING_SOON_5M;
+
+        String title = String.format("⏰ 관심 경매 %d분 전 마감!", minutesRemaining);
+        String message = String.format("'%s' 경매가 %d분 후 마감됩니다.\n현재가: %,d원",
+                auctionTitle, minutesRemaining, currentPrice);
+
+        // 알림 히스토리 저장
+        NotificationHistory notification = NotificationHistory.createNotification(
+                user, notificationType, title, message, auctionId);
+        notificationHistoryRepository.save(notification);
+
+        // FCM 푸시 발송 with Deep Link
+        String type = minutesRemaining == 15 ? "AUCTION_ENDING_SOON_15M" : "AUCTION_ENDING_SOON_5M";
+        sendFcmPushWithDeepLink(setting.getFcmToken(), title, message, notification,
+                auctionId, type, "/auction/detail");
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(user.getId(), notificationType, title, message, auctionId);
+
+        log.info("마감 임박 알림 발송 완료. userId: {}, auctionId: {}, minutesRemaining: {}",
+                user.getId(), auctionId, minutesRemaining);
+    }
+
+    /**
+     * 키워드 알림 (키워드 등록 사용자에게)
+     * Type C: 새 경매 키워드 매칭 알림 with Deep Link
+     */
+    @Transactional
+    public void sendKeywordAlertNotification(User user, Long auctionId, String auctionTitle,
+                                              String matchedKeyword, Long startingPrice) {
+        NotificationSetting setting = getOrCreateNotificationSetting(user);
+        if (!setting.getKeywordNotification()) {
+            log.debug("키워드 알림이 비활성화되어 있습니다. userId: {}", user.getId());
+            return;
+        }
+
+        String title = "🔍 키워드 알림: " + matchedKeyword;
+        String message = String.format("'%s' 경매가 등록되었습니다. 시작가: %,d원",
+                auctionTitle, startingPrice);
+
+        // 알림 히스토리 저장
+        NotificationHistory notification = NotificationHistory.createNotification(
+                user, NotificationType.KEYWORD_ALERT, title, message, auctionId);
+        notificationHistoryRepository.save(notification);
+
+        // FCM 푸시 발송 with Deep Link
+        sendFcmPushWithDeepLink(setting.getFcmToken(), title, message, notification,
+                auctionId, "KEYWORD_ALERT", "/auction/detail");
+
+        // WebSocket 실시간 알림 발송
+        sendWebSocketNotification(user.getId(), NotificationType.KEYWORD_ALERT, title, message, auctionId);
+
+        log.info("키워드 알림 발송 완료. userId: {}, auctionId: {}, keyword: {}",
+                user.getId(), auctionId, matchedKeyword);
     }
 
     /**
@@ -331,13 +457,29 @@ public class FcmService {
      * 실제 FCM 푸시 발송
      */
     private void sendFcmPush(String fcmToken, String title, String message, NotificationHistory notification) {
-        sendFcmPush(fcmToken, title, message, notification, null, null);
+        sendFcmPushWithDeepLink(fcmToken, title, message, notification, null, null, null);
     }
 
     /**
      * 실제 FCM 푸시 발송 (추가 데이터 포함)
      */
     private void sendFcmPush(String fcmToken, String title, String message, NotificationHistory notification, Long resourceId, String notificationType) {
+        sendFcmPushWithDeepLink(fcmToken, title, message, notification, resourceId, notificationType, null);
+    }
+
+    /**
+     * FCM 푸시 발송 - Deep Link 지원
+     *
+     * Deep Link Payload 예시:
+     * {
+     *   "route": "/auction/detail",
+     *   "id": "123",
+     *   "type": "OUTBID"
+     * }
+     */
+    public void sendFcmPushWithDeepLink(String fcmToken, String title, String message,
+                                         NotificationHistory notification, Long resourceId,
+                                         String notificationType, String deepLinkRoute) {
         if (fcmToken == null || fcmToken.isEmpty()) {
             log.warn("FCM 토큰이 없어 푸시 알림을 발송할 수 없습니다. notificationId: {}", notification.getId());
             return;
@@ -350,12 +492,30 @@ public class FcmService {
         }
 
         try {
+            // 알림 타입에 따른 채널 ID 결정
+            String channelId = "auction_alerts"; // 기본값: 경매 알림
+            if (notification.getType() != null) {
+                switch (notification.getType()) {
+                    case NEW_MESSAGE:
+                    case CHAT_ACTIVATED:
+                    case CONNECTION_PAYMENT_REQUEST:
+                    case TRANSACTION_PENDING:
+                    case TRANSACTION_CANCELLED:
+                    case TRANSACTION_COMPLETED:
+                        channelId = "chat_messages";
+                        break;
+                    default:
+                        channelId = "auction_alerts";
+                        break;
+                }
+            }
+
             // Android 설정 (알림 우선순위, 소리 등)
             AndroidConfig androidConfig = AndroidConfig.builder()
                     .setPriority(AndroidConfig.Priority.HIGH)
                     .setNotification(AndroidNotification.builder()
                             .setSound("default")
-                            .setChannelId("chat_messages")
+                            .setChannelId(channelId)
                             .build())
                     .build();
 
@@ -371,9 +531,14 @@ public class FcmService {
             // 추가 데이터 설정 (앱에서 처리할 수 있도록)
             if (resourceId != null) {
                 messageBuilder.putData("resourceId", String.valueOf(resourceId));
+                messageBuilder.putData("id", String.valueOf(resourceId)); // Deep Link용
             }
             if (notificationType != null) {
                 messageBuilder.putData("type", notificationType);
+            }
+            // Deep Link 라우트 설정
+            if (deepLinkRoute != null && !deepLinkRoute.isEmpty()) {
+                messageBuilder.putData("route", deepLinkRoute);
             }
             messageBuilder.putData("notificationId", String.valueOf(notification.getId()));
 

@@ -80,6 +80,9 @@ public class ChatRoomResponse {
     @Schema(description = "읽지 않은 메시지 개수", example = "3")
     private int unreadCount;
 
+    @Schema(description = "거래 상태", example = "PENDING")
+    private String transactionStatus;
+
     /**
      * ChatRoom 엔티티와 추가 정보를 사용하여 응답 DTO 생성 (ConnectionService 포함)
      *
@@ -121,6 +124,61 @@ public class ChatRoomResponse {
                 .lastMessageAt(chatRoom.getLastMessageAt())
                 .createdAt(chatRoom.getCreatedAt())
                 .unreadCount(unreadCount);
+
+        // ConnectionService가 있는 경우에만 관련 정보 설정
+        if (chatRoom.getConnectionService() != null) {
+            builder.finalPrice(chatRoom.getConnectionService().getFinalPrice().longValue())
+                   .connectionServiceId(chatRoom.getConnectionService().getId())
+                   .connectionStatus(chatRoom.getConnectionService().getStatus());
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * ChatRoom 엔티티와 추가 정보를 사용하여 응답 DTO 생성 (거래 상태 포함)
+     *
+     * @param chatRoom 채팅방 엔티티
+     * @param currentUserId 현재 사용자 ID
+     * @param unreadCount 읽지 않은 메시지 개수
+     * @param partnerOnline 상대방 온라인 상태
+     * @param transactionStatus 거래 상태
+     * @return ChatRoomResponse
+     */
+    public static ChatRoomResponse from(
+            ChatRoom chatRoom,
+            Long currentUserId,
+            int unreadCount,
+            boolean partnerOnline,
+            String transactionStatus) {
+
+        // 현재 사용자가 판매자인지 구매자인지 확인
+        boolean isCurrentUserSeller = chatRoom.getSeller().getId().equals(currentUserId);
+
+        // ConnectionService가 있는 경우와 없는 경우 분기 처리
+        ChatRoomResponseBuilder builder = ChatRoomResponse.builder()
+                .id(chatRoom.getId())
+                .auctionId(chatRoom.getAuction().getId())
+                .auctionTitle(chatRoom.getAuction().getTitle())
+                .auctionDescription(chatRoom.getAuction().getDescription())
+                .category(chatRoom.getAuction().getCategory() != null ?
+                         chatRoom.getAuction().getCategory().name() : "기타")
+                .sellerId(chatRoom.getSeller().getId())
+                .sellerName(chatRoom.getSeller().getNickname())
+                .buyerId(chatRoom.getBuyer().getId())
+                .buyerName(chatRoom.getBuyer().getNickname())
+                .partnerId(isCurrentUserSeller ?
+                          chatRoom.getBuyer().getId() : chatRoom.getSeller().getId())
+                .partnerName(isCurrentUserSeller ?
+                            chatRoom.getBuyer().getNickname() : chatRoom.getSeller().getNickname())
+                .partnerType(isCurrentUserSeller ? "buyer" : "seller")
+                .partnerOnline(partnerOnline)
+                .status(chatRoom.getStatus())
+                .activatedAt(chatRoom.getActivatedAt())
+                .lastMessageAt(chatRoom.getLastMessageAt())
+                .createdAt(chatRoom.getCreatedAt())
+                .unreadCount(unreadCount)
+                .transactionStatus(transactionStatus);
 
         // ConnectionService가 있는 경우에만 관련 정보 설정
         if (chatRoom.getConnectionService() != null) {

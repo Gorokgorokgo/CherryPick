@@ -145,21 +145,50 @@ public class NotificationEventPublisher {
      * 거래 확인 알림 이벤트 발행 (상대방에게)
      *
      * @param userId 사용자 ID (알림 받을 사람)
+     * @param auctionId 경매 ID
      * @param auctionTitle 경매 제목
      * @param confirmerRole 확인한 사람의 역할 (판매자/구매자)
+     * @param chatRoomId 채팅방 ID
      */
-    public void publishTransactionConfirmedNotification(Long userId, String auctionTitle, String confirmerRole) {
+    public void publishTransactionPendingNotification(Long userId, Long auctionId, String auctionTitle, 
+                                                       String confirmerRole, Long chatRoomId) {
         try {
-            // 기존 TransactionCompletedNotificationEvent를 재사용하거나 새로운 이벤트 생성 가능
-            // 여기서는 간단하게 일반 알림으로 처리
-            log.info("거래 확인 알림 발행. userId: {}, auctionTitle: {}, confirmer: {}",
-                    userId, auctionTitle, confirmerRole);
+            TransactionPendingNotificationEvent event = new TransactionPendingNotificationEvent(
+                    this, userId, auctionId, auctionTitle, confirmerRole, chatRoomId);
 
-            // TODO: 필요시 별도 TransactionConfirmedNotificationEvent 생성
-            // 현재는 로깅만 수행
+            eventPublisher.publishEvent(event);
+
+            log.info("거래 확인 대기 알림 이벤트 발행. userId: {}, auctionId: {}, confirmer: {}",
+                    userId, auctionId, confirmerRole);
 
         } catch (Exception e) {
-            log.error("거래 확인 알림 이벤트 발행 실패. userId: {}, error: {}",
+            log.error("거래 확인 대기 알림 이벤트 발행 실패. userId: {}, error: {}",
+                    userId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 거래 취소 알림 이벤트 발행 (상대방에게)
+     *
+     * @param userId 사용자 ID (알림 받을 사람)
+     * @param auctionId 경매 ID
+     * @param auctionTitle 경매 제목
+     * @param cancellerRole 취소한 사람의 역할 (판매자/구매자)
+     * @param chatRoomId 채팅방 ID
+     */
+    public void publishTransactionCancelledNotification(Long userId, Long auctionId, String auctionTitle,
+                                                         String cancellerRole, Long chatRoomId) {
+        try {
+            TransactionCancelledNotificationEvent event = new TransactionCancelledNotificationEvent(
+                    this, userId, auctionId, auctionTitle, cancellerRole, chatRoomId);
+
+            eventPublisher.publishEvent(event);
+
+            log.info("거래 취소 알림 이벤트 발행. userId: {}, auctionId: {}, canceller: {}",
+                    userId, auctionId, cancellerRole);
+
+        } catch (Exception e) {
+            log.error("거래 취소 알림 이벤트 발행 실패. userId: {}, error: {}",
                     userId, e.getMessage(), e);
         }
     }
