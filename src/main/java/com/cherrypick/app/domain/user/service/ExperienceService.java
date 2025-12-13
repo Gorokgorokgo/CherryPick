@@ -420,46 +420,63 @@ public class ExperienceService {
 
     /**
      * 후기 작성 보너스 경험치 지급
+     * - 구매자는 구매자 경험치만, 판매자는 판매자 경험치만 증가
      *
      * @param userId 후기 작성자 ID
-     * @return 경험치 획득 응답 (buyer 타입으로 반환)
+     * @param isSeller 작성자가 판매자인지 여부
+     * @return 경험치 획득 응답
      */
     @Transactional
-    public ExperienceGainResponse awardReviewBonus(Long userId) {
+    public ExperienceGainResponse awardReviewBonus(Long userId, boolean isSeller) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
         int bonusExp = 10; // 후기 작성 보너스: +10 EXP
-
-        // 이전 상태 저장
-        int buyerExpBefore = user.getBuyerExp();
-        int sellerExpBefore = user.getSellerExp();
-        int buyerLevelBefore = user.getBuyerLevel();
-        int sellerLevelBefore = user.getSellerLevel();
-
-        // 구매자와 판매자 경험치 모두에 보너스 지급 (후기는 거래 행위이므로)
-        int newBuyerExp = user.getBuyerExp() + bonusExp;
-        int newSellerExp = user.getSellerExp() + bonusExp;
-
-        user.setBuyerExp(newBuyerExp);
-        user.setSellerExp(newSellerExp);
-
-        // 레벨업 체크
-        boolean buyerLevelUp = checkBuyerLevelUp(user);
-        boolean sellerLevelUp = checkSellerLevelUp(user);
+        
+        // 이전 상태 및 결과 변수 초기화
+        int expBefore;
+        int expAfter;
+        int levelBefore;
+        int levelAfter;
+        boolean isLevelUp;
+        ExperienceHistory.ExperienceType expType;
+        
+        if (isSeller) {
+            // 판매자 경험치 증가
+            expType = ExperienceHistory.ExperienceType.SELLER;
+            expBefore = user.getSellerExp();
+            levelBefore = user.getSellerLevel();
+            
+            expAfter = expBefore + bonusExp;
+            user.setSellerExp(expAfter);
+            
+            isLevelUp = checkSellerLevelUp(user);
+            levelAfter = user.getSellerLevel();
+        } else {
+            // 구매자 경험치 증가
+            expType = ExperienceHistory.ExperienceType.BUYER;
+            expBefore = user.getBuyerExp();
+            levelBefore = user.getBuyerLevel();
+            
+            expAfter = expBefore + bonusExp;
+            user.setBuyerExp(expAfter);
+            
+            isLevelUp = checkBuyerLevelUp(user);
+            levelAfter = user.getBuyerLevel();
+        }
 
         userRepository.save(user);
 
-        // 경험치 히스토리 저장 (buyer 타입으로)
+        // 경험치 히스토리 저장
         ExperienceHistory history = ExperienceHistory.builder()
                 .user(user)
-                .type(ExperienceHistory.ExperienceType.BUYER)
+                .type(expType)
                 .expGained(bonusExp)
-                .expBefore(buyerExpBefore)
-                .expAfter(newBuyerExp)
-                .levelBefore(buyerLevelBefore)
-                .levelAfter(user.getBuyerLevel())
-                .isLevelUp(buyerLevelUp)
+                .expBefore(expBefore)
+                .expAfter(expAfter)
+                .levelBefore(levelBefore)
+                .levelAfter(levelAfter)
+                .isLevelUp(isLevelUp)
                 .reason("후기 작성")
                 .reasonDetail("거래 후기 작성 보너스")
                 .notificationSent(false)
@@ -467,16 +484,16 @@ public class ExperienceService {
 
         experienceHistoryRepository.save(history);
 
-        // 응답 생성 (buyer 타입으로 반환)
-        int requiredExp = getRequiredExperienceForLevel(user.getBuyerLevel() + 1);
+        // 응답 생성
+        int requiredExp = getRequiredExperienceForLevel(levelAfter + 1);
         ExperienceGainResponse response = ExperienceGainResponse.create(
-            ExperienceHistory.ExperienceType.BUYER,
+            expType,
             bonusExp,
-            buyerExpBefore,
-            newBuyerExp,
-            buyerLevelBefore,
-            user.getBuyerLevel(),
-            buyerLevelUp,
+            expBefore,
+            expAfter,
+            levelBefore,
+            levelAfter,
+            isLevelUp,
             "후기 작성",
             "거래 후기 작성 보너스",
             requiredExp
@@ -485,7 +502,8 @@ public class ExperienceService {
         // 이벤트 발행 (비동기 알림 처리)
         eventPublisher.publishEvent(new ExperienceGainEvent(this, response, user.getId()));
 
-        log.info("후기 작성 보너스 경험치 지급 - userId: {}, bonus: {} EXP", userId, bonusExp);
+        log.info("후기 작성 보너스 경험치 지급 - userId: {}, role: {}, bonus: {} EXP", 
+                userId, isSeller ? "SELLER" : "BUYER", bonusExp);
 
         return response;
     }

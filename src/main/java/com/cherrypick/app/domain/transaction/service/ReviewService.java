@@ -93,7 +93,8 @@ public class ReviewService {
         updateUserReviewStats(reviewee, reviewType, request.getRatingType());
 
         // 7. 후기 작성 보너스 경험치 지급 (+10 EXP)
-        ExperienceGainResponse experienceResponse = experienceService.awardReviewBonus(reviewerId);
+        boolean isReviewerSeller = transaction.getSeller().getId().equals(reviewerId);
+        ExperienceGainResponse experienceResponse = experienceService.awardReviewBonus(reviewerId, isReviewerSeller);
 
         // 8. 상대방에게 알림 발송
         notificationEventPublisher.sendReviewReceivedNotification(reviewee, reviewer.getNickname());
