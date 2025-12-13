@@ -359,17 +359,21 @@ public class WebSocketHandler extends TextWebSocketHandler {
     public void sendToAuctionSubscribers(String destination, Object message) {
         // Destination 예시:
         // "/topic/auctions/123" -> auctionId: "123"
-        // "/topic/notifications/456" -> userId: "456" (알림용)
+        // "/topic/chat/456" -> chatRoomId: "456"
+        // "/topic/notifications/789" -> userId: "789" (알림용)
         // "/topic/users/488/status" -> userId: "488" (상태 업데이트용)
 
+        if (destination == null) return;
+
+        // 알림 전송 (개인)
         if (destination.startsWith("/topic/notifications/")) {
             String userId = destination.substring("/topic/notifications/".length());
             sendToUser(userId, message);
             return;
         }
 
+        // 사용자 상태 업데이트 (개인)
         if (destination.startsWith("/topic/users/")) {
-            // "/topic/users/488/status" -> "488/status" -> "488"
             String remaining = destination.substring("/topic/users/".length());
             int slashIndex = remaining.indexOf('/');
             String userId = (slashIndex != -1) ? remaining.substring(0, slashIndex) : remaining;
@@ -377,6 +381,27 @@ public class WebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        // 채팅방 브로드캐스트
+        if (destination.startsWith("/topic/chat/")) {
+            String roomId = destination.substring("/topic/chat/".length());
+            // 뒤에 /read, /status 같은게 붙어있을 수 있으므로 처리 필요
+            // 하지만 현재는 정확한 roomId만 온다고 가정하거나, 슬래시 전까지만 자를 수도 있음.
+            // sendChatMessage에서는 "/topic/chat/" + chatRoomId 형태로만 보냄.
+            // 하지만 notifyChatRoomStatusChange 등에서는 더 붙을 수 있음.
+            
+            // 단순하게 슬래시가 있으면 그 앞까지만 추출 (채팅방 ID)
+            int slashIndex = roomId.indexOf('/');
+            if (slashIndex != -1) {
+                // "/topic/chat/123/status" -> "123"
+                // 근데 status 메시지는 해당 방 구독자 모두에게 보내야 함.
+                roomId = roomId.substring(0, slashIndex);
+            }
+            
+            broadcastToChatRoom(roomId, message);
+            return;
+        }
+
+        // 경매 브로드캐스트
         String auctionId = extractAuctionId(destination);
         if (auctionId != null) {
             broadcastToAuction(auctionId, message);
