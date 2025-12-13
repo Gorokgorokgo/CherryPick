@@ -428,6 +428,8 @@ public class FcmService {
 
     /**
      * 새 채팅 메시지 푸시 알림 발송
+     * - 알림 화면(Notification History)에 저장하지 않음 (요청사항 반영: 알림 리스트 제외)
+     * - 시스템 상단바 알림(Notification)은 발생시킴 (요청사항 반영: 카톡처럼 상단바 노출)
      */
     @Transactional
     public void sendNewMessageNotification(User receiver, Long chatRoomId, String senderNickname, String messagePreview) {
@@ -442,15 +444,64 @@ public class FcmService {
                 ? messagePreview.substring(0, 100) + "..."
                 : messagePreview;
 
-        // 알림 히스토리 저장
+        // 알림 화면(내역)에 표시하지 않기 위해 NotificationHistory 저장 로직은 생략
+        /*
         NotificationHistory notification = NotificationHistory.createNotification(
                 receiver, NotificationType.NEW_MESSAGE, title, message, chatRoomId);
         notificationHistoryRepository.save(notification);
+        */
 
-        // FCM 푸시 발송
-        sendFcmPush(setting.getFcmToken(), title, message, notification, chatRoomId, "CHAT");
+        // 상단바 알림을 위해 Notification 필드를 포함하여 전송
+        sendChatNotificationPush(setting.getFcmToken(), title, message, chatRoomId, "CHAT");
 
-        log.info("새 메시지 알림 발송 완료. receiverId: {}, chatRoomId: {}", receiver.getId(), chatRoomId);
+        log.info("새 메시지 알림(Push) 발송 완료. receiverId: {}, chatRoomId: {}", receiver.getId(), chatRoomId);
+    }
+
+    /**
+     * 채팅용 Notification Push 발송 (History 저장 없이 상단바 노출)
+     */
+    private void sendChatNotificationPush(String fcmToken, String title, String messageBody, Long chatRoomId, String type) {
+        if (fcmToken == null || fcmToken.isEmpty()) {
+            return;
+        }
+
+        if (FirebaseApp.getApps().isEmpty()) {
+            log.warn("Firebase가 초기화되지 않았습니다.");
+            return;
+        }
+
+        try {
+            // Android 설정 (우선순위 높음, 소리 설정)
+            AndroidConfig androidConfig = AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .setNotification(AndroidNotification.builder()
+                            .setChannelId("chat_messages")
+                            .setSound("default")
+                            .build())
+                    .build();
+
+            // Notification 필드(상단바 노출용) + Data 필드(앱 로직용) 모두 설정
+            Message.Builder messageBuilder = Message.builder()
+                    .setToken(fcmToken)
+                    .setNotification(Notification.builder()
+                            .setTitle(title)
+                            .setBody(messageBody)
+                            .build())
+                    .setAndroidConfig(androidConfig)
+                    .putData("title", title)
+                    .putData("body", messageBody)
+                    .putData("type", type)
+                    .putData("resourceId", String.valueOf(chatRoomId))
+                    .putData("id", String.valueOf(chatRoomId));
+
+            // FCM 메시지 발송
+            String response = FirebaseMessaging.getInstance().send(messageBuilder.build());
+
+            log.info("FCM Chat Push 발송 성공: messageId={}", response);
+
+        } catch (Exception e) {
+            log.error("FCM Chat Push 발송 실패: error={}", e.getMessage());
+        }
     }
 
     /**

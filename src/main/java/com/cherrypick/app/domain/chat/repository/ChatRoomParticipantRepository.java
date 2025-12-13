@@ -62,4 +62,10 @@ public interface ChatRoomParticipantRepository extends JpaRepository<ChatRoomPar
      * 참여자 존재 여부 확인
      */
     boolean existsByChatRoomIdAndUserId(Long chatRoomId, Long userId);
+
+    /**
+     * 사용자의 총 읽지 않은 메시지 개수 조회
+     */
+    @Query("SELECT COALESCE(SUM(p.unreadCount), 0) FROM ChatRoomParticipant p WHERE p.user.id = :userId AND p.isLeft = false")
+    int sumUnreadCountByUserId(@Param("userId") Long userId);
 }

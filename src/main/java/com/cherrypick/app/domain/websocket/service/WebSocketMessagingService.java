@@ -348,8 +348,43 @@ public class WebSocketMessagingService {
         }
     }
     
+    /**
+     * 사용자에게 전체 안 읽은 메시지 수 업데이트 알림 전송
+     * 
+     * @param userId 사용자 ID
+     * @param totalCount 전체 안 읽은 메시지 수
+     */
+    public void sendUnreadCountUpdate(Long userId, int totalCount) {
+        String destination = "/topic/notifications/" + userId;
+        
+        UnreadCountUpdateMessage message = new UnreadCountUpdateMessage(userId, totalCount);
+        
+        try {
+            webSocketHandler.sendToAuctionSubscribers(destination, message);
+            log.info("🔔 WebSocket 뱃지 업데이트 전송: userId={}, count={}", userId, totalCount);
+        } catch (Exception e) {
+            log.error("❌ WebSocket 뱃지 업데이트 전송 실패: userId={}, error={}", userId, e.getMessage());
+        }
+    }
+
     // === 내부 메시지 클래스들 ===
     
+    /**
+     * 안 읽은 메시지 수 업데이트 메시지
+     */
+    public static class UnreadCountUpdateMessage {
+        public final String type = "UNREAD_COUNT_UPDATE";
+        public final Long userId;
+        public final int totalUnreadCount;
+        public final long timestamp;
+        
+        public UnreadCountUpdateMessage(Long userId, int totalUnreadCount) {
+            this.userId = userId;
+            this.totalUnreadCount = totalUnreadCount;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
     /**
      * 채팅방 상태 변경 메시지
      */
