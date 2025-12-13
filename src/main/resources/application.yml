@@ -9,7 +9,7 @@ spring:
     locations: classpath:db/migration
     validate-on-migrate: false
     baseline-on-migrate: true
-    baseline-version: 0
+    baseline-version: 8
 
   servlet:
     multipart:
