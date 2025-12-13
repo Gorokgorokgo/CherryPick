@@ -144,8 +144,9 @@ jobs:
         # --env-file 옵션으로 환경 변수 파일 명시
         docker-compose --env-file .env -f docker-compose.prod.yml down --remove-orphans || true
         
-        # 최신 코드로 빌드 및 실행
-        docker-compose --env-file .env -f docker-compose.prod.yml up -d --build
+        # 최신 코드로 빌드 및 실행 (캐시 무시)
+        docker-compose --env-file .env -f docker-compose.prod.yml build --no-cache
+        docker-compose --env-file .env -f docker-compose.prod.yml up -d
 
     - name: Prune Docker System
       run: |
