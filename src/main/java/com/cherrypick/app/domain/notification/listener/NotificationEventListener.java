@@ -267,6 +267,8 @@ public class NotificationEventListener {
                 chatRoomId = ((TransactionPendingNotificationEvent) event).getChatRoomId();
             } else if (event instanceof TransactionCancelledNotificationEvent) {
                 chatRoomId = ((TransactionCancelledNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof TransactionCompletedNotificationEvent) {
+                chatRoomId = ((TransactionCompletedNotificationEvent) event).getChatRoomId();
             }
 
             // 알림 히스토리 저장 (chatRoomId 포함)
@@ -378,6 +380,8 @@ public class NotificationEventListener {
                 chatRoomId = ((TransactionPendingNotificationEvent) event).getChatRoomId();
             } else if (event instanceof TransactionCancelledNotificationEvent) {
                 chatRoomId = ((TransactionCancelledNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof TransactionCompletedNotificationEvent) {
+                chatRoomId = ((TransactionCompletedNotificationEvent) event).getChatRoomId();
             }
 
             // 유찰 알림의 경우 추가 정보 포함

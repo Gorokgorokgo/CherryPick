@@ -123,12 +123,13 @@ public class NotificationEventPublisher {
      * @param connectionId 연결 서비스 ID
      * @param auctionTitle 경매 제목
      * @param isSeller 판매자 여부
+     * @param chatRoomId 채팅방 ID
      */
     public void publishTransactionCompletedNotification(Long userId, Long connectionId,
-                                                      String auctionTitle, boolean isSeller) {
+                                                      String auctionTitle, boolean isSeller, Long chatRoomId) {
         try {
             TransactionCompletedNotificationEvent event = new TransactionCompletedNotificationEvent(
-                    this, userId, connectionId, auctionTitle, isSeller);
+                    this, userId, connectionId, auctionTitle, isSeller, chatRoomId);
 
             eventPublisher.publishEvent(event);
 

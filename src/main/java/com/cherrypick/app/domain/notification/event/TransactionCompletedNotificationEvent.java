@@ -11,9 +11,10 @@ public class TransactionCompletedNotificationEvent extends NotificationEvent {
 
     private final String auctionTitle;
     private final boolean isSeller;
+    private final Long chatRoomId;
 
     public TransactionCompletedNotificationEvent(Object source, Long userId, Long connectionId,
-                                               String auctionTitle, boolean isSeller) {
+                                               String auctionTitle, boolean isSeller, Long chatRoomId) {
         super(source, NotificationType.TRANSACTION_COMPLETED, userId,
               "거래가 완료되었습니다! ✅",
               String.format("'%s' %s 거래가 성공적으로 완료되었습니다. 수고하셨습니다!",
@@ -21,5 +22,6 @@ public class TransactionCompletedNotificationEvent extends NotificationEvent {
               connectionId);
         this.auctionTitle = auctionTitle;
         this.isSeller = isSeller;
+        this.chatRoomId = chatRoomId;
     }
 }

@@ -15,6 +15,7 @@ import com.cherrypick.app.domain.transaction.repository.TransactionRepository;
 import com.cherrypick.app.domain.transaction.repository.ReviewRepository;
 import com.cherrypick.app.domain.notification.service.NotificationEventPublisher;
 import com.cherrypick.app.domain.user.dto.response.ExperienceGainResponse;
+import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.service.ExperienceService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class TransactionService {
     private final AuctionRepository auctionRepository;
     private final BidRepository bidRepository;
     private final ChatRoomRepository chatRoomRepository;
+    private final WebSocketMessagingService webSocketMessagingService;
 
     /**
      * 경매 종료 후 거래 생성
@@ -136,6 +138,16 @@ public class TransactionService {
         seller.setPointBalance(seller.getPointBalance() + transaction.getSellerAmount().longValue());
 
         Transaction savedTransaction = transactionRepository.save(transaction);
+
+        // [추가] 채팅방 상태 실시간 업데이트 (UI 즉시 반영)
+        chatRoomRepository.findByAuctionId(transaction.getAuction().getId())
+                .ifPresent(chatRoom -> {
+                    webSocketMessagingService.notifyChatRoomStatusChange(
+                            chatRoom.getId(),
+                            TransactionStatus.COMPLETED.name(),
+                            "거래가 완료되었습니다."
+                    );
+                });
 
         // 경험치 지급 (구매자/판매자) 및 결과 수집
         ExperienceService.TransactionExperienceResult experienceResult = null;
@@ -382,17 +394,40 @@ public class TransactionService {
 
         // 상대방에게 알림 발송
         User otherUser = isSeller ? transaction.getBuyer() : transaction.getSeller();
+        
+        // 채팅방 ID 조회 (알림 이동용)
+        Long chatRoomId = chatRoomRepository.findByAuctionId(transaction.getAuction().getId())
+                .map(ChatRoom::getId)
+                .orElse(null);
+
         if (confirmedTransaction.getStatus() != TransactionStatus.COMPLETED) {
             // 단일 확인 시 상대방에게 알림 (푸시 알림 포함)
-            Long chatRoomId = chatRoomRepository.findByAuctionId(transaction.getAuction().getId())
-                    .map(ChatRoom::getId)
-                    .orElse(null);
-            
             notificationEventPublisher.publishTransactionPendingNotification(
                     otherUser.getId(),
                     transaction.getAuction().getId(),
                     transaction.getAuction().getTitle(),
                     isSeller ? "판매자" : "구매자",
+                    chatRoomId
+            );
+        } else {
+            // [추가] 거래 완료 시 양측에게 완료 알림 발송 (후기 작성 유도)
+            
+            // 1. 상대방에게 알림 (상대방 입장에서 isSeller 계산)
+            boolean otherUserIsSeller = !isSeller; 
+            notificationEventPublisher.publishTransactionCompletedNotification(
+                    otherUser.getId(),
+                    transaction.getAuction().getId(),
+                    transaction.getAuction().getTitle(),
+                    otherUserIsSeller,
+                    chatRoomId
+            );
+            
+            // 2. 본인에게도 알림 (기록용)
+            notificationEventPublisher.publishTransactionCompletedNotification(
+                    userId,
+                    transaction.getAuction().getId(),
+                    transaction.getAuction().getTitle(),
+                    isSeller,
                     chatRoomId
             );
         }

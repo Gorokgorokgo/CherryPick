@@ -389,6 +389,7 @@ public class WebSocketMessagingService {
      * 채팅방 상태 변경 메시지
      */
     public static class ChatStatusMessage {
+        public final String messageType = "CHAT_STATUS_CHANGE";
         public final Long chatRoomId;
         public final String status;
         public final String message;
