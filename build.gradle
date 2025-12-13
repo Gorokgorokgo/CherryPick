@@ -69,6 +69,10 @@ dependencies {
     // Firebase Admin SDK (FCM 푸시 알림)
     implementation 'com.google.firebase:firebase-admin:9.2.0'
 
+    // Flyway 데이터베이스 마이그레이션
+    implementation 'org.flywaydb:flyway-core:10.4.1'
+    implementation 'org.flywaydb:flyway-database-postgresql:10.4.1'
+
     runtimeOnly 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

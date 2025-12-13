@@ -25,7 +25,7 @@ public class AuctionUpdateMessage {
     public enum MessageType {
         NEW_BID,           // 새로운 입찰
         AUCTION_ENDED,     // 경매 종료
-        AUCTION_EXTENDED,  // 스나이핑 방지 연장11
+        AUCTION_EXTENDED,  // 스나이핑 방지 연장
         BIDDER_COUNT_CHANGED, // 입찰자 수 변경 (별칭)
         AUTO_BID_COMPETING, // 자동입찰 경쟁 진행 중
         AUTO_BID_RESULT,    // 자동입찰 경쟁 최종 결과
@@ -36,8 +36,14 @@ public class AuctionUpdateMessage {
         CONNECTION_PAYMENT_REQUEST, // 연결 서비스 결제 요청
         CHAT_ACTIVATED,    // 채팅 활성화
         TRANSACTION_COMPLETED, // 거래 완료
+        TRANSACTION_PENDING, // 거래 확인 대기 중
+        TRANSACTION_CANCELLED, // 거래 취소됨
         NEW_MESSAGE,       // 새 메시지
-        PROMOTION          // 프로모션
+        PROMOTION,         // 프로모션
+        // 푸시 알림 타입 (Type A, B, C)
+        OUTBID,            // 더 높은 입찰 발생 (Type A)
+        AUCTION_ENDING_SOON, // 경매 마감 임박 (Type B: 15분/5분)
+        KEYWORD_ALERT      // 키워드 알림 (Type C)
     }
     
     /**

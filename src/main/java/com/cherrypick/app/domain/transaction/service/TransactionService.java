@@ -5,6 +5,8 @@ import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.auction.repository.AuctionRepository;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
+import com.cherrypick.app.domain.chat.entity.ChatRoom;
+import com.cherrypick.app.domain.chat.repository.ChatRoomRepository;
 import com.cherrypick.app.domain.transaction.dto.response.TransactionConfirmResponse;
 import com.cherrypick.app.domain.transaction.dto.response.TransactionResponse;
 import com.cherrypick.app.domain.transaction.entity.Transaction;
@@ -39,6 +41,7 @@ public class TransactionService {
     private final NotificationEventPublisher notificationEventPublisher;
     private final AuctionRepository auctionRepository;
     private final BidRepository bidRepository;
+    private final ChatRoomRepository chatRoomRepository;
 
     /**
      * 경매 종료 후 거래 생성
@@ -333,6 +336,11 @@ public class TransactionService {
             );
         }
 
+        // 취소된 거래인지 확인
+        if (transaction.getStatus() == TransactionStatus.CANCELLED) {
+            throw new IllegalArgumentException("취소된 거래입니다. 거래를 완료할 수 없습니다.");
+        }
+
         // 본인이 이미 확인했는지 체크
         if (isSeller && transaction.getSellerConfirmed()) {
             return TransactionConfirmResponse.of(
@@ -375,11 +383,17 @@ public class TransactionService {
         // 상대방에게 알림 발송
         User otherUser = isSeller ? transaction.getBuyer() : transaction.getSeller();
         if (confirmedTransaction.getStatus() != TransactionStatus.COMPLETED) {
-            // 단일 확인 시 상대방에게 알림
-            notificationEventPublisher.publishTransactionConfirmedNotification(
+            // 단일 확인 시 상대방에게 알림 (푸시 알림 포함)
+            Long chatRoomId = chatRoomRepository.findByAuctionId(transaction.getAuction().getId())
+                    .map(ChatRoom::getId)
+                    .orElse(null);
+            
+            notificationEventPublisher.publishTransactionPendingNotification(
                     otherUser.getId(),
+                    transaction.getAuction().getId(),
                     transaction.getAuction().getTitle(),
-                    isSeller ? "판매자" : "구매자"
+                    isSeller ? "판매자" : "구매자",
+                    chatRoomId
             );
         }
 
@@ -471,5 +485,77 @@ public class TransactionService {
         }
 
         return TransactionResponse.from(transaction);
+    }
+
+    /**
+     * 거래 취소
+     * - 거래가 완료되지 않은 상태(PENDING, SELLER_CONFIRMED, BUYER_CONFIRMED)에서만 취소 가능
+     * - 판매자 또는 구매자 모두 취소 가능
+     *
+     * @param transactionId 거래 ID
+     * @param userId 사용자 ID
+     * @return 취소된 거래 응답
+     */
+    @Transactional
+    public TransactionResponse cancelTransaction(Long transactionId, Long userId) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
+
+        // 권한 확인
+        boolean isSeller = transaction.getSeller().getId().equals(userId);
+        boolean isBuyer = transaction.getBuyer().getId().equals(userId);
+
+        if (!isSeller && !isBuyer) {
+            throw new IllegalArgumentException("거래 당사자만 취소할 수 있습니다.");
+        }
+
+        // 이미 완료된 거래는 취소 불가
+        if (transaction.getStatus() == TransactionStatus.COMPLETED) {
+            throw new IllegalArgumentException("이미 완료된 거래는 취소할 수 없습니다.");
+        }
+
+        // 이미 취소된 거래
+        if (transaction.getStatus() == TransactionStatus.CANCELLED) {
+            throw new IllegalArgumentException("이미 취소된 거래입니다.");
+        }
+
+        // 거래 취소 처리
+        transaction.setStatus(TransactionStatus.CANCELLED);
+
+        Transaction savedTransaction = transactionRepository.save(transaction);
+
+        log.info("거래 취소 완료: transactionId={}, userId={}, cancelledBy={}",
+                transactionId, userId, isSeller ? "판매자" : "구매자");
+
+        // 상대방에게 거래 취소 알림 발송
+        User otherUser = isSeller ? transaction.getBuyer() : transaction.getSeller();
+        Long chatRoomId = chatRoomRepository.findByAuctionId(transaction.getAuction().getId())
+                .map(ChatRoom::getId)
+                .orElse(null);
+        
+        notificationEventPublisher.publishTransactionCancelledNotification(
+                otherUser.getId(),
+                transaction.getAuction().getId(),
+                transaction.getAuction().getTitle(),
+                isSeller ? "판매자" : "구매자",
+                chatRoomId
+        );
+
+        return TransactionResponse.from(savedTransaction);
+    }
+
+    /**
+     * 경매 ID로 거래 취소
+     *
+     * @param auctionId 경매 ID
+     * @param userId 사용자 ID
+     * @return 취소된 거래 응답
+     */
+    @Transactional
+    public TransactionResponse cancelTransactionByAuction(Long auctionId, Long userId) {
+        Transaction transaction = transactionRepository.findByAuctionId(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("거래를 찾을 수 없습니다."));
+
+        return cancelTransaction(transaction.getId(), userId);
     }
 }

@@ -35,6 +35,9 @@ import com.cherrypick.app.domain.websocket.event.TypingEvent;
 import com.cherrypick.app.domain.bid.entity.Bid;
 import com.cherrypick.app.domain.bid.repository.BidRepository;
 import com.cherrypick.app.domain.auction.entity.Auction;
+import com.cherrypick.app.domain.transaction.entity.Transaction;
+import com.cherrypick.app.domain.transaction.enums.TransactionStatus;
+import com.cherrypick.app.domain.transaction.repository.TransactionRepository;
 
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +63,7 @@ public class ChatService {
     private final ApplicationEventPublisher eventPublisher;
     private final BidRepository bidRepository;
     private final FcmService fcmService;
+    private final TransactionRepository transactionRepository;
 
     // 채팅방별 동시성 제어를 위한 Lock 객체 캐시
     private final ConcurrentHashMap<Long, Object> chatRoomLocks = new ConcurrentHashMap<>();
@@ -340,7 +344,7 @@ public class ChatService {
 
     /**
      * 채팅방 상세 정보 조회
-     * 
+     *
      * @param roomId 채팅방 ID
      * @param userId 사용자 ID
      * @return 채팅방 상세 정보
@@ -348,22 +352,37 @@ public class ChatService {
     public ChatRoomResponse getChatRoomDetails(Long roomId, Long userId) {
         ChatRoom chatRoom = chatRoomRepository.findById(roomId)
                 .orElseThrow(EntityNotFoundException::chatRoom);
-        
+
         // 사용자가 채팅방 참여자인지 확인
         if (!chatRoom.isParticipant(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-        
+
         // 읽지 않은 메시지 개수
         int unreadCount = chatMessageRepository
                 .countUnreadMessagesByChatRoomIdAndUserId(roomId, userId);
-        
+
         // 상대방 온라인 상태 (실시간 상태 추적)
-        Long partnerId = chatRoom.getSeller().getId().equals(userId) ? 
+        Long partnerId = chatRoom.getSeller().getId().equals(userId) ?
                 chatRoom.getBuyer().getId() : chatRoom.getSeller().getId();
         boolean partnerOnline = userOnlineStatusService.isUserOnline(partnerId);
-        
-        return ChatRoomResponse.from(chatRoom, userId, unreadCount, partnerOnline);
+
+        // 거래 상태 조회
+        String transactionStatus = getTransactionStatusByAuctionId(chatRoom.getAuction().getId());
+
+        return ChatRoomResponse.from(chatRoom, userId, unreadCount, partnerOnline, transactionStatus);
+    }
+
+    /**
+     * 경매 ID로 거래 상태 조회
+     *
+     * @param auctionId 경매 ID
+     * @return 거래 상태 문자열 (없으면 null)
+     */
+    private String getTransactionStatusByAuctionId(Long auctionId) {
+        return transactionRepository.findByAuctionId(auctionId)
+                .map(transaction -> transaction.getStatus().name())
+                .orElse(null);
     }
 
     /**
@@ -687,6 +706,8 @@ public class ChatService {
 
     /**
      * 채팅방 나가기
+     * - 거래 진행 중(PENDING, SELLER_CONFIRMED, BUYER_CONFIRMED)이면 나가기 불가
+     * - 거래 완료/취소 후에만 나가기 가능
      *
      * @param roomId 채팅방 ID
      * @param userId 사용자 ID
@@ -699,6 +720,17 @@ public class ChatService {
         // 사용자가 채팅방 참여자인지 확인
         if (!chatRoom.isParticipant(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        // 거래 상태 확인 - 진행 중이면 나가기 불가
+        Optional<Transaction> transactionOpt = transactionRepository.findByAuctionId(chatRoom.getAuction().getId());
+        if (transactionOpt.isPresent()) {
+            TransactionStatus status = transactionOpt.get().getStatus();
+            if (isTransactionInProgress(status)) {
+                log.warn("거래 진행 중 채팅방 나가기 시도 차단: roomId={}, userId={}, transactionStatus={}",
+                        roomId, userId, status);
+                throw new BusinessException(ErrorCode.BAD_REQUEST);
+            }
         }
 
         User user = userRepository.findById(userId)
@@ -732,6 +764,30 @@ public class ChatService {
     }
 
     /**
+     * 거래가 진행 중인지 확인
+     * PENDING, SELLER_CONFIRMED, BUYER_CONFIRMED 상태면 진행 중
+     *
+     * @param status 거래 상태
+     * @return 진행 중이면 true
+     */
+    private boolean isTransactionInProgress(TransactionStatus status) {
+        return status == TransactionStatus.PENDING
+                || status == TransactionStatus.SELLER_CONFIRMED
+                || status == TransactionStatus.BUYER_CONFIRMED;
+    }
+
+    /**
+     * 거래가 완료/취소 상태인지 확인
+     *
+     * @param status 거래 상태
+     * @return 완료/취소 상태면 true
+     */
+    private boolean isTransactionFinished(TransactionStatus status) {
+        return status == TransactionStatus.COMPLETED
+                || status == TransactionStatus.CANCELLED;
+    }
+
+    /**
      * 읽지 않은 메시지 총 개수 조회
      *
      * @param userId 사용자 ID
@@ -743,6 +799,7 @@ public class ChatService {
 
     /**
      * 채팅방 재입장 (수동)
+     * - 거래 완료/취소 후에는 재입장 불가
      *
      * @param roomId 채팅방 ID
      * @param userId 사용자 ID
@@ -765,6 +822,17 @@ public class ChatService {
 
         // 나간 상태였다면 재입장 처리
         if (participant != null && participant.getIsLeft()) {
+            // 거래 완료/취소 후에는 재입장 불가
+            Optional<Transaction> transactionOpt = transactionRepository.findByAuctionId(chatRoom.getAuction().getId());
+            if (transactionOpt.isPresent()) {
+                TransactionStatus status = transactionOpt.get().getStatus();
+                if (isTransactionFinished(status)) {
+                    log.warn("거래 완료/취소 후 채팅방 재입장 시도 차단: roomId={}, userId={}, transactionStatus={}",
+                            roomId, userId, status);
+                    throw new BusinessException(ErrorCode.BAD_REQUEST);
+                }
+            }
+
             ChatRoomParticipant rejoinedParticipant = participant.rejoin();
             chatRoomParticipantRepository.save(rejoinedParticipant);
             log.info("채팅방 수동 재입장 완료: roomId={}, userId={}", roomId, userId);
@@ -779,7 +847,10 @@ public class ChatService {
                 chatRoom.getBuyer().getId() : chatRoom.getSeller().getId();
         boolean partnerOnline = userOnlineStatusService.isUserOnline(partnerId);
 
-        return ChatRoomResponse.from(chatRoom, userId, unreadCount, partnerOnline);
+        // 거래 상태 조회
+        String transactionStatus = getTransactionStatusByAuctionId(chatRoom.getAuction().getId());
+
+        return ChatRoomResponse.from(chatRoom, userId, unreadCount, partnerOnline, transactionStatus);
     }
 
     /**

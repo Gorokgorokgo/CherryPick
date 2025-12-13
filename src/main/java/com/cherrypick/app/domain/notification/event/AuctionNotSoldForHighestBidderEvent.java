@@ -24,7 +24,7 @@ public class AuctionNotSoldForHighestBidderEvent extends NotificationEvent {
               NotificationType.AUCTION_NOT_SOLD_HIGHEST_BIDDER,
               targetUserId,
               "경매가 유찰되었습니다",
-              String.format("'%s' 경매가 유찰되었습니다. 최고 입찰가: %,d원", auctionTitle, highestBidAmount),
+              String.format("'%s' 경매가 유찰되었습니다.\n최고 입찰가: %,d원", auctionTitle, highestBidAmount),
               auctionId);
 
         this.auctionTitle = auctionTitle;

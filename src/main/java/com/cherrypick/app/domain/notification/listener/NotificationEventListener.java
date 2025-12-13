@@ -6,8 +6,10 @@ import com.cherrypick.app.domain.notification.event.*;
 import com.cherrypick.app.domain.notification.enums.NotificationType;
 import com.cherrypick.app.domain.notification.repository.NotificationHistoryRepository;
 import com.cherrypick.app.domain.notification.repository.NotificationSettingRepository;
+import com.cherrypick.app.domain.notification.service.NotificationThrottleService;
 import com.cherrypick.app.domain.user.entity.User;
 import com.cherrypick.app.domain.user.repository.UserRepository;
+import com.cherrypick.app.domain.notification.service.FcmService;
 import com.cherrypick.app.domain.websocket.service.WebSocketMessagingService;
 import com.cherrypick.app.domain.websocket.dto.AuctionUpdateMessage;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,8 @@ public class NotificationEventListener {
     private final NotificationSettingRepository notificationSettingRepository;
     private final UserRepository userRepository;
     private final WebSocketMessagingService webSocketMessagingService;
+    private final NotificationThrottleService throttleService;
+    private final FcmService fcmService;
 
     /**
      * 새로운 입찰 알림 이벤트 처리
@@ -124,12 +128,104 @@ public class NotificationEventListener {
     }
 
     /**
+     * 거래 확인 대기 알림 이벤트 처리
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleTransactionPendingNotification(TransactionPendingNotificationEvent event) {
+        log.info("🔔 [거래 확인 대기 알림] 사용자 ID: {}, 경매 ID: {}",
+                event.getTargetUserId(), event.getResourceId());
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 거래 취소 알림 이벤트 처리
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleTransactionCancelledNotification(TransactionCancelledNotificationEvent event) {
+        log.info("🔔 [거래 취소 알림] 사용자 ID: {}, 경매 ID: {}",
+                event.getTargetUserId(), event.getResourceId());
+        processNotificationEvent(event);
+    }
+
+    /**
      * 계정 복구 알림 이벤트 처리
      */
     @Async
     @EventListener
     @Transactional
     public void handleAccountRestoredNotification(AccountRestoredEvent event) {
+        processNotificationEvent(event);
+    }
+
+    /**
+     * Outbid 알림 이벤트 처리 (이전 최고 입찰자에게)
+     * Throttling 적용: 1분 내 중복 발송 방지
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleOutbidNotification(OutbidNotificationEvent event) {
+        log.info("🔔 [Outbid 알림 처리] 사용자 ID: {}, 경매 ID: {}",
+                event.getTargetUserId(), event.getAuctionId());
+
+        // Throttle 확인
+        if (!throttleService.canSendOutbidNotification(event.getTargetUserId(), event.getAuctionId())) {
+            // Throttled - 카운트만 증가
+            int count = throttleService.incrementOutbidCount(event.getTargetUserId(), event.getAuctionId());
+            log.info("  - ⏳ [Throttled] 누적 입찰 수: {}", count);
+            return;
+        }
+
+        // 누적된 카운트 확인
+        int accumulatedCount = throttleService.getOutbidCount(event.getTargetUserId(), event.getAuctionId());
+        if (accumulatedCount > 0) {
+            // 그룹 알림 발송 후 카운트 리셋
+            throttleService.resetOutbidCount(event.getTargetUserId(), event.getAuctionId());
+        }
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 경매 마감 임박 알림 이벤트 처리
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleAuctionEndingSoonNotification(AuctionEndingSoonEvent event) {
+        String type = event.getMinutesRemaining() == 15 ? "15m" : "5m";
+        log.info("🔔 [마감 임박 알림 처리] 사용자 ID: {}, 경매 ID: {}, 남은 시간: {}분",
+                event.getTargetUserId(), event.getAuctionId(), event.getMinutesRemaining());
+
+        // Throttle 확인 (같은 경매에 대해 중복 알림 방지)
+        if (!throttleService.canSendEndingSoonNotification(event.getTargetUserId(), event.getAuctionId(), type)) {
+            log.info("  - ⏳ [Throttled] 이미 {}분 전 알림 발송됨", event.getMinutesRemaining());
+            return;
+        }
+
+        processNotificationEvent(event);
+    }
+
+    /**
+     * 키워드 알림 이벤트 처리
+     */
+    @Async
+    @EventListener
+    @Transactional
+    public void handleKeywordAlertNotification(KeywordAlertEvent event) {
+        log.info("🔔 [키워드 알림 처리] 사용자 ID: {}, 경매 ID: {}, 키워드: {}",
+                event.getTargetUserId(), event.getAuctionId(), event.getMatchedKeyword());
+
+        // Throttle 확인 (같은 경매에 대해 중복 알림 방지)
+        if (!throttleService.canSendKeywordNotification(event.getTargetUserId(), event.getAuctionId())) {
+            log.info("  - ⏳ [Throttled] 이미 해당 경매에 대한 키워드 알림 발송됨");
+            return;
+        }
+
         processNotificationEvent(event);
     }
 
@@ -167,6 +263,10 @@ public class NotificationEventListener {
                 chatRoomId = ((AuctionSoldNotificationEvent) event).getChatRoomId();
             } else if (event instanceof AuctionWonNotificationEvent) {
                 chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof TransactionPendingNotificationEvent) {
+                chatRoomId = ((TransactionPendingNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof TransactionCancelledNotificationEvent) {
+                chatRoomId = ((TransactionCancelledNotificationEvent) event).getChatRoomId();
             }
 
             // 알림 히스토리 저장 (chatRoomId 포함)
@@ -183,8 +283,9 @@ public class NotificationEventListener {
             notificationHistoryRepository.save(notification);
             log.info("  - 💾 [알림 저장 완료] ID: {}", notification.getId());
 
-            // FCM 푸시 알림 발송 (모의)
-            sendFcmNotification(setting.getFcmToken(), event.getTitle(), event.getMessage(), notification);
+            // FCM 푸시 알림 발송 (Deep Link 포함)
+            sendFcmNotification(setting.getFcmToken(), event.getTitle(), event.getMessage(),
+                    notification, event.getNotificationType(), event.getResourceId());
 
             // WebSocket 실시간 알림 발송
             sendWebSocketNotification(user.getId(), event);
@@ -211,29 +312,55 @@ public class NotificationEventListener {
             case CONNECTION_PAYMENT_REQUEST -> setting.getConnectionPaymentNotification();
             case CHAT_ACTIVATED -> setting.getChatActivationNotification();
             case NEW_MESSAGE -> setting.getMessageNotification();
-            case TRANSACTION_COMPLETED -> setting.getTransactionCompletionNotification();
+            case TRANSACTION_COMPLETED, TRANSACTION_PENDING, TRANSACTION_CANCELLED -> setting.getTransactionCompletionNotification();
             case PROMOTION -> setting.getPromotionNotification();
+            case OUTBID -> setting.getOutbidNotification(); // 더 높은 입찰 알림
+            case AUCTION_ENDING_SOON_15M, AUCTION_ENDING_SOON_5M -> setting.getEndingSoonNotification(); // 마감 임박 알림
+            case KEYWORD_ALERT -> setting.getKeywordNotification(); // 키워드 알림
         };
     }
 
     /**
-     * FCM 푸시 알림 발송 (모의)
+     * FCM 푸시 알림 발송
      */
-    private void sendFcmNotification(String fcmToken, String title, String message, NotificationHistory notification) {
+    private void sendFcmNotification(String fcmToken, String title, String message,
+                                      NotificationHistory notification, NotificationType type, Long resourceId) {
         if (fcmToken == null || fcmToken.isEmpty()) {
+            log.debug("  - ⚠️ [FCM 건너뜀] FCM 토큰이 없습니다.");
             return;
         }
 
         try {
-            // TODO: 실제 FCM SDK 연동
+            // Deep Link 라우트 결정
+            String deepLinkRoute = determineDeepLinkRoute(type);
 
-            // 발송 성공 처리
-            NotificationHistory updatedNotification = notification.markFcmSent();
-            notificationHistoryRepository.save(updatedNotification);
+            // 실제 FCM 발송 (FcmService 사용)
+            fcmService.sendFcmPushWithDeepLink(
+                    fcmToken, title, message, notification,
+                    resourceId, type.name(), deepLinkRoute);
+
+            log.debug("  - 📱 [FCM 발송 완료] type: {}, route: {}", type, deepLinkRoute);
 
         } catch (Exception e) {
-            // FCM 푸시 발송 실패 무시
+            log.warn("  - ⚠️ [FCM 발송 실패] error: {}", e.getMessage());
         }
+    }
+
+    /**
+     * 알림 타입에 따른 Deep Link 라우트 결정
+     */
+    private String determineDeepLinkRoute(NotificationType type) {
+        return switch (type) {
+            case NEW_BID, AUCTION_WON, AUCTION_SOLD, AUCTION_NOT_SOLD,
+                 AUCTION_NOT_SOLD_HIGHEST_BIDDER, AUCTION_ENDED, AUCTION_EXTENDED,
+                 OUTBID, AUCTION_ENDING_SOON_15M, AUCTION_ENDING_SOON_5M, KEYWORD_ALERT
+                 -> "/auction/detail";
+            case CONNECTION_PAYMENT_REQUEST, CHAT_ACTIVATED, NEW_MESSAGE
+                 -> "/chat";
+            case TRANSACTION_COMPLETED, TRANSACTION_PENDING, TRANSACTION_CANCELLED -> "/chat";
+            case PROMOTION -> "/promotion";
+            default -> "/home";
+        };
     }
 
     /**
@@ -241,12 +368,16 @@ public class NotificationEventListener {
      */
     private void sendWebSocketNotification(Long userId, NotificationEvent event) {
         try {
-            // chatRoomId 추출 (경매 낙찰 알림인 경우)
+            // chatRoomId 추출 (경매 낙찰 또는 거래 관련 알림인 경우)
             Long chatRoomId = null;
             if (event instanceof AuctionSoldNotificationEvent) {
                 chatRoomId = ((AuctionSoldNotificationEvent) event).getChatRoomId();
             } else if (event instanceof AuctionWonNotificationEvent) {
                 chatRoomId = ((AuctionWonNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof TransactionPendingNotificationEvent) {
+                chatRoomId = ((TransactionPendingNotificationEvent) event).getChatRoomId();
+            } else if (event instanceof TransactionCancelledNotificationEvent) {
+                chatRoomId = ((TransactionCancelledNotificationEvent) event).getChatRoomId();
             }
 
             // 유찰 알림의 경우 추가 정보 포함

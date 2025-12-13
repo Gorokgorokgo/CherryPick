@@ -229,4 +229,60 @@ public class TransactionController {
         TransactionResponse transaction = transactionService.getTransactionDetail(transactionId, userId);
         return ResponseEntity.ok(transaction);
     }
+
+    @Operation(
+        summary = "거래 취소",
+        description = """
+            거래를 취소합니다.
+
+            **취소 조건:**
+            - 거래가 완료되지 않은 상태(PENDING, SELLER_CONFIRMED, BUYER_CONFIRMED)에서만 취소 가능
+            - 판매자 또는 구매자 모두 취소 가능
+            - 이미 완료(COMPLETED)된 거래는 취소 불가
+
+            **취소 시 처리:**
+            - Transaction 상태 → CANCELLED
+            - 채팅방 나가기 가능 상태로 전환
+            """
+    )
+    @ApiResponses(value = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "거래 취소 성공",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = TransactionResponse.class)
+            )
+        ),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청 - 이미 완료/취소된 거래"),
+        @ApiResponse(responseCode = "401", description = "인증 실패"),
+        @ApiResponse(responseCode = "403", description = "권한 없음 - 거래 당사자만 취소 가능"),
+        @ApiResponse(responseCode = "404", description = "거래를 찾을 수 없음")
+    })
+    @PostMapping("/{transactionId}/cancel")
+    public ResponseEntity<TransactionResponse> cancelTransaction(
+            @Parameter(description = "거래 ID", example = "123") @PathVariable Long transactionId,
+            @Parameter(description = "사용자 ID", example = "1") @RequestHeader("User-Id") Long userId) {
+
+        TransactionResponse response = transactionService.cancelTransaction(transactionId, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+        summary = "경매 ID로 거래 취소",
+        description = "경매 ID로 거래를 취소합니다."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "거래 취소 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청 - 이미 완료/취소된 거래"),
+        @ApiResponse(responseCode = "404", description = "거래를 찾을 수 없음")
+    })
+    @PostMapping("/auction/{auctionId}/cancel")
+    public ResponseEntity<TransactionResponse> cancelTransactionByAuction(
+            @Parameter(description = "경매 ID", example = "123") @PathVariable Long auctionId,
+            @Parameter(description = "사용자 ID", example = "1") @RequestHeader("User-Id") Long userId) {
+
+        TransactionResponse response = transactionService.cancelTransactionByAuction(auctionId, userId);
+        return ResponseEntity.ok(response);
+    }
 }

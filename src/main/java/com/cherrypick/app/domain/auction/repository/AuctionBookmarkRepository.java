@@ -49,4 +49,10 @@ public interface AuctionBookmarkRepository extends JpaRepository<AuctionBookmark
      * 사용자의 여러 경매 북마크 상태 배치 조회
      */
     List<AuctionBookmark> findByUserAndAuctionIn(User user, List<Auction> auctions);
+
+    /**
+     * 특정 경매를 북마크한 사용자 ID 목록 조회 (알림 발송용)
+     */
+    @Query("SELECT ab.user.id FROM AuctionBookmark ab WHERE ab.auction.id = :auctionId")
+    List<Long> findUserIdsByAuctionId(@Param("auctionId") Long auctionId);
 }
