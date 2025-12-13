@@ -53,6 +53,13 @@ public class ChatRoomParticipant extends BaseEntity {
     @Column(name = "last_read_message_id")
     private Long lastReadMessageId;
 
+    /**
+     * 읽지 않은 메시지 수 (반정규화)
+     */
+    @Builder.Default
+    @Column(name = "unread_count", nullable = false)
+    private Integer unreadCount = 0;
+
     // === 정적 팩토리 메서드 ===
 
     /**
@@ -63,6 +70,7 @@ public class ChatRoomParticipant extends BaseEntity {
                 .chatRoom(chatRoom)
                 .user(user)
                 .isLeft(false)
+                .unreadCount(0)
                 .build();
     }
 
@@ -79,6 +87,7 @@ public class ChatRoomParticipant extends BaseEntity {
                 .isLeft(true)
                 .leftAt(LocalDateTime.now())
                 .lastReadMessageId(lastMessageId)
+                .unreadCount(0) // 나가면 카운트 초기화
                 .build();
     }
 
@@ -93,6 +102,37 @@ public class ChatRoomParticipant extends BaseEntity {
                 .isLeft(false)
                 .leftAt(null)
                 .lastReadMessageId(this.lastReadMessageId)
+                .unreadCount(0) // 재입장 시 카운트 초기화 (보고 들어왔으므로)
+                .build();
+    }
+
+    /**
+     * 읽지 않은 메시지 수 증가
+     */
+    public ChatRoomParticipant increaseUnreadCount() {
+        return ChatRoomParticipant.builder()
+                .id(this.id)
+                .chatRoom(this.chatRoom)
+                .user(this.user)
+                .isLeft(this.isLeft)
+                .leftAt(this.leftAt)
+                .lastReadMessageId(this.lastReadMessageId)
+                .unreadCount(this.unreadCount + 1)
+                .build();
+    }
+
+    /**
+     * 읽지 않은 메시지 수 초기화 (채팅방 입장/읽음 처리)
+     */
+    public ChatRoomParticipant resetUnreadCount() {
+        return ChatRoomParticipant.builder()
+                .id(this.id)
+                .chatRoom(this.chatRoom)
+                .user(this.user)
+                .isLeft(this.isLeft)
+                .leftAt(this.leftAt)
+                .lastReadMessageId(this.lastReadMessageId)
+                .unreadCount(0)
                 .build();
     }
 

@@ -2,6 +2,7 @@ package com.cherrypick.app.domain.chat.entity;
 
 import com.cherrypick.app.domain.auction.entity.Auction;
 import com.cherrypick.app.domain.chat.enums.ChatRoomStatus;
+import com.cherrypick.app.domain.chat.enums.MessageType;
 import com.cherrypick.app.domain.common.entity.BaseEntity;
 import com.cherrypick.app.domain.connection.entity.ConnectionService;
 import com.cherrypick.app.domain.user.entity.User;
@@ -47,6 +48,13 @@ public class ChatRoom extends BaseEntity {
 
     @Column(name = "last_message_at")
     private LocalDateTime lastMessageAt;
+
+    @Column(name = "last_message_content")
+    private String lastMessageContent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "last_message_type")
+    private MessageType lastMessageType;
 
     @Column(name = "activated_at")
     private LocalDateTime activatedAt;
@@ -107,6 +115,8 @@ public class ChatRoom extends BaseEntity {
                 .connectionService(this.connectionService)
                 .status(ChatRoomStatus.ACTIVE)
                 .lastMessageAt(this.lastMessageAt)
+                .lastMessageContent(this.lastMessageContent)
+                .lastMessageType(this.lastMessageType)
                 .activatedAt(LocalDateTime.now())
                 .build();
     }
@@ -123,14 +133,16 @@ public class ChatRoom extends BaseEntity {
                 .connectionService(this.connectionService)
                 .status(ChatRoomStatus.CLOSED)
                 .lastMessageAt(this.lastMessageAt)
+                .lastMessageContent(this.lastMessageContent)
+                .lastMessageType(this.lastMessageType)
                 .activatedAt(this.activatedAt)
                 .build();
     }
     
     /**
-     * 마지막 메시지 시간 업데이트
+     * 마지막 메시지 정보 업데이트 (반정규화)
      */
-    public ChatRoom updateLastMessageTime() {
+    public ChatRoom updateLastMessage(String content, MessageType type) {
         return ChatRoom.builder()
                 .id(this.id)
                 .auction(this.auction)
@@ -139,6 +151,8 @@ public class ChatRoom extends BaseEntity {
                 .connectionService(this.connectionService)
                 .status(this.status)
                 .lastMessageAt(LocalDateTime.now())
+                .lastMessageContent(content)
+                .lastMessageType(type)
                 .activatedAt(this.activatedAt)
                 .build();
     }

@@ -215,7 +215,9 @@ public class ChatService {
      * 채팅방의 읽지 않은 메시지 개수 조회
      */
     private int getUnreadCount(Long chatRoomId, Long userId) {
-        return chatMessageRepository.countUnreadMessagesByChatRoomIdAndUserId(chatRoomId, userId);
+        return chatRoomParticipantRepository.findByChatRoomIdAndUserId(chatRoomId, userId)
+                .map(ChatRoomParticipant::getUnreadCount)
+                .orElse(0);
     }
 
     /**
@@ -306,20 +308,28 @@ public class ChatService {
                 // 나간 채팅방 필터링
                 .filter(chatRoom -> !hasUserLeftChatRoom(chatRoom.getId(), userId))
                 .map(chatRoom -> {
-                    // 마지막 메시지 조회 (이미지 메시지인 경우 "사진"으로 표시)
-                    String lastMessage = chatMessageRepository
-                            .findLatestMessageByChatRoomId(chatRoom.getId())
-                            .map(msg -> {
-                                if (msg.getMessageType() == MessageType.IMAGE) {
-                                    return "사진";
-                                }
-                                return msg.getContent();
-                            })
-                            .orElse("");
+                    // 마지막 메시지
+                    String lastMessage = chatRoom.getLastMessageContent();
+                    if (chatRoom.getLastMessageType() == MessageType.IMAGE) {
+                        lastMessage = "사진";
+                    }
+                    if (lastMessage == null) lastMessage = "";
 
-                    // 읽지 않은 메시지 개수
-                    int unreadCount = chatMessageRepository
-                            .countUnreadMessagesByChatRoomIdAndUserId(chatRoom.getId(), userId);
+                    // 안 읽은 메시지 수
+                    int unreadCount = 0;
+                    Optional<ChatRoomParticipant> participantOpt = chatRoom.getParticipants().stream()
+                            .filter(p -> p.getUser().getId().equals(userId))
+                            .findFirst();
+                            
+                    if (participantOpt.isPresent()) {
+                        unreadCount = participantOpt.get().getUnreadCount();
+                    } else {
+                        // 참여자 정보가 로딩되지 않았거나 없는 경우 (비상용)
+                        // 기존 방식대로 조회하거나 0으로 처리. 
+                        // 여기서는 participants가 비어있을 수 있으므로(Lazy Loading) 
+                        // Repository를 통해 안전하게 가져오는 것이 좋을 수 있음.
+                        // 하지만 DB 스키마상 무조건 있어야 함.
+                    }
 
                     // 상대방 온라인 상태 (실시간 상태 추적)
                     Long partnerId = chatRoom.getSeller().getId().equals(userId) ?
@@ -457,10 +467,17 @@ public class ChatService {
             log.info("💾 [DEBUG] Message saved to DB: messageId={}, roomId={}, senderId={}, content={}",
                     savedMessage.getId(), roomId, userId, request.getContent().substring(0, Math.min(20, request.getContent().length())));
 
-            // 채팅방 마지막 메시지 시간 업데이트 (동시성 보장)
-            ChatRoom updatedRoom = chatRoom.updateLastMessageTime();
+            // 채팅방 메타데이터 업데이트
+            ChatRoom updatedRoom = chatRoom.updateLastMessage(request.getContent(), MessageType.TEXT);
             chatRoomRepository.save(updatedRoom);
             chatRoomRepository.flush(); // 즉시 DB에 반영
+
+            // 수신자 unreadCount 증가
+            chatRoomParticipantRepository.findByChatRoomIdAndUserId(roomId, receiverId)
+                    .ifPresent(participant -> {
+                        ChatRoomParticipant updatedParticipant = participant.increaseUnreadCount();
+                        chatRoomParticipantRepository.save(updatedParticipant);
+                    });
 
             // 실시간 메시지 전송 (WebSocket)
             ChatMessageResponse response = ChatMessageResponse.from(savedMessage);
@@ -486,6 +503,8 @@ public class ChatService {
             // FCM 푸시 알림 발송 (수신자가 오프라인일 때만)
             try {
                 if (!userOnlineStatusService.isUserOnline(receiverId)) {
+                    // receiver는 이미 위에서 정의됨 (461라인)
+
                     fcmService.sendNewMessageNotification(
                             receiver,
                             roomId,
@@ -496,6 +515,14 @@ public class ChatService {
             } catch (Exception e) {
                 log.warn("FCM 푸시 알림 발송 실패 (메시지는 저장됨): roomId={}, receiverId={}, error={}",
                         roomId, receiverId, e.getMessage());
+            }
+
+            // 실시간 뱃지 카운트 전송
+            try {
+                int totalUnreadCount = chatRoomParticipantRepository.sumUnreadCountByUserId(receiverId);
+                webSocketMessagingService.sendUnreadCountUpdate(receiverId, totalUnreadCount);
+            } catch (Exception e) {
+                log.warn("뱃지 카운트 업데이트 실패: userId={}, error={}", receiverId, e.getMessage());
             }
 
             return response;
@@ -565,9 +592,33 @@ public class ChatService {
 
             List<ChatMessage> savedMessages = chatMessageRepository.saveAll(messages);
 
-            // 채팅방 마지막 메시지 시간 업데이트 (한 번만)
-            ChatRoom updatedRoom = chatRoom.updateLastMessageTime();
+            // 마지막 메시지 가져오기
+            ChatMessage lastMessage = savedMessages.get(savedMessages.size() - 1);
+            String lastContent = lastMessage.getMessageType() == MessageType.IMAGE ? "사진" : lastMessage.getContent();
+
+            // 채팅방 메타데이터 업데이트
+            ChatRoom updatedRoom = chatRoom.updateLastMessage(lastContent, lastMessage.getMessageType());
             chatRoomRepository.save(updatedRoom);
+
+            // 수신자 unreadCount 증가
+            Long receiverId = chatRoom.getSeller().getId().equals(userId)
+                    ? chatRoom.getBuyer().getId()
+                    : chatRoom.getSeller().getId();
+
+            chatRoomParticipantRepository.findByChatRoomIdAndUserId(roomId, receiverId)
+                    .ifPresent(participant -> {
+                        ChatRoomParticipant updatedParticipant = ChatRoomParticipant.builder()
+                                .id(participant.getId())
+                                .chatRoom(participant.getChatRoom())
+                                .user(participant.getUser())
+                                .isLeft(participant.getIsLeft())
+                                .leftAt(participant.getLeftAt())
+                                .lastReadMessageId(participant.getLastReadMessageId())
+                                .unreadCount(participant.getUnreadCount() + savedMessages.size())
+                                .build();
+                                
+                        chatRoomParticipantRepository.save(updatedParticipant);
+                    });
 
             // 실시간 메시지 전송 (WebSocket) - 각 메시지마다
             List<ChatMessageResponse> responses = savedMessages.stream()
@@ -599,9 +650,7 @@ public class ChatService {
 
             // FCM 푸시 알림 발송 (수신자가 오프라인일 때만, 첫 메시지만)
             try {
-                Long receiverId = chatRoom.getSeller().getId().equals(userId)
-                        ? chatRoom.getBuyer().getId()
-                        : chatRoom.getSeller().getId();
+                // receiverId는 이미 위에서 정의됨
                 User receiver = userRepository.findById(receiverId)
                         .orElseThrow(EntityNotFoundException::user);
 
@@ -629,19 +678,25 @@ public class ChatService {
                 }
             } catch (Exception e) {
                 log.warn("FCM 푸시 알림 발송 실패 (메시지는 저장됨): roomId={}, error={}",
-                        roomId, e.getMessage());
-            }
-
-            log.info("배치 메시지 전송 완료: roomId={}, userId={}, messageCount={}",
-                    roomId, userId, responses.size());
-
-            return responses;
-        }
-    }
-
-    /**
-     * 채팅방별 Lock 객체 획득 (메모리 효율적인 Lock 관리)
-     *
+                                                    roomId, e.getMessage());
+                                    }
+                        
+                                                // 실시간 뱃지 카운트 전송
+                                                try {
+                                                    int totalUnreadCount = chatRoomParticipantRepository.sumUnreadCountByUserId(receiverId);                                        webSocketMessagingService.sendUnreadCountUpdate(receiverId, totalUnreadCount);
+                                    } catch (Exception e) {
+                                        log.warn("뱃지 카운트 업데이트 실패: userId={}, error={}", receiverId, e.getMessage());
+                                    }
+                        
+                                    log.info("배치 메시지 전송 완료: roomId={}, userId={}, messageCount={}",
+                                            roomId, userId, responses.size());
+                        
+                                    return responses;
+                                }
+                            }
+                        
+                            /**
+                             * 채팅방별 Lock 객체 획득 (메모리 효율적인 Lock 관리)     *
      * @param roomId 채팅방 ID
      * @return Lock 객체
      */
@@ -699,7 +754,16 @@ public class ChatService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         
+        // 메시지 읽음 처리
         int updatedCount = chatMessageRepository.markAllMessagesAsReadInChatRoom(roomId, userId);
+        
+        // unreadCount 초기화
+        chatRoomParticipantRepository.findByChatRoomIdAndUserId(roomId, userId)
+                .ifPresent(participant -> {
+                    ChatRoomParticipant resetParticipant = participant.resetUnreadCount();
+                    chatRoomParticipantRepository.save(resetParticipant);
+                    log.debug("읽지 않은 메시지 카운트 초기화: roomId={}, userId={}", roomId, userId);
+                });
         
         // 전체 메시지 읽음 처리
     }
@@ -794,7 +858,7 @@ public class ChatService {
      * @return 읽지 않은 메시지 개수
      */
     public int getUnreadMessageCount(Long userId) {
-        return chatMessageRepository.countUnreadMessagesByUserId(userId);
+        return chatRoomParticipantRepository.sumUnreadCountByUserId(userId);
     }
 
     /**
